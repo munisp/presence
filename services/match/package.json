@@ -1,0 +1,23 @@
+{
+  "name": "@presence/match",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Presence match service — stateless scoring core (PRS-SRS-001 §6)",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test dist/test/"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0",
+    "h3-js": "^4.2.1",
+    "ioredis": "^6.0.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "5.6.3"
+  }
+}

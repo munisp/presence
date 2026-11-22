@@ -1,0 +1,108 @@
+/**
+ * Consent routes (PRS-SRS-001 §5.4) — the FR-29 state machine over the
+ * append-only ledger (FR-35), with identity gated behind OPEN (FR-30).
+ *
+ *   POST /v1/consent/:pairId/express — express interest; when the counterpart
+ *                                      has already expressed, the pair
+ *                                      advances to MUTUAL
+ *   POST /v1/consent/:pairId/open    — open the channel from MUTUAL; only now
+ *                                      does identity become visible
+ *   GET  /v1/consent                 — my pairs and their states
+ *
+ * Illegal transitions are rejected by the database trigger — the edge computes
+ * intent, Postgres enforces legality.
+ */
+
+import { FastifyInstance } from "fastify";
+import { withRls } from "../auth.js";
+import { EdgeContext } from "../context.js";
+
+type State = "DETECTED" | "NUDGED" | "EXPRESSED" | "MUTUAL" | "OPEN";
+
+export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): void {
+  app.get("/v1/consent", async (req, reply) => {
+    const rows = await withRls(ctx.pg, req.userId, async (c) =>
+      c.query(
+        `SELECT pair_id, state, opened_at,
+                user_lo = $1::uuid AS am_lo,
+                CASE WHEN user_lo = $1::uuid THEN user_hi ELSE user_lo END AS counterpart
+           FROM matches ORDER BY opened_at DESC NULLS LAST`,
+        [req.userId],
+      ),
+    );
+    return reply.send({
+      pairs: rows.rows.map((r) => ({
+        pairId: r.pair_id,
+        state: r.state as State,
+        // FR-30: the counterpart id itself is pseudonymous pre-OPEN; the
+        // client renders traits/reasons, not identity.
+        counterpart: r.state === "OPEN" ? r.counterpart : null,
+        opened: r.opened_at,
+      })),
+    });
+  });
+
+  app.post("/v1/consent/:pairId/express", async (req, reply) => {
+    const { pairId } = req.params as { pairId: string };
+    try {
+      const state = await withRls(ctx.pg, req.userId, async (c) => {
+        const cur = await c.query("SELECT state FROM matches WHERE pair_id = $1", [pairId]);
+        if (cur.rows.length === 0) throw Object.assign(new Error("pair not found"), { code: 404 });
+        const from = cur.rows[0].state as State;
+        // One side expressing: EXPRESSED. The second side: MUTUAL.
+        const last = await c.query(
+          "SELECT actor, to_state FROM consent_ledger WHERE pair_id = $1 ORDER BY seq DESC LIMIT 1",
+          [pairId],
+        );
+        const counterpartExpressed =
+          from === "EXPRESSED" && last.rows[0]?.actor && last.rows[0].actor !== req.userId;
+        const to: State = counterpartExpressed ? "MUTUAL" : "EXPRESSED";
+        await c.query(
+          "INSERT INTO consent_ledger (pair_id, actor, from_state, to_state) VALUES ($1, $2, $3, $4)",
+          [pairId, req.userId, from, to],
+        );
+        return to;
+      });
+      if (state === "MUTUAL") await publish(ctx, pairId, { type: "mutual" });
+      return reply.send({ pairId, state });
+    } catch (err) {
+      return consentError(reply, err);
+    }
+  });
+
+  app.post("/v1/consent/:pairId/open", async (req, reply) => {
+    const { pairId } = req.params as { pairId: string };
+    try {
+      await withRls(ctx.pg, req.userId, async (c) => {
+        const cur = await c.query("SELECT state FROM matches WHERE pair_id = $1", [pairId]);
+        if (cur.rows.length === 0) throw Object.assign(new Error("pair not found"), { code: 404 });
+        await c.query(
+          "INSERT INTO consent_ledger (pair_id, actor, from_state, to_state) VALUES ($1, $2, $3, 'OPEN')",
+          [pairId, req.userId, cur.rows[0].state],
+        );
+      });
+      await publish(ctx, pairId, { type: "open" });
+      return reply.send({ pairId, state: "OPEN" });
+    } catch (err) {
+      return consentError(reply, err);
+    }
+  });
+}
+
+/** Realtime fan-out through Centrifugo's server API (PRS-ARC-002 P0). */
+async function publish(ctx: EdgeContext, pairId: string, event: object): Promise<void> {
+  await fetch(`${ctx.centrifugoUrl}/api/publish`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `apikey ${ctx.centrifugoApiKey}` },
+    body: JSON.stringify({ channel: `pair:${pairId}`, data: event }),
+  }).catch((err) => console.error("centrifugo publish failed", err));
+}
+
+async function consentError(reply: any, err: unknown) {
+  const e = err as { code?: number; message?: string };
+  if (e.code === 404) return reply.code(404).send({ error: "pair not found" });
+  if (e.message?.includes("illegal consent transition")) {
+    return reply.code(409).send({ error: "illegal consent transition (FR-29)" });
+  }
+  throw err;
+}

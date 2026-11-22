@@ -1,0 +1,71 @@
+# Presence P0 stack (PRS-ARC-002): Postgres 17 + PostGIS, Valkey 8,
+# Centrifugo, match service, edge. Five processes, async work off the scan
+# path. Run from the repo root:  docker compose -f deploy/docker-compose.yml up --build
+
+services:
+  postgres:
+    image: postgis/postgis:17-3.5-alpine
+    environment:
+      POSTGRES_USER: presence
+      POSTGRES_PASSWORD: presence
+      POSTGRES_DB: presence
+    volumes:
+      - ../db/migrations/0001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ../db/seed/taxonomy.sql:/docker-entrypoint-initdb.d/02_taxonomy.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U presence"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  centrifugo:
+    image: centrifugo/centrifugo:v6
+    command: centrifugo --health
+    environment:
+      CENTRIFUGO_HTTP_API: "true"
+      CENTRIFUGO_HTTP_API_KEY: p0-dev-api-key
+      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: p0-dev-secret-change-me
+      CENTRIFUGO_ADMIN: "true"
+      CENTRIFUGO_ADMIN_PASSWORD: p0-dev-admin
+      CENTRIFUGO_ADMIN_SECRET: p0-dev-admin-secret
+    ports: ["8000:8000"]
+
+  match:
+    build: ../services/match
+    environment:
+      PORT: "4100"
+      DATABASE_URL: postgres://presence_match:presence-dev@postgres:5432/presence
+      VALKEY_URL: redis://valkey:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      valkey: { condition: service_healthy }
+    ports: ["4100:4100"]
+
+  edge:
+    build: ../services/edge
+    environment:
+      PORT: "4000"
+      DATABASE_URL: postgres://presence_app:presence-dev@postgres:5432/presence
+      VALKEY_URL: redis://valkey:6379
+      MATCH_SERVICE_URL: http://match:4100
+      CENTRIFUGO_URL: http://centrifugo:8000
+      CENTRIFUGO_API_KEY: p0-dev-api-key
+      JWT_SECRET: p0-dev-secret-change-me
+    depends_on:
+      - match
+      - centrifugo
+    ports: ["4000:4000"]
+
+volumes:
+  pgdata:

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+eval/key.csv
+eval/results.xlsx
+eval/answer-key-reference.csv
+package-lock.json

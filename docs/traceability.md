@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 71 | working in the repo with tests or structural evidence |
-| partial | 52 | meaningful part implemented; named gap remains |
-| gap-p0 | 74 | ARC-P0 product scope, code not yet built |
+| implemented | 85 | working in the repo with tests or structural evidence |
+| partial | 50 | meaningful part implemented; named gap remains |
+| gap-p0 | 62 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -21,11 +21,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| BR | 3 | 4 | 4 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 26 | 14 | 43 | 1 | 15 | 1 | 0 | 0 | 100 |
+| BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
+| FR | 34 | 13 | 36 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 4 | 5 | 3 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 20 | 5 | 9 | 4 | 6 | 0 | 0 | 0 | 44 |
-| SEC | 5 | 12 | 11 | 1 | 1 | 5 | 3 | 0 | 38 |
+| SEC | 8 | 11 | 9 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 8 | 7 | 3 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
@@ -40,13 +40,13 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR-04 | organisational | — | Second-city expansion gate on anchor-venue metrics (§2.5 for 3 consecutive weeks). |
 | BR-05 | partial | `deploy/keycloak/realm-partners.json` | events table models venue+window; event-scoped instance mode and presence-to-event attribution not wired. |
 | BR-06 | organisational | `docs/adr/0007-payments-gated-on-br06.md` | Five sequenced revenue lines only; payments gated per docs/adr/0007. |
-| BR-07 | partial | `docs/api/openapi.yaml` | Reports endpoint exists and is ungated; two-tap reachability is client UX (not built); no monetisation gate exists. |
+| BR-07 | partial | `docs/api/openapi.yaml`<br>`services/edge/src/context.ts` | Reports endpoint exists and is ungated; two-tap reachability is client UX (not built); no monetisation gate exists. |
 | BR-08 | implemented | — | Structural: no endpoint exposes precise location, pre-OPEN identity, or unconsented data; no paid tier exists to violate it. |
 | BR-09 | organisational | — | Per-market local-currency pricing via store billing — monetisation phase. |
 | BR-10 | organisational | — | Pilot unit-economics targets (CAC <= EUR6, payback <=4 mo, conversion >=3%). |
 | BR-11 | organisational | — | Venue agreement: data-processing roles, signage, escalation, 30-day termination. |
-| BR-12 | gap-p0 | `deploy/keycloak/realm-partners.json` | Aggregate-only venue dashboard not built; Keycloak partners realm (P0) is its identity surface. |
-| BR-13 | gap-p0 | — | k=11 suppression for venue aggregate figures — lands with the venue dashboard. |
+| BR-12 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`deploy/keycloak/realm-partners.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/aggregate.ts`<br>`services/edge/src/routes/scan.ts` | GET /v1/venues/:venueId/dashboard serves live presence, hourly scans, active offers and live announcements to venue_ids-claim tokens; match-funnel attribution arrives with FR-43. |
+| BR-13 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/aggregate.ts`<br>`services/edge/src/routes/venue.ts`<br>`services/edge/test/aggregate.test.ts` | kSuppressed (aggregate.ts, k=11) withholds every dashboard figure below k; routes/venue.ts applies it to all metrics. |
 | BR-14 | partial | `deploy/keycloak/realm-workforce.json` | venues.active is checked on scan (immediate effect); suspension fully propagates within the 15-min TTL; venue self-serve suspend endpoint missing. |
 | BR-15 | organisational | — | Resourcing: 4 FTE + fractional design/DPO/T&S, 16 weeks to pilot. |
 | BR-16 | organisational | — | T&S staffing >=1 moderator per 10k MAU + named escalation path. |
@@ -61,12 +61,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR-25 | organisational | — | Venue pricing per venue, unmetered. |
 | BR-26 | implemented | — | Structural: the scorer reads profile + corpus only; no tier or payment input exists on the match path. |
 | BR-27 | implemented | — | Structural: the matcher never receives partner status; per-venue config is limited to threshold/result-count (TR-11). |
-| BR-28 | organisational | — | Aggregate-only reporting principle; no revenue line exists yet. |
+| BR-28 | organisational | `services/edge/src/aggregate.ts` | Aggregate-only reporting principle; no revenue line exists yet. |
 | BR-29 | organisational | — | Unit-economics model as single source of truth, monthly review. |
 | BR-30 | organisational | — | New revenue line requires DPIA + spec revision. |
 | BR-31 | organisational | — | Commercial model reviewed vs telemetry at each month close. |
 | BR-32 | organisational | — | >20% multi-site discounts modelled pre-signature. |
-| BR-33 | gap-p0 | — | Announcement categories as policy + verified-org work category — enforcement code missing (FR-96/97). |
+| BR-33 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts` | Category CHECK in migration 0004 + canPublishCategory; the work category requires the verified_org token claim (FR-97). |
 
 ## FR — Functional requirements (§4)
 
@@ -86,16 +86,16 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-12 | implemented | — | Profile and corpus caches refresh on a 60 s loop (TR-05). |
 | FR-13 | gap-p0 | — | k-suppressed local popularity per interest — no endpoint. |
 | FR-14 | implemented | `docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/routes/presence.ts`<br>`services/match/src/store.ts` | 900 s Valkey TTL; stale cell members filtered at read; tested. |
-| FR-15 | partial | — | Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work. |
-| FR-16 | gap-p0 | — | 128-bit per-presence session ids, unlinkable and reuse-rejected — presence is keyed by account id today. |
+| FR-15 | partial | `services/edge/src/context.ts` | Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work. |
+| FR-16 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId — account ids never leave the edge pre-OPEN. |
 | FR-17 | gap-p0 | — | Time-boxed intent vocabulary expiring with presence or 60 min, usable as match signal. |
-| FR-18 | gap-p0 | — | Global invisible switch — immediate, persistent, no confirmation dialogue. |
+| FR-18 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts` | users.invisible flag (migration 0004); PUT/GET /v1/account/visibility; flipping on purges live presence at once; publishes refused 403 while set. |
 | FR-19 | client | — | Background-withdrawal <=60 s is client lifecycle behaviour. |
 | FR-20 | implemented | `db/migrations/0001_init.sql`<br>`docs/api/openapi.yaml`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/scan.test.ts` | <=3 candidates with ordered reasons; unit + golden tests. |
 | FR-21 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts` | Adaptive threshold: (1-5/n)-quantile floored at venue base; tested. |
 | FR-22 | partial | `services/match/src/scan.ts`<br>`services/match/src/server.ts` | MMR (lambda 0.7) over reason-node Jaccard; a hard no-shared-primary-reason guarantee is not enforced. |
 | FR-23 | implemented | `docs/presence-model.md`<br>`services/edge/src/context.ts`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/src/routes/scan.ts` | Canonical suppression keys, 600 s TTL, both directions; tested. |
-| FR-24 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/server.ts` | 6 scans/min per user at the edge; tested. |
+| FR-24 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/src/velocity.ts`<br>`services/match/src/server.ts` | 6 scans/min per user at the edge; tested. |
 | FR-25 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/test/scan.test.ts` | Bands from H3 grid distance only; no metres/bearing/cell ids in responses. |
 | FR-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts` | Explanatory empty state below 8 discoverable users in scope; tested. |
 | FR-27 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/match/src/engine.ts` | Ordered reason path in every scan payload; /v1/score re-scores any explicit pair. |
@@ -111,10 +111,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-37 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts` | 24-h conversation clock: closes_at set on OPEN, /consent/:id/keep from both sides clears it; lifecycle_tick lapses the rest; messages RLS gates on closed_at. |
 | FR-38 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/screening.ts`<br>`services/edge/test/screening.test.ts` | First message per sender per pair screened at the edge for links/phones/emails/bypass/scam patterns before storage; rejection is inline and category-level, nothing stored; tested. With MLS the same classifier runs in the client compose path (TECH-08). |
 | FR-39 | implemented | — | Only text envelopes exist; no media/voice/file paths to disable. |
-| FR-40 | partial | `docs/api/openapi.yaml` | Reports endpoint exists; no pair/offer anchor column; in-conversation control is client UX. |
+| FR-40 | partial | `docs/api/openapi.yaml` | Reports endpoint with announcement anchor (announcement_id, migration 0004); pair/offer anchor columns and the in-conversation control remain. |
 | FR-41 | gap-p0 | — | Local delete + 24-h own-message revocation not implemented. |
 | FR-42 | partial | `deploy/keycloak/realm-workforce.json` | venues carries geofence (PostGIS), h3_res, thresholds, active; partner status + operating schedule missing. |
-| FR-43 | partial | `deploy/keycloak/realm-partners.json` | events = venue + window in schema; presence-to-event attribution not wired. |
+| FR-43 | partial | `deploy/keycloak/realm-partners.json`<br>`services/edge/src/routes/venue.ts` | events = venue + window in schema; presence-to-event attribution not wired. |
 | FR-44 | gap-p0 | `services/edge/src/screening.ts` | Crowd-mode transition to interest rooms — room surface not built. |
 | FR-45 | gap-p0 | — | Interest-room content rules (topic, suppressed count, opted-in notes) — with FR-44. |
 | FR-46 | gap-p0 | `services/edge/src/screening.ts` | Room posting 1 note/5 min + first-message content filters — with FR-44/SEC-21. |
@@ -133,7 +133,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-59 | gap-p0 | `deploy/keycloak/realm-workforce.json` | Taxonomy CMS draft/review/publish + one-action rollback not built (seed export scripts only). |
 | FR-60 | gap-p0 | — | Immutable admin audit log (actor, reason code, before/after) not implemented. |
 | FR-61 | phase-gated | — | Analytics pipeline is P1 lakehouse (Delta/Parquet) per ARC-002 §9; identifier exclusion + cell aggregation specified there. |
-| FR-62 | implemented | `db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | GET /account/export assembles the full subject record (profile, interests, pairs, ledger actions, blocks, reports) via dsar_export() with FR-32/34 masking intact; erasure via DELETE /account. |
+| FR-62 | implemented | `db/migrations/0003_account_deletion.sql`<br>`db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | GET /account/export assembles the full subject record (profile, interests, pairs, ledger actions, blocks, reports) via dsar_export() with FR-32/34 masking intact; erasure via DELETE /account. |
 | FR-63 | gap-p0 | — | Per-venue feature flags for §4.4/4.5/4.7 behaviours not implemented. |
 | FR-64 | gap-p0 | — | Structured prompts (<=3 x 120 chars, screened, reason material, not searchable) not implemented. |
 | FR-65 | gap-p0 | — | Post-OPEN allowlisted social link, counterpart-only, never fetched server-side — not implemented. |
@@ -164,12 +164,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-90 | partial | — | venues.geofence holds the canonical polygon; attribution, versioning and precedence logic not implemented. |
 | FR-91 | gap-p0 | — | 7-day no-re-offer rotation + per-user tie-break counter — only 10-min suppression exists. |
 | FR-92 | client | — | 5-min modal-cell stabilisation on device (SHOULD). |
-| FR-93 | partial | — | announcements table + time-windowed read exist; publish path, trust floor, 4-h cap, category assignment missing. |
-| FR-94 | gap-p0 | — | Inverted-consent responses (anonymous until acceptance) — not implemented. |
-| FR-95 | gap-p0 | — | One active announcement, 1/24 h publish, one response each, <=5 shown — not implemented. |
-| FR-96 | gap-p0 | — | Category assignment + body screening (links/phones/emails/solicitation) — not implemented. |
-| FR-97 | gap-p0 | — | Work category restricted to verified organisations — needs partner verification (Keycloak partners realm). |
-| FR-98 | gap-p0 | — | Auto-removal after 2 reports in 10 min, publisher notified, evidence retained — not implemented. |
+| FR-93 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | POST /v1/announcements: 24-h account trust floor (isTrustedPublisher), effectiveTtlMinutes clamps to the 4-h cap, category on insert. |
+| FR-94 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | announcement_responses + accept route; publicResponse masks the responder id until accepted_at is set. |
+| FR-95 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | One-live (409) and 24-h publish cooldown (429) edge-side; UNIQUE(announcement_id, responder); responses listing LIMIT 5. |
+| FR-96 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | Fixed category enum (schema + CHECK); bodies and responses screened with screenText, category-coded 422 (SEC-37). |
+| FR-97 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | canPublishCategory refuses the work category unless the token carries verified_org (BR-33). |
+| FR-98 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/src/routes/content.ts` | reports.announcement_id + maybe_remove_announcement (2 reports/10 min, removed_at retained); publisher notified via Centrifugo; reads filter removed rows. |
 | FR-99 | gap-p0 | — | Per-floor codes/polygons/attribution + connected-floor declaration — not implemented. |
 | FR-100 | gap-p0 | — | Signed check-in token, QR baseline, NFC optional, same token format — not implemented. |
 
@@ -230,7 +230,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-09 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`scripts/export_golden.py`<br>`services/edge/src/screening.ts`<br>`services/match/src/engine.ts` | Deterministic template rendering; no LLM anywhere in reason generation. |
 | TR-10 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/test/engine.test.ts`<br>`tests/test_matching.py` | 81 Python tests incl. 60 key-pinned pairs; 120-pair TS golden parity at 1e-9. |
 | TR-11 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/test/scan.test.ts` | venues.base_threshold / max_scan_results configurable per venue row without deployment. |
-| TR-12 | implemented | `db/migrations/0001_init.sql`<br>`docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/test/edge.test.ts` | H3 res 9 default; k=1 ring; tested. |
+| TR-12 | implemented | `db/migrations/0001_init.sql`<br>`docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/velocity.ts` | H3 res 9 default; k=1 ring; tested. |
 | TR-13 | implemented | `docs/api/openapi.yaml` | Responses carry bands only — no neighbour cell or ring distance. |
 | TR-14 | implemented | `docs/presence-model.md`<br>`services/edge/src/routes/presence.ts` | Descent at 2 000 / 10 000 live presences; tested. |
 | TR-15 | implemented | `docs/adr/0008-maplibre-geolibre-postgis.md`<br>`docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/presence.ts` | Coordinate-shaped payload fields hard-422; tested. |
@@ -241,7 +241,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-20 | gap-p0 | — | Monotonic version + provenance + diff summary per taxonomy release — no release tooling. |
 | TR-21 | gap-p0 | — | 250k-node closure <10 min — scale test not run (current seed is a small synthetic graph). |
 | TR-22 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | Sensitive nodes skipped at vector construction (write time), not query time. |
-| TR-23 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/content.ts`<br>`services/edge/src/routes/lifecycle.ts` | docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode — unknown fields hard-400 before the handler runs. |
+| TR-23 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/src/routes/content.ts` | docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode — unknown fields hard-400 before the handler runs. |
 | TR-24 | gap-p0 | — | Idempotency keys on every mutating endpoint — not implemented. |
 | TR-25 | partial | — | Errors carry a message only; stable machine codes + retry hints missing; no internal leaks observed. |
 | TR-26 | implemented | `deploy/apisix/config.yaml`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml` | APISIX listener configured TLSv1.3-only with HTTP/2 (deploy/k8s/apisix.yaml); downgrade impossible at the listener; asserted by scripts/validate_deploy.py. Dev compose stays plaintext by design. |
@@ -287,7 +287,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-17 | gap-p0 | `db/migrations/0003_account_deletion.sql` | Privacy-preserving age assurance without ID-document storage — method selection pending (BR-03/FR-02). |
 | SEC-18 | gap-p0 | — | Third-party SDK allowlist enforced in CI — CI not built; client pending. |
 | SEC-19 | partial | `docs/api/openapi.yaml`<br>`services/edge/src/auth.ts` | Assertion header required on presence write; cryptographic verification + documented fallback pending. |
-| SEC-20 | partial | — | 6 scans/min edge limit exists; 200 scans/h, 20 waves/day and impossible-travel rules missing. |
+| SEC-20 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/src/velocity.ts` | rl:scan:h 200/h (429) and rl:wave:d 20/day (429) Valkey counters; isImpossibleTravel rejects fixes implying >500 km/h with a 422. |
 | SEC-21 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/screening.ts`<br>`services/edge/test/screening.test.ts` | screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested. |
 | SEC-22 | partial | — | No list endpoints; results capped at 3; tie-break is deterministic userId — randomised/rotating tie-break (FR-91) pending. |
 | SEC-23 | external-evidence | — | OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch. |
@@ -304,8 +304,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-34 | gap-p0 | — | External links plain-text + interstitial + allowlist, no server fetch — with FR-65. |
 | SEC-35 | client | — | Contentless ambient surfaces — client enforcement. |
 | SEC-36 | partial | — | Mock-location refusal is client-side; the server-side refusal record endpoint is missing. |
-| SEC-37 | gap-p0 | — | Announcement/response screening pre-publish + pre-delivery — not implemented. |
-| SEC-38 | gap-p0 | — | Responder enumeration caps; no identity before acceptance — with FR-94/95. |
+| SEC-37 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts` | screenText gates both announcement publish and respond routes; findings return category-coded 422, never the matched text. |
+| SEC-38 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | Responses endpoint is publisher-only (403), LIMIT 5, and masks responder identity until acceptance (publicResponse). |
 
 ## INF — Infrastructure requirements (§8)
 

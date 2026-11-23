@@ -113,7 +113,8 @@ CLASSIFICATION: dict[str, tuple[str, str]] = {
     "FR-14": ("implemented", "900 s Valkey TTL; stale cell members filtered at read; tested."),
     "FR-15": ("partial", "Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work."),
     "FR-16": ("implemented", "newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId — account ids never leave the edge pre-OPEN."),
-    "FR-17": ("gap-p0", "Time-boxed intent vocabulary expiring with presence or 60 min, usable as match signal."),
+    "FR-17": ("implemented", "PUT/GET/DELETE /v1/presence/intent over Valkey only: governed 8-word vocabulary (coffee/food/chat/walk/dance/network/explore/quiet), EX 3600 hard cap, requires live presence, purgePresence deletes intent:{uid} so it dies with presence; scan annotates results with sharedIntent when both sides declared the same active intent — signal only, score contract untouched (test-pinned)."),
+
     "FR-18": ("implemented", "users.invisible flag (migration 0004); PUT/GET /v1/account/visibility; flipping on purges live presence at once; publishes refused 403 while set."),
     "FR-19": ("client", "Background-withdrawal <=60 s is client lifecycle behaviour."),
     "FR-20": ("implemented", "<=3 candidates with ordered reasons; unit + golden tests."),
@@ -170,7 +171,8 @@ CLASSIFICATION: dict[str, tuple[str, str]] = {
     "FR-68": ("implemented", "table_slots (5-60 min, future start) + slot_bookings: the booking row IS the consent act (actor+timestamp, PK caps one booking per slot); conditional state flip guards races; cancel by booker or offerer re-opens future slots, idempotent."),
     "FR-69": ("implemented", "Exactly-one-host trigger + creator seated as host; group_member_directory (SECURITY DEFINER) returns co-member handle+role to members only — the scoped FR-30 carve-out; no photos, nothing leaves the table."),
     "FR-70": ("client", "Verification status at identity reveal — client rendering (+ data from FR-51/52)."),
-    "FR-71": ("gap-p0", "Recurrence signal (hashed pair, day counter, <=1/day, no timestamps) — optional MAY, not implemented."),
+    "FR-71": ("implemented", "Recurrence signal: recur:<sha256(lo:hi)> key names nobody; {days, lastDay} day-ordinal counter bumped at most once per UTC day on scan surfacing (bumpRecurrence), EX 90 days retention; wire carries recurrenceDays only — never a timestamp (test-pinned)."),
+
     "FR-72": ("implemented", "tests/test_group_surface.py asserts the cap/single-host triggers, RLS on all six tables, member-only policies, creator-scoped insert, the member-scoped directory (no photos), the open-only join probe, and membership-scoped listing with uniform 404s."),
     "FR-73": ("implemented", "tests/test_group_surface.py asserts the slot_bookings PK double-book guard, state/duration CHECKs, actor-scoped booking/cancel policies, column-limited grants, the atomic state flip, and host-action audit logging."),
     "FR-74": ("implemented", "Host remove and close write admin_audit rows (FR-60, governed host_discretion reason); host visibility stops at directory name+role; a host with members cannot leave (409) — they close the table instead."),

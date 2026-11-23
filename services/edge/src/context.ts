@@ -78,7 +78,8 @@ export async function publishRealtime(
 /**
  * Remove every trace of an account's live presence (FR-15 leave, FR-18
  * invisible switch, BR-07 account deletion): the user entry, its cell and
- * venue set memberships, and the FR-16 session reverse index.
+ * venue set memberships, the FR-16 session reverse index, and the FR-17
+ * intent — the intent expires with presence, so it dies here too.
  */
 export async function purgePresence(ctx: EdgeContext, userId: string): Promise<void> {
   const previous = await ctx.valkey.get(`presence:user:${userId}`);
@@ -98,5 +99,6 @@ export async function purgePresence(ctx: EdgeContext, userId: string): Promise<v
     }
   }
   pipe.del(`presence:user:${userId}`);
+  pipe.del(`intent:${userId}`); // FR-17: intents expire with presence
   await pipe.exec();
 }

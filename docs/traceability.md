@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 121 | working in the repo with tests or structural evidence |
+| implemented | 123 | working in the repo with tests or structural evidence |
 | partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 21 | ARC-P0 product scope, code not yet built |
+| gap-p0 | 19 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,7 +22,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 59 | 18 | 6 | 1 | 15 | 1 | 0 | 0 | 100 |
+| FR | 61 | 18 | 4 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 6 | 5 | 1 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 23 | 5 | 6 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
@@ -88,7 +88,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-14 | implemented | `docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`docs/runbook.md`<br>`services/edge/src/routes/presence.ts`<br>`services/match/src/store.ts` | 900 s Valkey TTL; stale cell members filtered at read; tested. |
 | FR-15 | partial | `services/edge/src/context.ts` | Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work. |
 | FR-16 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/rooms.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts` | newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId — account ids never leave the edge pre-OPEN. |
-| FR-17 | gap-p0 | — | Time-boxed intent vocabulary expiring with presence or 60 min, usable as match signal. |
+| FR-17 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/intents.ts`<br>`services/edge/src/routes/intents.ts`<br>`services/edge/src/routes/scan.ts` | PUT/GET/DELETE /v1/presence/intent over Valkey only: governed 8-word vocabulary (coffee/food/chat/walk/dance/network/explore/quiet), EX 3600 hard cap, requires live presence, purgePresence deletes intent:{uid} so it dies with presence; scan annotates results with sharedIntent when both sides declared the same active intent — signal only, score contract untouched (test-pinned). |
 | FR-18 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts` | users.invisible flag (migration 0004); PUT/GET /v1/account/visibility; flipping on purges live presence at once; publishes refused 403 while set. |
 | FR-19 | client | — | Background-withdrawal <=60 s is client lifecycle behaviour. |
 | FR-20 | implemented | `db/migrations/0001_init.sql`<br>`docs/api/openapi.yaml`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/scan.test.ts` | <=3 candidates with ordered reasons; unit + golden tests. |
@@ -142,7 +142,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-68 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts` | table_slots (5-60 min, future start) + slot_bookings: the booking row IS the consent act (actor+timestamp, PK caps one booking per slot); conditional state flip guards races; cancel by booker or offerer re-opens future slots, idempotent. |
 | FR-69 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts`<br>`tests/test_group_surface.py` | Exactly-one-host trigger + creator seated as host; group_member_directory (SECURITY DEFINER) returns co-member handle+role to members only — the scoped FR-30 carve-out; no photos, nothing leaves the table. |
 | FR-70 | client | — | Verification status at identity reveal — client rendering (+ data from FR-51/52). |
-| FR-71 | gap-p0 | — | Recurrence signal (hashed pair, day counter, <=1/day, no timestamps) — optional MAY, not implemented. |
+| FR-71 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/intents.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/test/intents.test.ts`<br>`tests/test_intents.py` | Recurrence signal: recur:<sha256(lo:hi)> key names nobody; {days, lastDay} day-ordinal counter bumped at most once per UTC day on scan surfacing (bumpRecurrence), EX 90 days retention; wire carries recurrenceDays only — never a timestamp (test-pinned). |
 | FR-72 | implemented | `tests/test_group_surface.py` | tests/test_group_surface.py asserts the cap/single-host triggers, RLS on all six tables, member-only policies, creator-scoped insert, the member-scoped directory (no photos), the open-only join probe, and membership-scoped listing with uniform 404s. |
 | FR-73 | implemented | `tests/test_group_surface.py` | tests/test_group_surface.py asserts the slot_bookings PK double-book guard, state/duration CHECKs, actor-scoped booking/cancel policies, column-limited grants, the atomic state flip, and host-action audit logging. |
 | FR-74 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/tables.ts`<br>`tests/test_group_surface.py` | Host remove and close write admin_audit rows (FR-60, governed host_discretion reason); host visibility stops at directory name+role; a host with members cannot leave (409) — they close the table instead. |

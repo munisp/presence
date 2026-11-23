@@ -20,6 +20,13 @@ import { withRls } from "../auth.js";
 import { matchBudget } from "../budget.js";
 import { EdgeContext, SUPPRESSION_TTL_S, suppressionKey } from "../context.js";
 import { FloorDeclaration, floorsCompatible } from "../floors.js";
+import {
+  bumpRecurrence,
+  dayOrdinal,
+  parseRecurrence,
+  RECURRENCE_TTL_S,
+  recurrenceKey,
+} from "../intents.js";
 import { SCAN_HOURLY_MAX } from "../velocity.js";
 import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed } from "./account.js";
 
@@ -247,8 +254,24 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         promptsByUser.set(row.user_id, list);
       }
       const requesterFloor = typeof floorId === "string" ? floorId : null;
-      const results: Array<Record<string, unknown>> = [];
+
+      // FR-17/FR-71: pull the requester's intent once, then per candidate
+      // their intent and the pair's recurrence counter in one pipeline.
+      const myIntentRaw = await ctx.valkey.get(`intent:${userId}`);
+      const myIntent = myIntentRaw ? (JSON.parse(myIntentRaw) as { intent: string }).intent : null;
+      const today = dayOrdinal(new Date());
+      const signalPipe = ctx.valkey.pipeline();
       for (const r of detected) {
+        signalPipe.get(`intent:${r.candidateId}`);
+        const [lo, hi] = userId < r.candidateId ? [userId, r.candidateId] : [r.candidateId, userId];
+        signalPipe.get(recurrenceKey(lo, hi));
+      }
+      const signals = detected.length > 0 ? await signalPipe.exec() : [];
+
+      const results: Array<Record<string, unknown>> = [];
+      const recurWrites = ctx.valkey.pipeline();
+      let recurDirty = false;
+      for (const [i, r] of detected.entries()) {
         const p = await ctx.valkey.get(`presence:user:${r.candidateId}`);
         if (!p) continue;
         const cand = JSON.parse(p) as { sessionId?: string; venueId?: string | null; floorId?: string | null };
@@ -256,6 +279,20 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         if (venueId && cand.venueId === venueId && floors.length > 0) {
           const candFloor = typeof cand.floorId === "string" ? cand.floorId : null;
           if (!floorsCompatible(requesterFloor, candFloor, floors)) continue;
+        }
+        // FR-17: a shared active intent is a match signal — annotation only,
+        // the score contract does not move.
+        const candIntentRaw = signals?.[2 * i]?.[1] as string | null;
+        const candIntent = candIntentRaw ? (JSON.parse(candIntentRaw) as { intent: string }).intent : null;
+        const sharedIntent = myIntent !== null && candIntent === myIntent ? candIntent : null;
+        // FR-71: bump the pair's day counter at most once per day; the wire
+        // carries the day count, never a timestamp.
+        const [lo, hi] = userId < r.candidateId ? [userId, r.candidateId] : [r.candidateId, userId];
+        const stored = parseRecurrence((signals?.[2 * i + 1]?.[1] as string | null) ?? null);
+        const { next, bumped } = bumpRecurrence(stored, today);
+        if (bumped) {
+          recurWrites.set(recurrenceKey(lo, hi), JSON.stringify(next), "EX", RECURRENCE_TTL_S);
+          recurDirty = true;
         }
         results.push({
           pairId: r.pairId,
@@ -265,8 +302,11 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
           reasons: r.reasons,
           icebreaker: r.icebreaker,
           prompts: promptsByUser.get(r.candidateId) ?? [],
+          sharedIntent,
+          recurrenceDays: next.days,
         });
       }
+      if (recurDirty) await recurWrites.exec();
 
       // FR-23: suppress every surfaced pair for ten minutes.
       if (detected.length > 0) {

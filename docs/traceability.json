@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 121,
+    "implemented": 123,
     "partial": 55,
-    "gap-p0": 21,
+    "gap-p0": 19,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -24,9 +24,9 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 59,
+      "implemented": 61,
       "partial": 18,
-      "gap-p0": 6,
+      "gap-p0": 4,
       "phase-gated": 1,
       "client": 15,
       "organisational": 1,
@@ -476,9 +476,15 @@
     },
     "FR-17": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Time-boxed intent vocabulary expiring with presence or 60 min, usable as match signal."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "services/edge/src/context.ts",
+        "services/edge/src/intents.ts",
+        "services/edge/src/routes/intents.ts",
+        "services/edge/src/routes/scan.ts"
+      ],
+      "note": "PUT/GET/DELETE /v1/presence/intent over Valkey only: governed 8-word vocabulary (coffee/food/chat/walk/dance/network/explore/quiet), EX 3600 hard cap, requires live presence, purgePresence deletes intent:{uid} so it dies with presence; scan annotates results with sharedIntent when both sides declared the same active intent \u2014 signal only, score contract untouched (test-pinned)."
     },
     "FR-18": {
       "family": "FR",
@@ -1026,9 +1032,15 @@
     },
     "FR-71": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Recurrence signal (hashed pair, day counter, <=1/day, no timestamps) \u2014 optional MAY, not implemented."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "services/edge/src/intents.ts",
+        "services/edge/src/routes/scan.ts",
+        "services/edge/test/intents.test.ts",
+        "tests/test_intents.py"
+      ],
+      "note": "Recurrence signal: recur:<sha256(lo:hi)> key names nobody; {days, lastDay} day-ordinal counter bumped at most once per UTC day on scan surfacing (bumpRecurrence), EX 90 days retention; wire carries recurrenceDays only \u2014 never a timestamp (test-pinned)."
     },
     "FR-72": {
       "family": "FR",

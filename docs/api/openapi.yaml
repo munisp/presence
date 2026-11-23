@@ -144,6 +144,43 @@ paths:
                   expiresAt: { type: string, format: date-time }
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "401": { description: Invalid or expired check-in token (FR-100). }
+  /v1/presence/intent:
+    put:
+      summary: Declare a time-boxed intent (FR-17)
+      description: >-
+        One word from the governed vocabulary, attached to live presence.
+        It expires with presence or after sixty minutes, whichever comes
+        first; it never persists to the profile. A shared active intent is
+        surfaced as a match signal on scan results.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [intent]
+              additionalProperties: false
+              properties:
+                intent:
+                  type: string
+                  enum: [coffee, food, chat, walk, dance, network, explore, quiet]
+      responses:
+        "200": { description: Intent declared; expires with presence or in 60 minutes. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "409": { description: No live presence; enter a venue first. }
+        "422": { description: Intent outside the governed vocabulary. }
+    get:
+      summary: My current intent (FR-17)
+      responses:
+        "200": { description: Current intent. }
+        "204": { description: No active intent. }
+    delete:
+      summary: Clear my intent early (FR-17)
+      description: Idempotent.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses:
+        "200": { description: Cleared (or none was set). }
   /v1/venues/{venueId}/checkin-tokens:
     post:
       summary: Mint a per-floor check-in token (FR-99, FR-100)
@@ -229,6 +266,13 @@ paths:
                             properties:
                               slot: { type: integer, minimum: 1, maximum: 3 }
                               body: { type: string, maxLength: 120 }
+                        sharedIntent:
+                          type: string
+                          nullable: true
+                          description: FR-17 — the shared active intent, when both sides declared it.
+                        recurrenceDays:
+                          type: integer
+                          description: FR-71 — distinct days this pair has been surfaced; never a timestamp.
                   mode:
                     type: string
                     enum: [rooms]

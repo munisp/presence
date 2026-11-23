@@ -1,0 +1,54 @@
+# Progressive delivery for the edge API (INF-16): 5% canary steps held for
+# 10 minutes each, automatic rollback to the stable deployment when the SLO
+# metrics breach. Uses Flagger with the APISIX provider (drives the same
+# gateway that fronts production traffic — TR-26/TECH-21).
+# Prereq in-cluster: Flagger (--mesh-provider=apisix) + Prometheus scraping
+# the APISIX prometheus plugin.
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: edge
+  namespace: presence
+spec:
+  provider: apisix
+  targetRef: { apiVersion: apps/v1, kind: Deployment, name: edge }
+  service:
+    port: 4000
+    apex: {}
+  analysis:
+    interval: 10m            # INF-16: each canary step is held for 10 minutes
+    stepWeight: 5            # INF-16: 5% traffic increments
+    maxWeight: 50
+    threshold: 1             # any SLO breach -> halt
+    metrics:
+      - name: request-success-rate
+        thresholdRange: { min: 99 }
+        interval: 1m
+      - name: request-duration   # p95 <= 120 ms mirrors the HPA contract (INF-10)
+        thresholdRange: { max: 120 }
+        interval: 1m
+    # Breach of either metric past the threshold rolls the canary back to 0%
+    # automatically (INF-16 "automatic rollback on SLO breach").
+---
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: match
+  namespace: presence
+spec:
+  provider: apisix
+  targetRef: { apiVersion: apps/v1, kind: Deployment, name: match }
+  service:
+    port: 4100
+  analysis:
+    interval: 10m
+    stepWeight: 5
+    maxWeight: 50
+    threshold: 1
+    metrics:
+      - name: request-success-rate
+        thresholdRange: { min: 99 }
+        interval: 1m
+      - name: request-duration
+        thresholdRange: { max: 120 }
+        interval: 1m

@@ -1,0 +1,89 @@
+# Edge API (TECH-03). Public traffic reaches it only through APISIX
+# (NetworkPolicy, INF-12). Verifies Keycloak RS256 tokens via the realm JWKS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge
+  namespace: presence
+  labels: { app: edge, app.kubernetes.io/part-of: presence }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: edge }
+  template:
+    metadata:
+      labels: { app: edge, app.kubernetes.io/part-of: presence }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: edge
+          image: presence/edge:p0   # built from services/edge (Dockerfile, node:22-alpine)
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 4000 }]
+          env:
+            - name: PORT
+              value: "4000"
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: EDGE_DATABASE_URL } }
+            - name: VALKEY_URL
+              value: redis://valkey:6379
+            - name: MATCH_SERVICE_URL
+              value: http://match:4100
+            - name: CENTRIFUGO_URL
+              value: http://centrifugo:8000
+            - name: CENTRIFUGO_API_KEY
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_API_KEY } }
+            - name: KEYCLOAK_ISSUER
+              value: https://auth.presence.example/realms/consumer   # per environment
+          readinessProbe: { httpGet: { path: /health, port: 4000 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health, port: 4000 }, periodSeconds: 10 }
+          resources:   # INF-05: 3 x 2 vCPU / 4 GB
+            requests: { cpu: "1", memory: 2Gi }
+            limits: { cpu: "2", memory: 4Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge
+  namespace: presence
+  labels: { app: edge }
+spec:
+  selector: { app: edge }
+  ports: [{ port: 4000, targetPort: 4000 }]
+---
+# INF-10: same autoscaling contract as match — p95 > 120 ms for 3 minutes
+# scales out; scale-in <= 1 pod per 10 minutes.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: edge
+  namespace: presence
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: edge }
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: presence_http_request_p95_ms   # prometheus-adapter: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{app="edge"}[3m])) * 1000
+        target: { type: Value, value: "120" }
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 75 }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 600
+    scaleUp:
+      stabilizationWindowSeconds: 180
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60

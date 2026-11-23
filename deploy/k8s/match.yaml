@@ -1,0 +1,82 @@
+# Stateless match service (TECH-03, ARC stand-in for the Rust core per
+# TECH-18). Never on the public path — reachable only from edge
+# (NetworkPolicy, INF-12).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: match
+  namespace: presence
+  labels: { app: match, app.kubernetes.io/part-of: presence }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: match }
+  template:
+    metadata:
+      labels: { app: match, app.kubernetes.io/part-of: presence }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: match
+          image: presence/match:p0   # built from services/match (Dockerfile, node:22-alpine)
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 4100 }]
+          env:
+            - name: PORT
+              value: "4100"
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: MATCH_DATABASE_URL } }
+            - name: VALKEY_URL
+              value: redis://valkey:6379
+          readinessProbe: { httpGet: { path: /health, port: 4100 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health, port: 4100 }, periodSeconds: 10 }
+          resources:   # INF-05: 3 x 2 vCPU / 4 GB
+            requests: { cpu: "1", memory: 2Gi }
+            limits: { cpu: "2", memory: 4Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: match
+  namespace: presence
+  labels: { app: match }
+spec:
+  selector: { app: match }
+  ports: [{ port: 4100, targetPort: 4100 }]
+---
+# INF-10: scale out when p95 latency exceeds 120 ms sustained for 3 minutes
+# (the prometheus-adapter query window); scale in at most 1 pod per 10 min.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: match
+  namespace: presence
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: match }
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: presence_http_request_p95_ms   # prometheus-adapter: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{app="match"}[3m])) * 1000
+        target: { type: Value, value: "120" }
+    - type: Resource                          # fallback while the metrics pipeline is absent
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 75 }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1          # INF-10: scale-in <= 1 instance per 10 minutes
+          periodSeconds: 600
+    scaleUp:
+      stabilizationWindowSeconds: 180   # INF-10: sustained for 3 minutes before acting
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60

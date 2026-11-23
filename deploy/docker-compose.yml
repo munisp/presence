@@ -61,6 +61,20 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # APISIX gateway (TECH-21: sole public ingress; TR-26 TLS lands in K8s —
+  # compose runs it plaintext in etcd-less standalone mode). Public API
+  # traffic goes through :9080 (e.g. http://localhost:9080/v1/scan).
+  apisix:
+    image: apache/apisix:3.11.0-debian
+    volumes:
+      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    ports: ["9080:9080"]
+    depends_on:
+      - edge
+      - centrifugo
+      - keycloak
+
   match:
     build: ../services/match
     environment:

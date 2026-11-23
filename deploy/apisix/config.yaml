@@ -1,0 +1,14 @@
+# APISIX standalone (etcd-less) config for the dev compose stack.
+# Mirrors deploy/k8s/apisix.yaml with compose service names. TLS terminates
+# only in the K8s deployment (TR-26); compose stays plaintext for local dev.
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+apisix:
+  node_listen: 9080
+  enable_admin: false
+plugins:
+  - request-id
+  - response-rewrite
+  - limit-count

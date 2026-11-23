@@ -1,0 +1,80 @@
+# Keycloak 26 (TECH-07): consumer / workforce / partners realms imported at
+# boot from deploy/keycloak/realm-*.json (mounted via ConfigMap). Backed by
+# the keycloak database on the Postgres StatefulSet.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: presence
+  labels: { app: keycloak, app.kubernetes.io/part-of: presence }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # realm import runs once against Postgres
+  selector:
+    matchLabels: { app: keycloak }
+  template:
+    metadata:
+      labels: { app: keycloak, app.kubernetes.io/part-of: presence }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          args: ["start", "--import-realm", "--hostname-strict=false"]
+          ports: [{ containerPort: 8080 }]
+          env:
+            - name: KEYCLOAK_ADMIN
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: KEYCLOAK_ADMIN } }
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: KEYCLOAK_ADMIN_PASSWORD } }
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://postgres:5432/keycloak
+            - name: KC_DB_USERNAME
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: POSTGRES_USER } }
+            - name: KC_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: POSTGRES_PASSWORD } }
+            - name: KC_HOSTNAME
+              value: "https://auth.presence.example"   # set per environment
+            - name: KC_HTTP_ENABLED
+              value: "true"   # TLS terminates at APISIX (TR-26); east-west TLS lands with the mesh decision
+          readinessProbe: { httpGet: { path: /health/ready, port: 9000 }, periodSeconds: 10 }
+          volumeMounts:
+            - name: realms
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 2Gi }
+      volumes:
+        - name: realms
+          configMap: { name: keycloak-realms }
+---
+# Populate before apply:
+#   kubectl -n presence create configmap keycloak-realms \
+#     --from-file=deploy/keycloak/realm-consumer.json \
+#     --from-file=deploy/keycloak/realm-workforce.json \
+#     --from-file=deploy/keycloak/realm-partners.json \
+#     --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realms
+  namespace: presence
+  labels: { app: keycloak }
+data: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: presence
+  labels: { app: keycloak }
+spec:
+  selector: { app: keycloak }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+    - { name: mgmt, port: 9000, targetPort: 9000 }

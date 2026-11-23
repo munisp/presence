@@ -1,0 +1,204 @@
+# Origin lockdown + egress allowlist (INF-12, INF-14).
+# Default-deny both directions, then open exactly the flows the P0
+# architecture uses. APISIX is the only ingress source (TECH-21).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: presence
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# DNS egress for every pod (service discovery, JWKS hostnames).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: presence
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# Public traffic enters only via APISIX (INF-12).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: apisix-ingress
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: apisix }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 9443 }
+        - { protocol: TCP, port: 9080 }
+---
+# APISIX may reach the workloads it routes to; nobody else may (INF-12).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: edge-from-apisix
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: edge }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: apisix } }
+        - podSelector: { matchLabels: { app: prometheus } }   # metrics scrape
+      ports: [{ protocol: TCP, port: 4000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: match-from-edge
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: match }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: edge } }
+        - podSelector: { matchLabels: { app: prometheus } }
+      ports: [{ protocol: TCP, port: 4100 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: centrifugo-from-edge-and-apisix
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: centrifugo }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: edge } }      # HTTP API publishes
+        - podSelector: { matchLabels: { app: apisix } }    # client websockets
+      ports: [{ protocol: TCP, port: 8000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-from-apisix-and-edge
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: keycloak }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: apisix } }    # /realms, /resources
+        - podSelector: { matchLabels: { app: edge } }      # JWKS fetch
+      ports: [{ protocol: TCP, port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-workloads
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: edge } }
+        - podSelector: { matchLabels: { app: match } }
+        - podSelector: { matchLabels: { app: keycloak } }
+      ports: [{ protocol: TCP, port: 5432 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: valkey-from-workloads
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: valkey }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: edge } }
+        - podSelector: { matchLabels: { app: match } }
+      ports: [{ protocol: TCP, port: 6379 }]
+---
+# Egress allowlist (INF-14): workloads may talk only to their declared
+# dependencies in-cluster. External egress (JWKS is in-cluster; future
+# APNs/FCM) must be added here explicitly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: edge-egress-allowlist
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: edge }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: match } } }]
+      ports: [{ protocol: TCP, port: 4100 }]
+    - to: [{ podSelector: { matchLabels: { app: postgres } } }]
+      ports: [{ protocol: TCP, port: 5432 }]
+    - to: [{ podSelector: { matchLabels: { app: valkey } } }]
+      ports: [{ protocol: TCP, port: 6379 }]
+    - to: [{ podSelector: { matchLabels: { app: centrifugo } } }]
+      ports: [{ protocol: TCP, port: 8000 }]
+    - to: [{ podSelector: { matchLabels: { app: keycloak } } }]
+      ports: [{ protocol: TCP, port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: match-egress-allowlist
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: match }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: postgres } } }]
+      ports: [{ protocol: TCP, port: 5432 }]
+    - to: [{ podSelector: { matchLabels: { app: valkey } } }]
+      ports: [{ protocol: TCP, port: 6379 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-egress-allowlist
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: keycloak }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: postgres } } }]
+      ports: [{ protocol: TCP, port: 5432 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: apisix-egress-allowlist
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: apisix }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: edge } } }]
+      ports: [{ protocol: TCP, port: 4000 }]
+    - to: [{ podSelector: { matchLabels: { app: centrifugo } } }]
+      ports: [{ protocol: TCP, port: 8000 }]
+    - to: [{ podSelector: { matchLabels: { app: keycloak } } }]
+      ports: [{ protocol: TCP, port: 8080 }]

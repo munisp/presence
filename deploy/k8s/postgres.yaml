@@ -1,0 +1,77 @@
+# Postgres 17 + PostGIS (TECH-04). Single-primary StatefulSet for
+# integration/staging; production runs the managed equivalent sized per
+# INF-07 (4 vCPU / 16 GB / 500 GB SSD / PITR) with the same schema and roles.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: presence
+  labels: { app: postgres, app.kubernetes.io/part-of: presence }
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres, app.kubernetes.io/part-of: presence }
+    spec:
+      securityContext:
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: postgis/postgis:17-3.5-alpine
+          ports: [{ containerPort: 5432 }]
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: POSTGRES_PASSWORD } }
+            - name: POSTGRES_DB
+              value: presence
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "presence"] }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "1", memory: 2Gi }
+            limits: { cpu: "4", memory: 16Gi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: initdb
+          configMap: { name: postgres-initdb }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 500Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: presence
+  labels: { app: postgres }
+spec:
+  clusterIP: None
+  selector: { app: postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]
+---
+# Migrations + taxonomy seed + Keycloak database init, mirroring the compose
+# initdb mounts so a fresh cluster converges to the same schema.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: presence
+  labels: { app: postgres }
+data: {}
+# NOTE: populate from the repo before apply:
+#   kubectl -n presence create configmap postgres-initdb \
+#     --from-file=00_keycloak.sql=deploy/keycloak/init.sql \
+#     --from-file=01_init.sql=db/migrations/0001_init.sql \
+#     --from-file=02_taxonomy.sql=db/seed/taxonomy.sql \
+#     --dry-run=client -o yaml | kubectl apply -f -

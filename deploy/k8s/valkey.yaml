@@ -1,0 +1,39 @@
+# Valkey 8 (TECH-05). Single primary here; INF-06 production topology is
+# 1 primary + 1 replica, 4 GB — scale this StatefulSet and add the replica
+# config when promoting to production.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey
+  namespace: presence
+  labels: { app: valkey, app.kubernetes.io/part-of: presence }
+spec:
+  serviceName: valkey
+  replicas: 1
+  selector:
+    matchLabels: { app: valkey }
+  template:
+    metadata:
+      labels: { app: valkey, app.kubernetes.io/part-of: presence }
+    spec:
+      containers:
+        - name: valkey
+          image: valkey/valkey:8-alpine
+          ports: [{ containerPort: 6379 }]
+          readinessProbe:
+            exec: { command: ["valkey-cli", "ping"] }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 4Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: presence
+  labels: { app: valkey }
+spec:
+  clusterIP: None
+  selector: { app: valkey }
+  ports: [{ port: 6379, targetPort: 6379 }]

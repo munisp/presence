@@ -1,0 +1,33 @@
+# Routes for the dev compose stack (standalone mode — see config.yaml).
+# Keep in sync with the ConfigMap in deploy/k8s/apisix.yaml; only the
+# upstream hostnames differ (compose service names vs cluster DNS).
+routes:
+  - id: edge-api
+    uri: /v1/*
+    upstream:
+      type: roundrobin
+      nodes: { "edge:4000": 1 }
+    plugins:
+      request-id:
+        header_name: X-Request-Id
+        include_in_response: true
+      response-rewrite:
+        headers:
+          set:
+            X-Content-Type-Options: nosniff
+  - id: realtime-ws
+    uri: /connection/*
+    upstream:
+      type: roundrobin
+      nodes: { "centrifugo:8000": 1 }
+    enable_websocket: true
+    plugins:
+      request-id:
+        header_name: X-Request-Id
+        include_in_response: true
+  - id: keycloak-oidc
+    uris: ["/realms/*", "/resources/*"]
+    upstream:
+      type: roundrobin
+      nodes: { "keycloak:8080": 1 }
+#END

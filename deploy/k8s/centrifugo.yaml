@@ -1,0 +1,46 @@
+# Centrifugo v6 realtime (TECH-06). Receives pair-channel events from the
+# edge via the HTTP API; clients connect through APISIX only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: centrifugo
+  namespace: presence
+  labels: { app: centrifugo, app.kubernetes.io/part-of: presence }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: centrifugo }
+  template:
+    metadata:
+      labels: { app: centrifugo, app.kubernetes.io/part-of: presence }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: centrifugo
+          image: centrifugo/centrifugo:v6
+          args: ["centrifugo", "--health"]
+          ports: [{ containerPort: 8000 }]
+          env:
+            - name: CENTRIFUGO_HTTP_API
+              value: "true"
+            - name: CENTRIFUGO_HTTP_API_KEY
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_API_KEY } }
+            - name: CENTRIFUGO_TOKEN_HMAC_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_TOKEN_HMAC_SECRET_KEY } }
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "2", memory: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: centrifugo
+  namespace: presence
+  labels: { app: centrifugo }
+spec:
+  selector: { app: centrifugo }
+  ports: [{ port: 8000, targetPort: 8000 }]

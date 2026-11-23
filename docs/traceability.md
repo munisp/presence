@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 133 | working in the repo with tests or structural evidence |
+| implemented | 137 | working in the repo with tests or structural evidence |
 | partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 9 | ARC-P0 product scope, code not yet built |
+| gap-p0 | 5 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -21,11 +21,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
+| BR | 7 | 4 | 0 | 0 | 0 | 22 | 0 | 0 | 33 |
 | FR | 65 | 18 | 0 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 7 | 5 | 0 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 27 | 5 | 2 | 4 | 6 | 0 | 0 | 0 | 44 |
-| SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
+| SEC | 16 | 11 | 1 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 10 | 7 | 1 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
@@ -36,7 +36,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 |---|---|---|---|
 | BR-01 | organisational | `db/migrations/0014_markets.sql`<br>`services/edge/src/markets.ts`<br>`tests/test_markets.py` | Single-metro launch with >=3 venues in 2 km — launch-ops gate (ACC-07), not code. |
 | BR-02 | organisational | — | Positioning (friendship, not dating) — store copy / onboarding / marketing review; no dating surface exists in code. |
-| BR-03 | gap-p0 | — | Age declaration at onboarding, under-18 block, re-verification on escalation — no onboarding flow or age fields yet. |
+| BR-03 | implemented | `db/migrations/0016_age_assurance.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/moderation.ts`<br>`services/edge/test/recovery.test.ts` | Adults-only enforced end to end: year-only declaration (FR-02) blocks under-18s from every discovery surface with a neutral error; an underage report resolved actioned sets age_reverify_required_at in the same transaction (0016), discovery stays closed, and only an adult re-declaration within ±1 year of the stored year clears the flag — the loop cannot be decade-jumped. Console card exposes the state. |
 | BR-04 | organisational | — | Second-city expansion gate on anchor-venue metrics (§2.5 for 3 consecutive weeks). |
 | BR-05 | partial | `deploy/keycloak/realm-partners.json` | events table models venue+window; event-scoped instance mode and presence-to-event attribution not wired. |
 | BR-06 | organisational | `docs/adr/0007-payments-gated-on-br06.md` | Five sequenced revenue lines only; payments gated per docs/adr/0007. |
@@ -73,7 +73,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
 | FR-01 | partial | `deploy/keycloak/README.md` | Consumer realm ships the passkey policy (platform authenticator, user verification required, passwords disabled); edge verifies RS256 via JWKS; passkey-only onboarding flow + RN client pending. |
-| FR-02 | implemented | `db/migrations/0003_account_deletion.sql`<br>`deploy/keycloak/README.md`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts` | POST /account/age-declaration upserts a birth-year declaration; under-18 sets age_blocked; presence+scan refuse with a neutral 403 (no reason disclosed); boundary fails toward blocking; tested. |
+| FR-02 | implemented | `db/migrations/0003_account_deletion.sql`<br>`db/migrations/0016_age_assurance.sql`<br>`deploy/keycloak/README.md`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | POST /account/age-declaration upserts a birth-year declaration; under-18 sets age_blocked; presence+scan refuse with a neutral 403 (no reason disclosed); boundary fails toward blocking; tested. |
 | FR-03 | partial | `db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | DELETE /v1/account erases in one authenticated call; the <=3-tap journey is client UX, pending with the RN client. |
 | FR-04 | implemented | `db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | delete_account purges envelopes/pairs/blocks/profile/identity synchronously and tombstones the user; the edge strips Valkey presence+suppress+block keys in the same call; ledger actors anonymised after the 90-day hold by lifecycle_tick. |
 | FR-05 | implemented | `db/migrations/0010_devices.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/routes/devices.ts`<br>`services/edge/test/devices.test.ts` | POST/GET/DELETE /v1/devices over the devices registry (migration 0010): device_cap() trigger locks the user row FOR UPDATE and rejects the fourth concurrent device (SEC-33 idiom; re-enrolment of a live fingerprint is a refresh, exempt from the count); one active row per key_fingerprint via partial unique index; enrolment publishes device_enrolled to the account's own channel with label only — never the fingerprint; revocation is idempotent and owner-scoped by RLS. |
@@ -273,10 +273,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-03 | partial | `deploy/keycloak/README.md`<br>`deploy/keycloak/realm-workforce.json` | Workforce realm ships hardware-2FA policy, elevation-eligible role and a 4-hour session ceiling; the automated JIT grant workflow is pending. |
 | SEC-04 | implemented | — | RLS on every personal-data table; app connects as non-bypass roles; tested. |
 | SEC-05 | partial | — | Only the edge role reads envelopes, RLS-gated to pair members; no analytics/admin read path exists. |
-| SEC-06 | gap-p0 | `deploy/k8s/README.md` | TLS 1.3 everywhere at APISIX (P0); dev compose is plaintext. |
-| SEC-07 | external-evidence | `deploy/k8s/README.md` | AES-256-GCM at rest + KMS + annual rotation — production-infra evidence. |
+| SEC-06 | implemented | `deploy/apisix/apisix.yaml`<br>`deploy/apisix/config.yaml`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`docs/api/openapi.yaml` | TLS 1.3 everywhere at APISIX: the K8s listener is 9443 TLS-only with HTTP/2 (TR-26), and dev compose now mirrors it — same listener shape, ssl_protocols TLSv1.3, HSTS/CSP on the edge route, and a gitignored self-signed dev cert from deploy/apisix/dev-tls.sh. Plaintext 9080 is no longer published; openapi and the deploy validator track the TLS surface. |
+| SEC-07 | external-evidence | `deploy/apisix/config.yaml`<br>`deploy/k8s/README.md` | AES-256-GCM at rest + KMS + annual rotation — production-infra evidence. |
 | SEC-08 | implemented | — | No coordinate columns anywhere; server rejects coordinate fields; H3 cells only. |
-| SEC-09 | gap-p0 | `deploy/keycloak/README.md` | Phone recovery stored as keyed hash only — lands with Keycloak SMS recovery config. |
+| SEC-09 | implemented | `db/migrations/0015_recovery.sql`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/edge.yaml`<br>`deploy/keycloak/README.md`<br>`docs/api/openapi.yaml` | Recovery phone stored as keyed hash only: PUT/GET/DELETE /v1/account/recovery-phone normalises to E.164 and stores HMAC-SHA256 (RECOVERY_HASH_KEY — presence-secrets in K8s, clearly-marked dev value in compose) in recovery_phones (0015); the hash is platform-wide unique, RLS is owner-only with no console read, collisions share the neutral 422 with malformed numbers, GET returns existence only. No plaintext phone column exists anywhere (pinned repo-wide); Keycloak README records that no phone attribute is used. |
 | SEC-10 | implemented | `services/edge/src/screening.ts`<br>`services/edge/test/screening.test.ts` | Server persists ciphertext bytea + routing metadata only; client MLS integration pending. |
 | SEC-11 | external-evidence | — | Encrypted backups, separate key, dual-authorisation restore — production ops. |
 | SEC-12 | organisational | — | Per-category privacy-by-design rationale recorded in the DPIA. |
@@ -284,7 +284,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-14 | implemented | `db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | DSAR assemble (GET /account/export) and erasure (DELETE /account) respond in seconds — far inside the 30-day/72-h SLAs; masking preserved in exports. |
 | SEC-15 | organisational | — | Record of processing activities per Appendix B. |
 | SEC-16 | phase-gated | — | Analytics pseudonymisation before leaving production — P1 pipeline. |
-| SEC-17 | gap-p0 | `db/migrations/0003_account_deletion.sql` | Privacy-preserving age assurance without ID-document storage — method selection pending (BR-03/FR-02). |
+| SEC-17 | implemented | `db/migrations/0003_account_deletion.sql`<br>`db/migrations/0016_age_assurance.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/moderation.ts` | Privacy-preserving age assurance with no ID-document storage: self-declaration (FR-02 year-only) plus a moderation-triggered re-verification loop — underage/actioned resolution flags the account in the same txn, discovery closes with the neutral error, and re-verification requires an adult year consistent (±1) with the declaration on file. No passport/NIN/BVN/document storage exists anywhere in schema, edge or realm exports (pinned repo-wide). |
 | SEC-18 | gap-p0 | — | Third-party SDK allowlist enforced in CI — CI not built; client pending. |
 | SEC-19 | partial | `docs/api/openapi.yaml`<br>`services/edge/src/auth.ts` | Assertion header required on presence write; cryptographic verification + documented fallback pending. |
 | SEC-20 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/budget.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | rl:scan:h 200/h (429) and rl:wave:d 20/day (429) Valkey counters; isImpossibleTravel rejects fixes implying >500 km/h with a 422. |
@@ -295,7 +295,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-25 | implemented | — | .github/workflows/ci.yml dependencies job — license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR. |
 | SEC-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts`<br>`services/edge/test/devices.test.ts` | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
-| SEC-28 | partial | `deploy/k8s/README.md`<br>`deploy/keycloak/README.md` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
+| SEC-28 | partial | `deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/keycloak/README.md`<br>`services/edge/src/recovery.ts` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
 | SEC-29 | implemented | `docs/runbook.md`<br>`services/edge/src/app.ts`<br>`services/edge/src/logscrub.ts`<br>`services/edge/test/logscrub.test.ts` | pino hooks.logMethod scrubber: coordinate/content/credential keys redacted, Bearer/apikey/JWT strings scrubbed, cell+user pairings redacted; 10 unit tests. |
 | SEC-30 | partial | — | Append-only consent ledger exists; general security-event audit store + 12-month retention missing. |
 | SEC-31 | organisational | — | Incident response plan, severity levels, on-call, 72-h regulator path, twice-yearly rehearsal. |
@@ -321,7 +321,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | INF-08 | external-evidence | — | Centrifugo 2 nodes x 2 vCPU — production. |
 | INF-09 | superseded | — | ClickHouse superseded by the OpenSearch-only decision (ADR-0006 / TECH-21). |
 | INF-10 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml`<br>`deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | autoscaling/v2 HPAs on edge + match: external p95 metric (120 ms target, 3-min window) with CPU fallback; scaleDown capped at 1 pod per 600 s; asserted by scripts/validate_deploy.py. |
-| INF-11 | partial | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`scripts/validate_deploy.py` | TLS termination, HSTS and CSP configured at APISIX (validated); OCSP stapling is delegated to the cert-manager issuance chain and needs production evidence. |
+| INF-11 | partial | `deploy/apisix/apisix.yaml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`scripts/validate_deploy.py` | TLS termination, HSTS and CSP configured at APISIX (validated); OCSP stapling is delegated to the cert-manager issuance chain and needs production evidence. |
 | INF-12 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml`<br>`deploy/k8s/namespace.yaml` | K8s: only APISIX reaches edge, only edge reaches match, everything else ClusterIP/headless; default-deny-all NetworkPolicy; asserted by scripts/validate_deploy.py. |
 | INF-13 | external-evidence | — | Edge DDoS mitigation + pre-launch test. |
 | INF-14 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/namespace.yaml`<br>`deploy/k8s/networkpolicy.yaml`<br>`scripts/validate_deploy.py` | Default-deny egress + per-workload egress allowlists (DNS only otherwise) in deploy/k8s/networkpolicy.yaml; asserted by scripts/validate_deploy.py. |

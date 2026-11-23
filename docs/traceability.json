@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 133,
+    "implemented": 137,
     "partial": 55,
-    "gap-p0": 9,
+    "gap-p0": 5,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -14,9 +14,9 @@
   },
   "per_family": {
     "BR": {
-      "implemented": 6,
+      "implemented": 7,
       "partial": 4,
-      "gap-p0": 1,
+      "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
       "organisational": 22,
@@ -54,9 +54,9 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 13,
+      "implemented": 16,
       "partial": 11,
-      "gap-p0": 4,
+      "gap-p0": 1,
       "phase-gated": 1,
       "client": 1,
       "organisational": 5,
@@ -113,9 +113,15 @@
     },
     "BR-03": {
       "family": "BR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Age declaration at onboarding, under-18 block, re-verification on escalation \u2014 no onboarding flow or age fields yet."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0016_age_assurance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/account.ts",
+        "services/edge/src/routes/moderation.ts",
+        "services/edge/test/recovery.test.ts"
+      ],
+      "note": "Adults-only enforced end to end: year-only declaration (FR-02) blocks under-18s from every discovery surface with a neutral error; an underage report resolved actioned sets age_reverify_required_at in the same transaction (0016), discovery stays closed, and only an adult re-declaration within \u00b11 year of the stored year clears the flag \u2014 the loop cannot be decade-jumped. Console card exposes the state."
     },
     "BR-04": {
       "family": "BR",
@@ -338,10 +344,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
+        "db/migrations/0016_age_assurance.sql",
         "deploy/keycloak/README.md",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/account.ts",
-        "services/edge/src/routes/presence.ts"
+        "services/edge/src/routes/account.ts"
       ],
       "note": "POST /account/age-declaration upserts a birth-year declaration; under-18 sets age_blocked; presence+scan refuse with a neutral 403 (no reason disclosed); boundary fails toward blocking; tested."
     },
@@ -1997,16 +2003,21 @@
     },
     "SEC-06": {
       "family": "SEC",
-      "status": "gap-p0",
+      "status": "implemented",
       "evidence": [
-        "deploy/k8s/README.md"
+        "deploy/apisix/apisix.yaml",
+        "deploy/apisix/config.yaml",
+        "deploy/docker-compose.yml",
+        "deploy/k8s/README.md",
+        "docs/api/openapi.yaml"
       ],
-      "note": "TLS 1.3 everywhere at APISIX (P0); dev compose is plaintext."
+      "note": "TLS 1.3 everywhere at APISIX: the K8s listener is 9443 TLS-only with HTTP/2 (TR-26), and dev compose now mirrors it \u2014 same listener shape, ssl_protocols TLSv1.3, HSTS/CSP on the edge route, and a gitignored self-signed dev cert from deploy/apisix/dev-tls.sh. Plaintext 9080 is no longer published; openapi and the deploy validator track the TLS surface."
     },
     "SEC-07": {
       "family": "SEC",
       "status": "external-evidence",
       "evidence": [
+        "deploy/apisix/config.yaml",
         "deploy/k8s/README.md"
       ],
       "note": "AES-256-GCM at rest + KMS + annual rotation \u2014 production-infra evidence."
@@ -2019,11 +2030,15 @@
     },
     "SEC-09": {
       "family": "SEC",
-      "status": "gap-p0",
+      "status": "implemented",
       "evidence": [
-        "deploy/keycloak/README.md"
+        "db/migrations/0015_recovery.sql",
+        "deploy/docker-compose.yml",
+        "deploy/k8s/edge.yaml",
+        "deploy/keycloak/README.md",
+        "docs/api/openapi.yaml"
       ],
-      "note": "Phone recovery stored as keyed hash only \u2014 lands with Keycloak SMS recovery config."
+      "note": "Recovery phone stored as keyed hash only: PUT/GET/DELETE /v1/account/recovery-phone normalises to E.164 and stores HMAC-SHA256 (RECOVERY_HASH_KEY \u2014 presence-secrets in K8s, clearly-marked dev value in compose) in recovery_phones (0015); the hash is platform-wide unique, RLS is owner-only with no console read, collisions share the neutral 422 with malformed numbers, GET returns existence only. No plaintext phone column exists anywhere (pinned repo-wide); Keycloak README records that no phone attribute is used."
     },
     "SEC-10": {
       "family": "SEC",
@@ -2076,11 +2091,15 @@
     },
     "SEC-17": {
       "family": "SEC",
-      "status": "gap-p0",
+      "status": "implemented",
       "evidence": [
-        "db/migrations/0003_account_deletion.sql"
+        "db/migrations/0003_account_deletion.sql",
+        "db/migrations/0016_age_assurance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/account.ts",
+        "services/edge/src/routes/moderation.ts"
       ],
-      "note": "Privacy-preserving age assurance without ID-document storage \u2014 method selection pending (BR-03/FR-02)."
+      "note": "Privacy-preserving age assurance with no ID-document storage: self-declaration (FR-02 year-only) plus a moderation-triggered re-verification loop \u2014 underage/actioned resolution flags the account in the same txn, discovery closes with the neutral error, and re-verification requires an adult year consistent (\u00b11) with the declaration on file. No passport/NIN/BVN/document storage exists anywhere in schema, edge or realm exports (pinned repo-wide)."
     },
     "SEC-18": {
       "family": "SEC",
@@ -2172,8 +2191,10 @@
       "family": "SEC",
       "status": "partial",
       "evidence": [
+        "deploy/docker-compose.yml",
         "deploy/k8s/README.md",
-        "deploy/keycloak/README.md"
+        "deploy/keycloak/README.md",
+        "services/edge/src/recovery.ts"
       ],
       "note": "Only clearly-marked dev secrets in compose; managed secret store arrives with K8s."
     },
@@ -2351,6 +2372,7 @@
       "family": "INF",
       "status": "partial",
       "evidence": [
+        "deploy/apisix/apisix.yaml",
         "deploy/k8s/README.md",
         "deploy/k8s/apisix.yaml",
         "scripts/validate_deploy.py"

@@ -94,6 +94,7 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
       const card = await withModerator(ctx.pg, async (c) => {
         const u = await c.query(
           `SELECT user_id, created_at, age_declared_at, age_blocked,
+                  age_reverify_required_at, age_reverified_at,
                   investigation_removed_at, investigation_reason_code, deleted_at
              FROM users WHERE user_id = $1`,
           [userId],
@@ -141,6 +142,10 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
         createdAt: card.u.created_at,
         ageDeclared: card.u.age_declared_at !== null,
         ageBlocked: card.u.age_blocked === true,
+        // SEC-17/BR-03: the console sees the re-verification loop state —
+        // never a birth date or document (none exist).
+        ageReverifyRequired: card.u.age_reverify_required_at !== null,
+        ageReverifiedAt: card.u.age_reverified_at,
         investigationRemoved: card.u.investigation_removed_at !== null,
         investigationReasonCode: card.u.investigation_reason_code,
         deleted: card.u.deleted_at !== null,
@@ -224,6 +229,17 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
                   SET investigation_removed_at = now(), investigation_reason_code = $2
                 WHERE user_id = $1 AND investigation_removed_at IS NULL`,
               [reported, parsed.value.reasonCode],
+            );
+          }
+          // SEC-17/BR-03: an actioned underage report closes discovery until
+          // the account re-verifies a consistent adult birth year — set in
+          // the same transaction as the resolution so there is no window.
+          if (parsed.value.reasonCode === "underage" && parsed.value.outcome === "actioned") {
+            await c.query(
+              `UPDATE users
+                  SET age_reverify_required_at = now()
+                WHERE user_id = $1 AND age_reverify_required_at IS NULL`,
+              [reported],
             );
           }
           await c.query(

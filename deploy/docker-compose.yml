@@ -27,6 +27,8 @@ services:
       - ../db/migrations/0012_taxonomy_cms.sql:/docker-entrypoint-initdb.d/14_taxonomy_cms.sql:ro
       - ../db/migrations/0013_telemetry.sql:/docker-entrypoint-initdb.d/15_telemetry.sql:ro
       - ../db/migrations/0014_markets.sql:/docker-entrypoint-initdb.d/16_markets.sql:ro
+      - ../db/migrations/0015_recovery.sql:/docker-entrypoint-initdb.d/17_recovery.sql:ro
+      - ../db/migrations/0016_age_assurance.sql:/docker-entrypoint-initdb.d/18_age_assurance.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]
@@ -76,15 +78,18 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
-  # APISIX gateway (TECH-21: sole public ingress; TR-26 TLS lands in K8s —
-  # compose runs it plaintext in etcd-less standalone mode). Public API
-  # traffic goes through :9080 (e.g. http://localhost:9080/v1/scan).
+  # APISIX gateway (TECH-21: sole public ingress; SEC-06/TR-26: TLS 1.3
+  # terminates here in dev too, mirroring the K8s listener). Public API
+  # traffic goes through :9443 (e.g. https://localhost:9443/v1/scan).
+  # Run `bash deploy/apisix/dev-tls.sh` once per checkout first — the
+  # self-signed dev cert is gitignored.
   apisix:
     image: apache/apisix:3.11.0-debian
     volumes:
       - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
-    ports: ["9080:9080"]
+      - ./apisix/tls:/usr/local/apisix/conf/tls:ro
+    ports: ["9443:9443"]
     depends_on:
       - edge
       - centrifugo
@@ -111,6 +116,7 @@ services:
       CENTRIFUGO_URL: http://centrifugo:8000
       CENTRIFUGO_API_KEY: p0-dev-api-key
       JWT_SECRET: p0-dev-secret-change-me
+      RECOVERY_HASH_KEY: p0-dev-recovery-key-change-me   # SEC-09 dev-only HMAC key (SEC-28)
       KEYCLOAK_ISSUER: http://keycloak:8080/realms/consumer
     depends_on:
       - match

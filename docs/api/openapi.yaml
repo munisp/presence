@@ -22,8 +22,8 @@ info:
     Idempotency-Replayed: true instead of executing twice; a replay still in
     flight answers 409.
 servers:
-  - url: http://localhost:9080
-    description: local compose, via the APISIX gateway (TECH-21)
+  - url: https://localhost:9443
+    description: local compose, via the APISIX gateway over TLS 1.3 (TECH-21, SEC-06)
 paths:
   /healthz:
     get:
@@ -1692,7 +1692,12 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
-        "200": { description: Account card. }
+        "200":
+          description: >-
+            Account card. Includes the age-assurance state (ageBlocked,
+            ageReverifyRequired, ageReverifiedAt — SEC-17/BR-03); a birth
+            date or identity document is never part of this view because
+            none is stored.
         "403": { description: Moderator role required. }
         "404": { description: Account not found. }
   /v1/moderation/reports/{reportId}/resolve:
@@ -1704,6 +1709,9 @@ paths:
         in the same transaction. The reason code is from the governed
         vocabulary; the action is audit-logged (FR-60). An investigation
         removal is silent — presence is purged without a realtime event.
+        Resolving underage/actioned additionally flags the account for age
+        re-verification in the same transaction (SEC-17/BR-03): discovery is
+        closed until the account re-declares a consistent adult birth year.
       parameters:
         - name: reportId
           in: path
@@ -1943,10 +1951,14 @@ paths:
                         resolutionNote: { type: string, nullable: true }
   /v1/account/age-declaration:
     post:
-      summary: Declare birth year (FR-02)
+      summary: Declare birth year (FR-02, SEC-17, BR-03)
       description: >-
         Year-only precision. The response shape is identical whether or not
         the account is discovery-blocked — the reason is never disclosed.
+        An account flagged for re-verification (an underage report actioned
+        by moderation) can only clear the flag with an adult year consistent
+        with the declaration already on file (±1 year); anything else is a
+        neutral 422. No identity document is collected or stored.
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -1970,7 +1982,66 @@ paths:
                   ok: { type: boolean }
                   discovery: { type: boolean }
         "400": { $ref: "#/components/responses/SchemaViolation" }
-        "422": { description: Invalid year. }
+        "422": { description: Invalid year, or a re-verification declaration that is not an adult year consistent with the one on file. }
+  /v1/account/recovery-phone:
+    put:
+      summary: Register or replace the recovery phone (SEC-09)
+      description: >-
+        The number is normalised to E.164 and stored as a keyed hash
+        (HMAC-SHA256) only — the plaintext digits never touch the database
+        and are never returned. A number already bound to another account
+        is rejected with the same neutral 422 as a malformed number.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              additionalProperties: false
+              properties:
+                phone: { type: string, maxLength: 32, description: E.164 (display punctuation tolerated) }
+      responses:
+        "200":
+          description: Recovery number recorded (as a keyed hash).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, set]
+                properties:
+                  ok: { type: boolean }
+                  set: { type: boolean }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Phone number is not accepted (malformed or unavailable). }
+    get:
+      summary: Recovery phone state (SEC-09)
+      description: Existence only — the number itself and its hash are never returned.
+      responses:
+        "200":
+          description: Whether a recovery number is set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [set]
+                properties:
+                  set: { type: boolean }
+    delete:
+      summary: Remove the recovery phone (SEC-09)
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses:
+        "200":
+          description: Recovery number removed (idempotent).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, set]
+                properties:
+                  ok: { type: boolean }
+                  set: { type: boolean }
   /v1/account/export:
     get:
       summary: DSAR export (FR-62, SEC-14)

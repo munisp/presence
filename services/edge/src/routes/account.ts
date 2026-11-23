@@ -34,20 +34,49 @@ export function isUnderage(birthYear: number, refYear = new Date().getUTCFullYea
   return refYear - birthYear < AGE_LIMIT;
 }
 
+/** BR-03: a re-declaration may move the stored year by at most this much. */
+export const REVERIFY_CONSISTENCY_YEARS = 1;
+
+export type ReverifyDecision = { ok: true } | { ok: false; error: string };
+
 /**
- * Discovery gate (FR-02/FR-04/FR-53): age-blocked, deleted and
- * investigation-removed accounts cannot publish presence or scan. The
- * investigation removal shares the same neutral error — the account is never
- * told why. Accounts without a row (pre-onboarding dev flows) are allowed;
- * the declaration endpoint creates the row.
+ * SEC-17/BR-03: judge a re-verification declaration. A flagged account
+ * clears the flag only with a year that is both adult and consistent with
+ * the declaration already on file (±1 year) — the loop cannot be escaped
+ * by jumping a decade. Failing checks never say which one failed.
+ */
+export function reverifyDecision(
+  storedYear: number,
+  newYear: number,
+  refYear = new Date().getUTCFullYear(),
+): ReverifyDecision {
+  if (isUnderage(newYear, refYear)) return { ok: false, error: "declaration could not be verified" };
+  if (Math.abs(newYear - storedYear) > REVERIFY_CONSISTENCY_YEARS) {
+    return { ok: false, error: "declaration could not be verified" };
+  }
+  return { ok: true };
+}
+
+/**
+ * Discovery gate (FR-02/FR-04/FR-53/BR-03): age-blocked, deleted,
+ * investigation-removed and re-verification-flagged accounts cannot publish
+ * presence or scan. The flag shares the same neutral error — the account is
+ * never told why. Accounts without a row (pre-onboarding dev flows) are
+ * allowed; the declaration endpoint creates the row.
  */
 export async function isDiscoveryAllowed(ctx: EdgeContext, userId: string): Promise<boolean> {
   const r = await ctx.pg.query(
-    "SELECT age_blocked, deleted_at, investigation_removed_at FROM users WHERE user_id = $1",
+    `SELECT age_blocked, deleted_at, investigation_removed_at, age_reverify_required_at
+       FROM users WHERE user_id = $1`,
     [userId],
   );
   if (r.rows.length === 0) return true;
-  return !r.rows[0].age_blocked && !r.rows[0].deleted_at && !r.rows[0].investigation_removed_at;
+  return (
+    !r.rows[0].age_blocked &&
+    !r.rows[0].deleted_at &&
+    !r.rows[0].investigation_removed_at &&
+    !r.rows[0].age_reverify_required_at
+  );
 }
 
 export const DISCOVERY_BLOCKED_ERROR = "discovery is not available on this account";
@@ -79,6 +108,25 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): v
       return reply.code(422).send({ error: "birthYear must be a valid year" });
     }
     const blocked = isUnderage(birthYear, thisYear);
+    // SEC-17/BR-03: an account flagged for re-verification (underage report
+    // actioned by moderation) can only clear the flag with an adult year
+    // consistent with the declaration already on file (±1 year).
+    const cur = await ctx.pg.query(
+      "SELECT birth_year, age_reverify_required_at FROM users WHERE user_id = $1",
+      [req.userId],
+    );
+    if (cur.rows.length > 0 && cur.rows[0].age_reverify_required_at !== null) {
+      const decision = reverifyDecision(cur.rows[0].birth_year as number, birthYear, thisYear);
+      if (!decision.ok) return reply.code(422).send({ error: decision.error });
+      await ctx.pg.query(
+        `UPDATE users
+            SET birth_year = $2, age_declared_at = now(), age_blocked = false,
+                age_reverify_required_at = NULL, age_reverified_at = now()
+          WHERE user_id = $1`,
+        [req.userId, birthYear],
+      );
+      return reply.send({ ok: true, discovery: true });
+    }
     await ctx.pg.query(
       `INSERT INTO users (user_id, birth_year, age_declared_at, age_blocked)
        VALUES ($1, $2, now(), $3)

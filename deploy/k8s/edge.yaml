@@ -35,6 +35,8 @@ spec:
               value: http://centrifugo:8000
             - name: CENTRIFUGO_API_KEY
               valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_API_KEY } }
+            - name: RECOVERY_HASH_KEY   # SEC-09: HMAC key for recovery-phone hashes — rotation is a rolling restart
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: RECOVERY_HASH_KEY } }
             - name: KEYCLOAK_ISSUER
               value: https://auth.presence.example/realms/consumer   # per environment
           readinessProbe: { httpGet: { path: /health, port: 4000 }, periodSeconds: 5 }

@@ -14,6 +14,8 @@ routes:
       response-rewrite:
         headers:
           set:
+            Strict-Transport-Security: "max-age=63072000; includeSubDomains"   # INF-11
+            Content-Security-Policy: "default-src 'none'; frame-ancestors 'none'"   # INF-11 (API surface)
             X-Content-Type-Options: nosniff
   - id: realtime-ws
     uri: /connection/*
@@ -30,4 +32,8 @@ routes:
     upstream:
       type: roundrobin
       nodes: { "keycloak:8080": 1 }
+ssl:
+  - snis: ["localhost"]
+    cert: /usr/local/apisix/conf/tls/dev-cert.pem   # SEC-06 dev-only cert from deploy/apisix/dev-tls.sh
+    key: /usr/local/apisix/conf/tls/dev-key.pem
 #END

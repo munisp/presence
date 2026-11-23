@@ -15,6 +15,7 @@
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
 import { EdgeContext, SUPPRESSION_TTL_S, suppressionKey } from "../context.js";
+import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed } from "./account.js";
 
 const SCAN_RATE_MAX = 6;        // FR-24
 const SCAN_RATE_WINDOW = "1 minute";
@@ -36,6 +37,11 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
     { config: { rateLimit: { max: SCAN_RATE_MAX, timeWindow: SCAN_RATE_WINDOW, keyGenerator: (req) => req.userId } } },
     async (req, reply) => {
       const userId = req.userId;
+
+      // FR-02/FR-04: age-blocked and deleted accounts cannot scan.
+      if (!(await isDiscoveryAllowed(ctx, userId))) {
+        return reply.code(403).send({ error: DISCOVERY_BLOCKED_ERROR });
+      }
 
       const presence = await ctx.valkey.get(`presence:user:${userId}`);
       if (!presence) {

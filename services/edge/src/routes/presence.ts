@@ -16,6 +16,7 @@ import { FastifyInstance } from "fastify";
 import { cellToParent, getResolution, isValidCell } from "h3-js";
 import { containsCoordinates, withRls } from "../auth.js";
 import { EdgeContext } from "../context.js";
+import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed } from "./account.js";
 
 export const PRESENCE_TTL_S = 900; // FR-14
 
@@ -45,6 +46,11 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
 
     const userId = req.userId;
     const venueId = typeof body.venueId === "string" ? body.venueId : null;
+
+    // FR-02/FR-04: age-blocked and deleted accounts cannot publish presence.
+    if (!(await isDiscoveryAllowed(ctx, userId))) {
+      return reply.code(403).send({ error: DISCOVERY_BLOCKED_ERROR });
+    }
 
     // TR-12/14: coarsen the client cell to the venue's active resolution.
     const live = venueId ? await ctx.valkey.scard(`presence:venue:${venueId}`) : 0;

@@ -5,6 +5,7 @@ import Fastify from "fastify";
 import { authenticate, registerAuth } from "./auth.js";
 import { EdgeContext } from "./context.js";
 import { registerConsentRoutes } from "./routes/consent.js";
+import { registerAccountRoutes } from "./routes/account.js";
 import { registerContentRoutes } from "./routes/content.js";
 import { registerLifecycleRoutes } from "./routes/lifecycle.js";
 import { registerMessageRoutes } from "./routes/messages.js";
@@ -29,6 +30,7 @@ export async function buildApp(ctx: EdgeContext) {
     registerScanRoutes(authed, ctx);
     registerConsentRoutes(authed, ctx);
     registerLifecycleRoutes(authed, ctx);
+    registerAccountRoutes(authed, ctx);
     registerContentRoutes(authed, ctx);
     registerMessageRoutes(authed, ctx);
   });

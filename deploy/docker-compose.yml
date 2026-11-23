@@ -13,6 +13,7 @@ services:
       - ../db/migrations/0001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - ../db/seed/taxonomy.sql:/docker-entrypoint-initdb.d/02_taxonomy.sql:ro
       - ../db/migrations/0002_offer_lifecycle.sql:/docker-entrypoint-initdb.d/03_lifecycle.sql:ro
+      - ../db/migrations/0003_account_deletion.sql:/docker-entrypoint-initdb.d/04_account.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

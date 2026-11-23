@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 123,
+    "implemented": 125,
     "partial": 55,
-    "gap-p0": 19,
+    "gap-p0": 17,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -24,9 +24,9 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 61,
+      "implemented": 63,
       "partial": 18,
-      "gap-p0": 4,
+      "gap-p0": 2,
       "phase-gated": 1,
       "client": 15,
       "organisational": 1,
@@ -365,9 +365,15 @@
     },
     "FR-05": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "<=3 concurrent devices + enrolment notification \u2014 device registry arrives with Keycloak device-bound tokens."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0010_devices.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/devices.ts",
+        "services/edge/src/routes/devices.ts",
+        "services/edge/test/devices.test.ts"
+      ],
+      "note": "POST/GET/DELETE /v1/devices over the devices registry (migration 0010): device_cap() trigger locks the user row FOR UPDATE and rejects the fourth concurrent device (SEC-33 idiom; re-enrolment of a live fingerprint is a refresh, exempt from the count); one active row per key_fingerprint via partial unique index; enrolment publishes device_enrolled to the account's own channel with label only \u2014 never the fingerprint; revocation is idempotent and owner-scoped by RLS."
     },
     "FR-06": {
       "family": "FR",
@@ -377,9 +383,15 @@
     },
     "FR-07": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Duplicate-account detection on attestation key \u2014 needs real App Attest / Play Integrity verification."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0010_devices.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/devices.ts",
+        "services/edge/src/routes/devices.ts",
+        "services/edge/src/routes/moderation.ts"
+      ],
+      "note": "register_attestation_key() SECURITY DEFINER enrols/refreshes/detects atomically: a cross-account collision keeps the key with its original account, inserts attestation_duplicates and writes admin_audit_log('moderation.duplicate.detected','impersonation'); the enrolment route returns the same neutral 201 regardless \u2014 the console-only registry (RLS app_moderator) surfaces collisions on the moderation account card as keyHashPrefix + both accounts + detected_at. P0 uses the assertion SHA-256 as the key stand-in until cryptographic App Attest verification lands (FR-51 idiom)."
     },
     "FR-08": {
       "family": "FR",
@@ -2099,8 +2111,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "services/edge/src/devices.ts",
         "services/edge/src/moderation.ts",
-        "services/edge/src/routes/moderation.ts"
+        "services/edge/src/routes/moderation.ts",
+        "services/edge/test/devices.test.ts"
       ],
       "note": ".github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml \u2014 all gated on every PR and push to main."
     },
@@ -2153,10 +2167,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0007_group_surface.sql",
+        "db/migrations/0010_devices.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/groups.ts",
-        "services/edge/src/routes/tables.ts",
-        "services/edge/test/groups.test.ts"
+        "services/edge/src/routes/tables.ts"
       ],
       "note": "group_table_member_cap() trigger locks the table row FOR UPDATE and rejects the seventh member; slot_bookings PK caps one booking per slot; rooms (FR-44) inherit the same pattern when built."
     },

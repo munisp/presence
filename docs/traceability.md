@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 123 | working in the repo with tests or structural evidence |
+| implemented | 125 | working in the repo with tests or structural evidence |
 | partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 19 | ARC-P0 product scope, code not yet built |
+| gap-p0 | 17 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,7 +22,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 61 | 18 | 4 | 1 | 15 | 1 | 0 | 0 | 100 |
+| FR | 63 | 18 | 2 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 6 | 5 | 1 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 23 | 5 | 6 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
@@ -76,9 +76,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-02 | implemented | `db/migrations/0003_account_deletion.sql`<br>`deploy/keycloak/README.md`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts` | POST /account/age-declaration upserts a birth-year declaration; under-18 sets age_blocked; presence+scan refuse with a neutral 403 (no reason disclosed); boundary fails toward blocking; tested. |
 | FR-03 | partial | `db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | DELETE /v1/account erases in one authenticated call; the <=3-tap journey is client UX, pending with the RN client. |
 | FR-04 | implemented | `db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | delete_account purges envelopes/pairs/blocks/profile/identity synchronously and tombstones the user; the edge strips Valkey presence+suppress+block keys in the same call; ledger actors anonymised after the 90-day hold by lifecycle_tick. |
-| FR-05 | gap-p0 | — | <=3 concurrent devices + enrolment notification — device registry arrives with Keycloak device-bound tokens. |
+| FR-05 | implemented | `db/migrations/0010_devices.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/routes/devices.ts`<br>`services/edge/test/devices.test.ts` | POST/GET/DELETE /v1/devices over the devices registry (migration 0010): device_cap() trigger locks the user row FOR UPDATE and rejects the fourth concurrent device (SEC-33 idiom; re-enrolment of a live fingerprint is a refresh, exempt from the count); one active row per key_fingerprint via partial unique index; enrolment publishes device_enrolled to the account's own channel with label only — never the fingerprint; revocation is idempotent and owner-scoped by RLS. |
 | FR-06 | partial | — | user_identities carries handle + photo gated to OPEN by RLS; display-name default and 140-char bio missing. |
-| FR-07 | gap-p0 | — | Duplicate-account detection on attestation key — needs real App Attest / Play Integrity verification. |
+| FR-07 | implemented | `db/migrations/0010_devices.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/routes/devices.ts`<br>`services/edge/src/routes/moderation.ts` | register_attestation_key() SECURITY DEFINER enrols/refreshes/detects atomically: a cross-account collision keeps the key with its original account, inserts attestation_duplicates and writes admin_audit_log('moderation.duplicate.detected','impersonation'); the enrolment route returns the same neutral 201 regardless — the console-only registry (RLS app_moderator) surfaces collisions on the moderation account card as keyHashPrefix + both accounts + detected_at. P0 uses the assertion SHA-256 as the key stand-in until cryptographic App Attest verification lands (FR-51 idiom). |
 | FR-08 | partial | `db/migrations/0006_profile_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/profile.ts`<br>`services/edge/src/routes/profile.ts`<br>`services/edge/test/profile.test.ts` | PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Gap: the searchable <=3-level picker UI is client work (RN milestone). |
 | FR-09 | gap-p0 | — | Free-text entity linking with per-node confirmation — pgvector linking service (TECH-09) not built. |
 | FR-10 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/edge/src/routes/profile.ts`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | Sensitive nodes excluded from vectors, reasons, idf and bonus at build time; covered by engine tests. |
@@ -293,14 +293,14 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-23 | external-evidence | — | OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch. |
 | SEC-24 | partial | — | Dependencies pinned (exact versions + lockfile); SBOM + signed provenance per release not yet produced. |
 | SEC-25 | implemented | — | .github/workflows/ci.yml dependencies job — license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR. |
-| SEC-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts` | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
+| SEC-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts`<br>`services/edge/test/devices.test.ts` | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
 | SEC-28 | partial | `deploy/k8s/README.md`<br>`deploy/keycloak/README.md` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
 | SEC-29 | implemented | `docs/runbook.md`<br>`services/edge/src/app.ts`<br>`services/edge/src/logscrub.ts`<br>`services/edge/test/logscrub.test.ts` | pino hooks.logMethod scrubber: coordinate/content/credential keys redacted, Bearer/apikey/JWT strings scrubbed, cell+user pairings redacted; 10 unit tests. |
 | SEC-30 | partial | — | Append-only consent ledger exists; general security-event audit store + 12-month retention missing. |
 | SEC-31 | organisational | — | Incident response plan, severity levels, on-call, 72-h regulator path, twice-yearly rehearsal. |
 | SEC-32 | organisational | — | Law-enforcement request procedure + annual transparency report. |
-| SEC-33 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts`<br>`services/edge/test/groups.test.ts` | group_table_member_cap() trigger locks the table row FOR UPDATE and rejects the seventh member; slot_bookings PK caps one booking per slot; rooms (FR-44) inherit the same pattern when built. |
+| SEC-33 | implemented | `db/migrations/0007_group_surface.sql`<br>`db/migrations/0010_devices.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts` | group_table_member_cap() trigger locks the table row FOR UPDATE and rejects the seventh member; slot_bookings PK caps one booking per slot; rooms (FR-44) inherit the same pattern when built. |
 | SEC-34 | partial | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/links.ts`<br>`services/edge/src/routes/links.ts`<br>`services/edge/test/links.test.ts` | Code-owned domain allowlist + https-only/credential-free/length-bound validation (links.ts, unit-tested), https CHECK at the data layer, plain-text responses carrying interstitial:true, and a no-fetch guarantee pinned by test_group_surface. Gap: rendering the warning sheet is client work, pending with the RN client. |
 | SEC-35 | client | — | Contentless ambient surfaces — client enforcement. |
 | SEC-36 | partial | — | Mock-location refusal is client-side; the server-side refusal record endpoint is missing. |

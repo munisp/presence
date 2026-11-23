@@ -113,6 +113,15 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
           [userId],
         );
         const ledger = await c.query("SELECT account_ledger_stats($1::uuid) AS stats", [userId]);
+        // FR-07: attestation-key collisions involving this account, either
+        // side — the silent duplicate signal surfaces here and nowhere else.
+        const duplicates = await c.query(
+          `SELECT duplicate_id, key_hash, existing_user, incoming_user, detected_at
+             FROM attestation_duplicates
+            WHERE existing_user = $1 OR incoming_user = $1
+            ORDER BY detected_at DESC`,
+          [userId],
+        );
         const audit = await c.query(
           `SELECT seq, actor, action, reason_code, target_type, target_id, at
              FROM admin_audit
@@ -121,7 +130,7 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
             LIMIT $2`,
           [userId, AUDIT_TRAIL_LIMIT],
         );
-        return { u: u.rows[0], trust: trust.rows[0].trust, suspensions: suspensions.rows, reportStats: reportStats.rows[0], ledger: ledger.rows[0].stats, audit: audit.rows };
+        return { u: u.rows[0], trust: trust.rows[0].trust, suspensions: suspensions.rows, reportStats: reportStats.rows[0], ledger: ledger.rows[0].stats, duplicates: duplicates.rows, audit: audit.rows };
       });
       if (card === null) return reply.code(404).send({ error: "account not found" });
       // Live-presence flag from Valkey (no cell, no venue — just live or not).
@@ -151,6 +160,13 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
           dismissed: Number(card.reportStats.dismissed),
         },
         consentLedger: card.ledger ?? {},
+        attestationDuplicates: card.duplicates.map((d) => ({
+          duplicateId: d.duplicate_id,
+          keyHashPrefix: (d.key_hash as string).slice(0, 8),
+          existingUser: d.existing_user,
+          incomingUser: d.incoming_user,
+          detectedAt: d.detected_at,
+        })),
         auditTrail: card.audit.map((a) => ({
           seq: Number(a.seq),
           actor: a.actor,

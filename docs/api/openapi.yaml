@@ -181,6 +181,54 @@ paths:
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       responses:
         "200": { description: Cleared (or none was set). }
+  /v1/devices:
+    post:
+      summary: Enrol a device (FR-05, FR-07)
+      description: >-
+        Attestation-gated enrolment. At most three devices stay enrolled
+        concurrently; a fourth is refused (FR-05) and the account's other
+        sessions are notified. The attestation key hash is registered for
+        duplicate-account detection — a collision is recorded silently and
+        the response stays neutral either way (FR-07). Re-enrolling an
+        already-enrolled device refreshes it.
+      parameters:
+        - name: x-app-attest-assertion
+          in: header
+          required: true
+          schema: { type: string }
+          description: App Attest / Play Integrity assertion (FR-51/SEC-19).
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                label: { type: string }
+      responses:
+        "201": { description: Device enrolled (or refreshed). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "401": { description: Missing app-attestation assertion. }
+        "409": { description: Device limit reached; revoke a device first (FR-05). }
+        "422": { description: Label fails validation or screening. }
+    get:
+      summary: My enrolled devices (FR-05)
+      responses:
+        "200": { description: Own device list, enrolment order. }
+  /v1/devices/{deviceId}:
+    delete:
+      summary: Revoke one of my devices (FR-05)
+      description: Idempotent; a foreign or already-revoked id is a no-op.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Revoked (or nothing to revoke). }
   /v1/venues/{venueId}/checkin-tokens:
     post:
       summary: Mint a per-floor check-in token (FR-99, FR-100)

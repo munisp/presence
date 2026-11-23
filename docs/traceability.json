@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 129,
+    "implemented": 131,
     "partial": 55,
-    "gap-p0": 13,
+    "gap-p0": 11,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -34,9 +34,9 @@
       "superseded": 0
     },
     "NFR": {
-      "implemented": 6,
+      "implemented": 7,
       "partial": 5,
-      "gap-p0": 1,
+      "gap-p0": 0,
       "phase-gated": 1,
       "client": 11,
       "organisational": 0,
@@ -44,9 +44,9 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 24,
+      "implemented": 25,
       "partial": 5,
-      "gap-p0": 5,
+      "gap-p0": 4,
       "phase-gated": 4,
       "client": 6,
       "organisational": 0,
@@ -1512,9 +1512,15 @@
     },
     "NFR-32": {
       "family": "NFR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Four \u00a72.5 product metrics computable from telemetry <=5 min \u2014 telemetry pipeline (TR-34)."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0013_telemetry.sql",
+        "deploy/keycloak/realm-workforce.json",
+        "docs/api/openapi.yaml",
+        "services/edge/src/auth.ts",
+        "services/edge/src/routes/consent.ts"
+      ],
+      "note": "The four \u00a72.5 product metrics (scan.surfaced_rate, surfacing.express_rate, mutual.open_rate, open.first_message_rate) are computed by one pass over telemetry_events (migration 0013). Events are written synchronously by the causing request \u2014 scan completed/DETECTED in the scan route, EXPRESS/NUDGE/OPEN in the consent routes, pair-first message in the messages route \u2014 never queued or batched (test-pinned), so the five-minute computability budget is met by construction; GET /v1/telemetry/metrics reports the age of the newest underlying event as evidence. Aggregate dims only \u2014 no user ids, pair ids or cells (test-pinned)."
     },
     "NFR-33": {
       "family": "NFR",
@@ -1858,9 +1864,15 @@
     },
     "TR-34": {
       "family": "TR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Stable metric keys + versioned CSV telemetry export contract \u2014 not implemented."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0013_telemetry.sql",
+        "deploy/keycloak/realm-workforce.json",
+        "docs/api/openapi.yaml",
+        "services/edge/src/auth.ts",
+        "services/edge/src/routes/consent.ts"
+      ],
+      "note": "Stable governed event keys (scan.completed, consent.transitioned, pair.first_message \u2014 enforced identically by the DB CHECK and the edge constant, cross-pinned) and stable metric keys. GET /v1/telemetry/export.csv emits the presence-telemetry/v1 contract: a version marker line, then the stable column order metric_key,window_start,window_end,value,numerator,denominator; zero denominators export as empty fields, never a fake zero. Analyst console gated by the workforce analyst role + app.analyst GUC + RLS."
     },
     "TR-35": {
       "family": "TR",

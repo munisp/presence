@@ -22,6 +22,7 @@ import { EdgeContext, publishRealtime, ROTATION_TTL_S, rotationKey } from "../co
 import { CloseReason, maskCloseReason } from "../lifecycle.js";
 import { NUDGE_DAILY_MAX } from "../moderation.js";
 import { getQuietWindow, inQuietWindow, mergePrefs } from "../notifications.js";
+import { recordTelemetry } from "../telemetry.js";
 import { WAVE_DAILY_MAX } from "../velocity.js";
 
 type State = "DETECTED" | "NUDGED" | "EXPRESSED" | "MUTUAL" | "OPEN";
@@ -102,6 +103,8 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
       // seven days — a declined or expired offer is not re-served.
       await ctx.valkey.set(rotationKey(state.lo, state.hi), "1", "EX", ROTATION_TTL_S);
       if (state.to === "MUTUAL") await publish(ctx, pairId, { type: "mutual" });
+      // NFR-32/TR-34: funnel step, target state only.
+      recordTelemetry(ctx, "consent.transitioned", { to: state.to });
       return reply.send({ pairId, state: state.to });
     } catch (err) {
       return consentError(reply, err);
@@ -154,6 +157,7 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
         // channel is the only address, and the payload is just the type.
         await publish(ctx, pairId, { type: "nudged" });
       }
+      recordTelemetry(ctx, "consent.transitioned", { to: "NUDGED" });
       return reply.send({ pairId, state: "NUDGED" });
     } catch (err) {
       return consentError(reply, err);
@@ -189,6 +193,7 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
         );
       });
       await publish(ctx, pairId, { type: "open" });
+      recordTelemetry(ctx, "consent.transitioned", { to: "OPEN" });
       return reply.send({ pairId, state: "OPEN" });
     } catch (err) {
       return consentError(reply, err);

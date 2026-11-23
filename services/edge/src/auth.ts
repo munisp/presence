@@ -99,6 +99,11 @@ export async function requireTaxonomist(req: FastifyRequest, reply: FastifyReply
   await requireWorkforceRole(req, reply, "taxonomist");
 }
 
+/** NFR-32/TR-34: telemetry console gate — workforce realm + analyst role. */
+export async function requireAnalyst(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  await requireWorkforceRole(req, reply, "analyst");
+}
+
 async function requireWorkforceRole(req: FastifyRequest, reply: FastifyReply, role: string): Promise<void> {
   const payload = ((req as AuthedRequest).tokenPayload ?? {}) as {
     iss?: string;
@@ -179,6 +184,14 @@ export async function withTaxonomist<T>(
   fn: (client: Postgres.PoolClient) => Promise<T>,
 ): Promise<T> {
   return withGuc(pool, "app.taxonomist", fn);
+}
+
+/** NFR-32/TR-34: telemetry reads under the app.analyst GUC. */
+export async function withAnalyst<T>(
+  pool: Postgres.Pool,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
+  return withGuc(pool, "app.analyst", fn);
 }
 
 async function withGuc<T>(

@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 129 | working in the repo with tests or structural evidence |
+| implemented | 131 | working in the repo with tests or structural evidence |
 | partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 13 | ARC-P0 product scope, code not yet built |
+| gap-p0 | 11 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -23,8 +23,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
 | FR | 65 | 18 | 0 | 1 | 15 | 1 | 0 | 0 | 100 |
-| NFR | 6 | 5 | 1 | 1 | 11 | 0 | 13 | 0 | 37 |
-| TR | 24 | 5 | 5 | 4 | 6 | 0 | 0 | 0 | 44 |
+| NFR | 7 | 5 | 0 | 1 | 11 | 0 | 13 | 0 | 37 |
+| TR | 25 | 5 | 4 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 10 | 7 | 1 | 1 | 3 | 1 | 0 | 1 | 24 |
@@ -208,7 +208,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | NFR-29 | client | — | Foreground battery <=2%/h on reference mid-tier. |
 | NFR-30 | client | — | Background battery parity with a no-op app when background presence is off. |
 | NFR-31 | partial | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`docs/runbook.md`<br>`scripts/validate_deploy.py` | Fastify request ids per service; APISIX request-id plugin generates and echoes X-Request-Id at the gateway; edge->match propagation of the id still missing. |
-| NFR-32 | gap-p0 | — | Four §2.5 product metrics computable from telemetry <=5 min — telemetry pipeline (TR-34). |
+| NFR-32 | implemented | `db/migrations/0013_telemetry.sql`<br>`deploy/keycloak/realm-workforce.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts` | The four §2.5 product metrics (scan.surfaced_rate, surfacing.express_rate, mutual.open_rate, open.first_message_rate) are computed by one pass over telemetry_events (migration 0013). Events are written synchronously by the causing request — scan completed/DETECTED in the scan route, EXPRESS/NUDGE/OPEN in the consent routes, pair-first message in the messages route — never queued or batched (test-pinned), so the five-minute computability budget is met by construction; GET /v1/telemetry/metrics reports the age of the newest underlying event as evidence. Aggregate dims only — no user ids, pair ids or cells (test-pinned). |
 | NFR-33 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/prometheusrules.yaml` | deploy/k8s/prometheusrules.yaml — one PrometheusRule alert per required class, each with severity and owner. |
 | NFR-34 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/prometheusrules.yaml`<br>`docs/runbook.md` | docs/runbook.md — per-alert symptom/impact/first-actions/escalation, owner named per alert. |
 | NFR-35 | client | — | 60 fps match surface (>=30 fps floor on weakest supported device). |
@@ -252,7 +252,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-31 | client | — | BLE rotating derived codes <=15 min, never a stable identifier. |
 | TR-32 | client | — | Graceful degradation on denied Bluetooth/location/push permissions. |
 | TR-33 | client | — | Certificate pinning removable by configuration (MAY). |
-| TR-34 | gap-p0 | — | Stable metric keys + versioned CSV telemetry export contract — not implemented. |
+| TR-34 | implemented | `db/migrations/0013_telemetry.sql`<br>`deploy/keycloak/realm-workforce.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts` | Stable governed event keys (scan.completed, consent.transitioned, pair.first_message — enforced identically by the DB CHECK and the edge constant, cross-pinned) and stable metric keys. GET /v1/telemetry/export.csv emits the presence-telemetry/v1 contract: a version marker line, then the stable column order metric_key,window_start,window_end,value,numerator,denominator; zero denominators export as empty fields, never a fake zero. Analyst console gated by the workforce analyst role + app.analyst GUC + RLS. |
 | TR-35 | partial | — | Reason payload is render-complete (TR-08); the versioned diagram spec is a client artifact. |
 | TR-36 | implemented | `docs/runbook.md`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/src/store.ts`<br>`services/match/test/prior.test.ts` | Optional global prior (all-profile link-free df, 10-min rebuild) blended with fade w(N)=(30-N)/30 — 0% shift at N>=30, exact-formula tests in TS+Python. |
 | TR-37 | gap-p0 | — | Per-market resolution calibration held in configuration — the ladder is code constants today (SHOULD). |

@@ -18,6 +18,7 @@ import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
 import { EdgeContext } from "../context.js";
 import { screenEnvelope, screeningErrorMessage } from "../screening.js";
+import { recordTelemetry } from "../telemetry.js";
 
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -52,7 +53,7 @@ export function registerMessageRoutes(app: FastifyInstance, ctx: EdgeContext): v
         return reply.code(422).send({ error: "envelope must be base64 MLS ciphertext" });
       }
       try {
-        const id = await withRls(ctx.pg, req.userId, async (c) => {
+        const out = await withRls(ctx.pg, req.userId, async (c) => {
           // FR-38: the sender's first message to this pair is screened.
           const prior = await c.query(
             "SELECT 1 FROM messages WHERE pair_id = $1 AND sender = $2 LIMIT 1",
@@ -67,14 +68,19 @@ export function registerMessageRoutes(app: FastifyInstance, ctx: EdgeContext): v
               throw err;
             }
           }
+          // NFR-32/TR-34: is this the pair's first message from either side?
+          // (Pair-level; concurrent firsts can double-count by a hair —
+          // product telemetry is approximate by design, never financial.)
+          const pairPrior = await c.query("SELECT 1 FROM messages WHERE pair_id = $1 LIMIT 1", [pairId]);
           const r = await c.query(
             `INSERT INTO messages (pair_id, sender, envelope)
              VALUES ($1, $2, decode($3, 'base64')) RETURNING message_id, sent_at`,
             [pairId, req.userId, envelope],
           );
-          return r.rows[0];
+          return { row: r.rows[0], firstInPair: pairPrior.rows.length === 0 };
         });
-        return reply.code(201).send({ messageId: id.message_id, sentAt: id.sent_at });
+        if (out.firstInPair) recordTelemetry(ctx, "pair.first_message");
+        return reply.code(201).send({ messageId: out.row.message_id, sentAt: out.row.sent_at });
       } catch (err) {
         const e = err as { code?: number; message?: string; categories?: string[] };
         if (e.code === 422) {

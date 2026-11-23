@@ -380,6 +380,37 @@ paths:
         "403": { description: Taxonomist role required. }
         "404": { description: Release not found. }
         "409": { description: Not the latest published release, or rollback blocked by live references. }
+  /v1/telemetry/metrics:
+    get:
+      summary: The four §2.5 product metrics (NFR-32)
+      description: >-
+        Workforce analysts only. Computed synchronously from telemetry
+        events written in the causing request — always computable within
+        the five-minute budget; the response reports the age of the newest
+        underlying event as evidence. Aggregate funnel figures only.
+      parameters:
+        - name: windowMinutes
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1440 }
+      responses:
+        "200": { description: Metric values with numerators, denominators and freshness. }
+        "403": { description: Analyst role required. }
+        "422": { description: windowMinutes out of range. }
+  /v1/telemetry/export.csv:
+    get:
+      summary: Versioned CSV telemetry export (TR-34)
+      description: >-
+        The four §2.5 product metrics in the presence-telemetry/v1 CSV
+        contract: a version marker line, then a stable column order —
+        metric_key, window_start, window_end, value, numerator, denominator.
+      parameters:
+        - name: windowMinutes
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1440 }
+      responses:
+        "200": { description: text/csv document in the versioned contract. }
+        "403": { description: Analyst role required. }
+        "422": { description: windowMinutes out of range. }
   /v1/venues/{venueId}/checkin-tokens:
     post:
       summary: Mint a per-floor check-in token (FR-99, FR-100)

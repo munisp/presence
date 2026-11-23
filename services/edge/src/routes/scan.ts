@@ -20,6 +20,7 @@ import { withRls } from "../auth.js";
 import { matchBudget } from "../budget.js";
 import { EdgeContext, SUPPRESSION_TTL_S, suppressionKey } from "../context.js";
 import { FloorDeclaration, floorsCompatible } from "../floors.js";
+import { recordTelemetry } from "../telemetry.js";
 import {
   bumpRecurrence,
   dayOrdinal,
@@ -214,6 +215,8 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
                  VALUES ($1, NULL, NULL, 'DETECTED')`,
                 [pairId],
               );
+              // NFR-32/TR-34: the funnel's first event, aggregate dims only.
+              recordTelemetry(ctx, "consent.transitioned", { to: "DETECTED" });
             } else {
               const existing = await c.query(
                 "SELECT pair_id FROM matches WHERE user_lo = $1 AND user_hi = $2",
@@ -233,6 +236,10 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
           }
         });
       }
+
+      // NFR-32/TR-34: one scan event with the aggregate outcome — band and
+      // surfaced count only, never user or pair identifiers.
+      recordTelemetry(ctx, "scan.completed", { band: budget.band, surfaced: detected.length });
 
       // FR-16/FR-30: the wire result carries the pair id and the candidate's
       // live presence session id — never an account id. Candidates whose

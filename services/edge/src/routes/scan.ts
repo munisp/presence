@@ -1,20 +1,24 @@
 /**
  * Scan route (PRS-SRS-001 §5.3).
  *
- *   POST /v1/scan — rate-limited to six per minute per user (FR-24). The edge
- *   resolves the requester's live presence, collects their FR-23 suppression
- *   list, and delegates ring expansion, scoring, adaptive thresholding and
- *   MMR to the match service. Surfaced pairs are suppressed for ten minutes
- *   (FR-23). Below the minimum cell population the match service returns the
- *   empty state and the edge passes it through untouched (FR-26).
+ *   POST /v1/scan — rate-limited to six per minute per user (FR-24), with a
+ *   200-per-hour ceiling on top (SEC-20). The edge resolves the requester's
+ *   live presence, collects their FR-23 suppression list, and delegates ring
+ *   expansion, scoring, adaptive thresholding and MMR to the match service.
+ *   Surfaced pairs are suppressed for ten minutes (FR-23). Below the minimum
+ *   cell population the match service returns the empty state and the edge
+ *   passes it through untouched (FR-26).
  *
  * The response carries bands and reasons, never coordinates or metres
- * (FR-25), and never identity before OPEN (FR-30).
+ * (FR-25), and never identity before OPEN (FR-30): each result is keyed by
+ * the pair id and the candidate's FR-16 presence session id — account ids
+ * never leave the edge pre-OPEN.
  */
 
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
 import { EdgeContext, SUPPRESSION_TTL_S, suppressionKey } from "../context.js";
+import { SCAN_HOURLY_MAX } from "../velocity.js";
 import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed } from "./account.js";
 
 const SCAN_RATE_MAX = 6;        // FR-24
@@ -43,11 +47,24 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         return reply.code(403).send({ error: DISCOVERY_BLOCKED_ERROR });
       }
 
+      // SEC-20: hourly scan ceiling, on top of the per-minute burst limit.
+      const hourly = await ctx.valkey.incr(`rl:scan:h:${userId}`);
+      if (hourly === 1) await ctx.valkey.expire(`rl:scan:h:${userId}`, 3600);
+      if (hourly > SCAN_HOURLY_MAX) {
+        return reply.code(429).send({ error: "hourly scan limit reached (SEC-20)" });
+      }
+
       const presence = await ctx.valkey.get(`presence:user:${userId}`);
       if (!presence) {
         return reply.code(409).send({ error: "no live presence; enter a venue first" });
       }
       const { cell, venueId } = JSON.parse(presence) as { cell: string; venueId?: string | null };
+
+      // BR-12: venue scan counter behind the dashboard's scansLastHour.
+      if (venueId) {
+        const n = await ctx.valkey.incr(`stats:venue:${venueId}:scans:h`);
+        if (n === 1) await ctx.valkey.expire(`stats:venue:${venueId}:scans:h`, 3600);
+      }
 
       // FR-23: who is suppressed for this requester right now?
       const suppressed: string[] = [];
@@ -115,18 +132,10 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       }
       const body = (await res.json()) as MatchScanResponse;
 
-      // FR-23: suppress every surfaced pair for ten minutes.
-      if (body.results.length > 0) {
-        const pipe = ctx.valkey.pipeline();
-        for (const r of body.results) {
-          pipe.set(suppressionKey(userId, r.userId), "1", "EX", SUPPRESSION_TTL_S);
-        }
-        await pipe.exec();
-      }
-
       // FR-29: the first surfacing of a pair records DETECTED in the
       // append-only ledger (idempotent — later scans find the pair exists).
       // FR-33: first surfacing also starts the 30-minute offer window.
+      const detected: Array<{ pairId: string; candidateId: string; score: number; band: string; reasons: unknown[]; icebreaker: string }> = [];
       if (body.results.length > 0) {
         await withRls(ctx.pg, userId, async (c) => {
           for (const r of body.results) {
@@ -137,20 +146,63 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
                ON CONFLICT (user_lo, user_hi) DO NOTHING RETURNING pair_id`,
               [lo, hi],
             );
+            let pairId: string;
             if (inserted.rows.length) {
+              pairId = inserted.rows[0].pair_id;
               await c.query(
                 `INSERT INTO consent_ledger (pair_id, actor, from_state, to_state)
                  VALUES ($1, NULL, NULL, 'DETECTED')`,
-                [inserted.rows[0].pair_id],
+                [pairId],
               );
+            } else {
+              const existing = await c.query(
+                "SELECT pair_id FROM matches WHERE user_lo = $1 AND user_hi = $2",
+                [lo, hi],
+              );
+              if (!existing.rows.length) continue;
+              pairId = existing.rows[0].pair_id;
             }
+            detected.push({
+              pairId,
+              candidateId: r.userId,
+              score: r.score,
+              band: r.band,
+              reasons: r.reasons,
+              icebreaker: r.icebreaker,
+            });
           }
         });
       }
 
-      // FR-30: no identity fields leave the edge before OPEN — the payload is
-      // score, band, reasons only.
-      return reply.send(body);
+      // FR-16/FR-30: the wire result carries the pair id and the candidate's
+      // live presence session id — never an account id. Candidates whose
+      // presence lapsed between the match call and this response are dropped.
+      const results: Array<Record<string, unknown>> = [];
+      for (const r of detected) {
+        const p = await ctx.valkey.get(`presence:user:${r.candidateId}`);
+        if (!p) continue;
+        const { sessionId } = JSON.parse(p) as { sessionId?: string };
+        if (!sessionId) continue;
+        results.push({
+          pairId: r.pairId,
+          sessionId,
+          score: r.score,
+          band: r.band,
+          reasons: r.reasons,
+          icebreaker: r.icebreaker,
+        });
+      }
+
+      // FR-23: suppress every surfaced pair for ten minutes.
+      if (detected.length > 0) {
+        const pipe = ctx.valkey.pipeline();
+        for (const r of detected) {
+          pipe.set(suppressionKey(userId, r.candidateId), "1", "EX", SUPPRESSION_TTL_S);
+        }
+        await pipe.exec();
+      }
+
+      return reply.send({ state: body.state, results });
     },
   );
 }

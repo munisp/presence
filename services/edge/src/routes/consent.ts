@@ -15,8 +15,9 @@
 
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
-import { EdgeContext } from "../context.js";
+import { EdgeContext, publishRealtime } from "../context.js";
 import { CloseReason, maskCloseReason } from "../lifecycle.js";
+import { WAVE_DAILY_MAX } from "../velocity.js";
 
 type State = "DETECTED" | "NUDGED" | "EXPRESSED" | "MUTUAL" | "OPEN";
 
@@ -53,6 +54,14 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
 
   app.post("/v1/consent/:pairId/express", async (req, reply) => {
     const { pairId } = req.params as { pairId: string };
+
+    // SEC-20: daily wave ceiling — a wave is a consent express.
+    const daily = await ctx.valkey.incr(`rl:wave:d:${req.userId}`);
+    if (daily === 1) await ctx.valkey.expire(`rl:wave:d:${req.userId}`, 86400);
+    if (daily > WAVE_DAILY_MAX) {
+      return reply.code(429).send({ error: "daily wave limit reached (SEC-20)" });
+    }
+
     try {
       const state = await withRls(ctx.pg, req.userId, async (c) => {
         const cur = await c.query(
@@ -129,11 +138,9 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
 
 /** Realtime fan-out through Centrifugo's server API (PRS-ARC-002 P0). */
 async function publish(ctx: EdgeContext, pairId: string, event: object): Promise<void> {
-  await fetch(`${ctx.centrifugoUrl}/api/publish`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `apikey ${ctx.centrifugoApiKey}` },
-    body: JSON.stringify({ channel: `pair:${pairId}`, data: event }),
-  }).catch((err) => console.error("centrifugo publish failed", err));
+  await publishRealtime(ctx, `pair:${pairId}`, event as Record<string, unknown>).catch((err) =>
+    console.error("centrifugo publish failed", err),
+  );
 }
 
 async function consentError(reply: any, err: unknown) {

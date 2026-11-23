@@ -11,13 +11,17 @@
  *                                        presence, envelopes, profile and
  *                                        blocks go immediately, pairs close
  *                                        with neutral reasons
+ *   PUT    /v1/account/visibility      — FR-18: flip the invisible switch; on
+ *                                        hides the account from every discovery
+ *                                        surface and purges live presence at once
+ *   GET    /v1/account/visibility      — FR-18: current switch state
  *
  * The block is deliberately neutral: the response never says "under 18" —
  * discovery is simply "not available on this account".
  */
 
 import { FastifyInstance } from "fastify";
-import { EdgeContext } from "../context.js";
+import { EdgeContext, purgePresence } from "../context.js";
 
 export const AGE_LIMIT = 18; // FR-02
 
@@ -41,6 +45,12 @@ export async function isDiscoveryAllowed(ctx: EdgeContext, userId: string): Prom
 }
 
 export const DISCOVERY_BLOCKED_ERROR = "discovery is not available on this account";
+
+/** FR-18: is the account currently invisible? */
+export async function isInvisible(ctx: EdgeContext, userId: string): Promise<boolean> {
+  const r = await ctx.pg.query("SELECT invisible FROM users WHERE user_id = $1", [userId]);
+  return r.rows.length > 0 && r.rows[0].invisible === true;
+}
 
 export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): void {
   app.post(
@@ -84,20 +94,49 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): v
     return reply.send(r.rows[0].doc);
   });
 
+  app.put(
+    "/v1/account/visibility",
+    {
+      // TR-23: strict body — unknown fields fail validation with a 400.
+      schema: {
+        body: {
+          type: "object",
+          required: ["invisible"],
+          additionalProperties: false,
+          properties: { invisible: { type: "boolean" } },
+        },
+      },
+    },
+    async (req, reply) => {
+    const { invisible } = req.body as { invisible: boolean };
+    await ctx.pg.query(
+      `INSERT INTO users (user_id, invisible, invisible_at)
+       VALUES ($1, $2, CASE WHEN $2 THEN now() ELSE NULL END)
+       ON CONFLICT (user_id) DO UPDATE
+          SET invisible = $2, invisible_at = CASE WHEN $2 THEN now() ELSE NULL END`,
+      [req.userId, invisible],
+    );
+    if (invisible) {
+      // FR-18: the switch takes effect immediately — live presence, cell and
+      // venue membership, and the session reverse index are purged now.
+      await purgePresence(ctx, req.userId);
+    }
+    return reply.send({ ok: true, invisible });
+    },
+  );
+
+  app.get("/v1/account/visibility", async (req, reply) => {
+    const r = await ctx.pg.query("SELECT invisible FROM users WHERE user_id = $1", [req.userId]);
+    return reply.send({ invisible: r.rows.length > 0 && r.rows[0].invisible === true });
+  });
+
   app.delete("/v1/account", async (req, reply) => {
     const userId = req.userId;
 
-    // FR-04, index removal: presence, cell/venue membership, and every
-    // suppression/block key naming this user — synchronously, well inside 60 s.
-    const previous = await ctx.valkey.get(`presence:user:${userId}`);
-    if (previous) {
-      const prev = JSON.parse(previous) as { cell: string; venueId?: string | null };
-      const pipe = ctx.valkey.pipeline();
-      pipe.srem(`presence:cell:${prev.cell}`, userId);
-      if (prev.venueId) pipe.srem(`presence:venue:${prev.venueId}`, userId);
-      pipe.del(`presence:user:${userId}`);
-      await pipe.exec();
-    }
+    // FR-04, index removal: presence, cell/venue membership, the FR-16
+    // session reverse index, and every suppression/block key naming this
+    // user — synchronously, well inside 60 s.
+    await purgePresence(ctx, userId);
     for (const pattern of [
       `suppress:${userId}:*`,
       `suppress:*:${userId}`,

@@ -10,13 +10,32 @@
  *
  * Resolution ladder (TR-12/14): res 9 by default, res 10 once a venue passes
  * 2 000 live presences, res 11 past 10 000.
+ *
+ * FR-16: each live presence window carries an opaque session id. A publish
+ * without a live session starts one; heartbeats keep it; presenting a
+ * session id that is not the live one is rejected with a 409. Account ids
+ * never leave the edge in scan results pre-OPEN — the session id (with the
+ * pair id) is the only handle a candidate gets.
+ *
+ * SEC-20: consecutive fixes are checked for impossible travel — when the
+ * implied speed between the previous and the new cell exceeds a plausible
+ * vehicle the publish is refused with a 422.
+ *
+ * FR-18: accounts with the invisible switch on cannot publish presence at
+ * all (403); flipping the switch purges any live presence immediately.
  */
 
 import { FastifyInstance } from "fastify";
-import { cellToParent, getResolution, isValidCell } from "h3-js";
-import { containsCoordinates, withRls } from "../auth.js";
-import { EdgeContext } from "../context.js";
-import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed } from "./account.js";
+import { cellToParent, getResolution, gridDistance, isValidCell } from "h3-js";
+import { containsCoordinates } from "../auth.js";
+import {
+  EdgeContext,
+  newPresenceSessionId,
+  purgePresence,
+  sessionKey,
+} from "../context.js";
+import { isImpossibleTravel } from "../velocity.js";
+import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed, isInvisible } from "./account.js";
 
 export const PRESENCE_TTL_S = 900; // FR-14
 
@@ -25,6 +44,13 @@ export function resolutionFor(livePresences: number): number {
   if (livePresences > 10_000) return 11;
   if (livePresences > 2_000) return 10;
   return 9;
+}
+
+interface PresenceEntry {
+  cell: string;
+  venueId: string | null;
+  sessionId: string;
+  publishedAt: number;
 }
 
 export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): void {
@@ -41,6 +67,7 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
           properties: {
             cell: { type: "string" },
             venueId: { type: "string" },
+            sessionId: { type: "string", pattern: "^[0-9a-f]{32}$" },
           },
         },
       },
@@ -64,10 +91,15 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
 
     const userId = req.userId;
     const venueId = typeof body.venueId === "string" ? body.venueId : null;
+    const presentedSessionId = typeof body.sessionId === "string" ? body.sessionId : null;
 
     // FR-02/FR-04: age-blocked and deleted accounts cannot publish presence.
     if (!(await isDiscoveryAllowed(ctx, userId))) {
       return reply.code(403).send({ error: DISCOVERY_BLOCKED_ERROR });
+    }
+    // FR-18: invisible accounts cannot publish presence.
+    if (await isInvisible(ctx, userId)) {
+      return reply.code(403).send({ error: "account is invisible (FR-18)" });
     }
 
     // TR-12/14: coarsen the client cell to the venue's active resolution.
@@ -76,35 +108,75 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     const storedCell = getResolution(cell) === targetRes ? cell : cellToParent(cell, targetRes);
 
     const previous = await ctx.valkey.get(`presence:user:${userId}`);
+    let sessionId: string;
     if (previous) {
-      const prev = JSON.parse(previous) as { cell: string };
+      const prev = JSON.parse(previous) as Partial<PresenceEntry> & { cell: string };
+      if (presentedSessionId && presentedSessionId !== prev.sessionId) {
+        // FR-16: a session id that is not the live one is rejected — the
+        // client must start a fresh session.
+        return reply.code(409).send({
+          error: "presence session id rejected; start a new session (FR-16)",
+        });
+      }
+      // FR-16: heartbeats keep the live session id. Legacy entries without
+      // one are upgraded in place.
+      sessionId = prev.sessionId ?? newPresenceSessionId();
+
       if (prev.cell !== storedCell) {
+        // SEC-20: impossible-travel check between consecutive fixes. Both
+        // cells are coarsened to the coarser of their resolutions so the
+        // grid distance is comparable.
+        if (typeof prev.publishedAt === "number") {
+          const res = Math.min(getResolution(prev.cell), getResolution(storedCell));
+          const a = getResolution(prev.cell) === res ? prev.cell : cellToParent(prev.cell, res);
+          const b = getResolution(storedCell) === res ? storedCell : cellToParent(storedCell, res);
+          let steps: number;
+          try {
+            steps = gridDistance(a, b);
+          } catch {
+            // Pentagon distortion makes the distance undefined — treat the
+            // jump as impossible rather than wave it through.
+            return reply.code(422).send({ error: "presence moved implausibly fast (SEC-20)" });
+          }
+          if (isImpossibleTravel(steps, res, Date.now() - prev.publishedAt)) {
+            return reply.code(422).send({ error: "presence moved implausibly fast (SEC-20)" });
+          }
+        }
         await ctx.valkey.srem(`presence:cell:${prev.cell}`, userId);
       }
+      if (prev.venueId && prev.venueId !== venueId) {
+        await ctx.valkey.srem(`presence:venue:${prev.venueId}`, userId);
+      }
+    } else {
+      if (presentedSessionId) {
+        // FR-16: the client claims a session that is not live.
+        return reply.code(409).send({
+          error: "presence session id rejected; start a new session (FR-16)",
+        });
+      }
+      sessionId = newPresenceSessionId();
     }
 
-    const entry = JSON.stringify({ cell: storedCell, venueId });
+    const entry: PresenceEntry = {
+      cell: storedCell,
+      venueId,
+      sessionId,
+      publishedAt: Date.now(),
+    };
     const pipe = ctx.valkey.pipeline();
-    pipe.set(`presence:user:${userId}`, entry, "EX", PRESENCE_TTL_S);
+    pipe.set(`presence:user:${userId}`, JSON.stringify(entry), "EX", PRESENCE_TTL_S);
     pipe.sadd(`presence:cell:${storedCell}`, userId);
     if (venueId) pipe.sadd(`presence:venue:${venueId}`, userId);
+    // FR-16 reverse index: session id -> account id, same TTL as presence.
+    pipe.set(sessionKey(sessionId), userId, "EX", PRESENCE_TTL_S);
     await pipe.exec();
 
-    return reply.send({ ok: true, cell: storedCell, ttl: PRESENCE_TTL_S });
+    return reply.send({ ok: true, cell: storedCell, ttl: PRESENCE_TTL_S, sessionId });
     },
   );
 
   app.delete("/v1/presence", async (req, reply) => {
-    const userId = req.userId;
-    const previous = await ctx.valkey.get(`presence:user:${userId}`);
-    if (previous) {
-      const prev = JSON.parse(previous) as { cell: string; venueId?: string | null };
-      const pipe = ctx.valkey.pipeline();
-      pipe.srem(`presence:cell:${prev.cell}`, userId);
-      if (prev.venueId) pipe.srem(`presence:venue:${prev.venueId}`, userId);
-      pipe.del(`presence:user:${userId}`);
-      await pipe.exec();
-    }
+    await purgePresence(ctx, req.userId);
     return reply.send({ ok: true });
   });
 }

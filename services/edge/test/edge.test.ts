@@ -1,9 +1,10 @@
-/** Edge helper tests: TR-15 rejection, TR-12/14 ladder, FR-23 key shape. */
+/** Edge helper tests: TR-15 rejection, TR-12/14 ladder, FR-23 key shape,
+ *  FR-16 session ids. */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { containsCoordinates } from "../src/auth.js";
-import { suppressionKey } from "../src/context.js";
+import { newPresenceSessionId, sessionKey, suppressionKey } from "../src/context.js";
 import { resolutionFor } from "../src/routes/presence.js";
 
 test("TR-15: any coordinate-shaped field is rejected", () => {
@@ -26,4 +27,17 @@ test("TR-12/14: resolution ladder follows venue density", () => {
 test("FR-23: suppression keys are canonically ordered", () => {
   assert.equal(suppressionKey("b", "a"), suppressionKey("a", "b"));
   assert.equal(suppressionKey("a", "b"), "suppress:a:b");
+});
+
+test("FR-16: session ids are 128-bit hex and unique", () => {
+  const a = newPresenceSessionId();
+  const b = newPresenceSessionId();
+  assert.match(a, /^[0-9a-f]{32}$/);
+  assert.match(b, /^[0-9a-f]{32}$/);
+  assert.notEqual(a, b);
+});
+
+test("FR-16: the reverse index key names the session", () => {
+  const sid = "0123456789abcdef0123456789abcdef";
+  assert.equal(sessionKey(sid), `presence:session:${sid}`);
 });

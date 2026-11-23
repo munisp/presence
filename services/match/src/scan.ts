@@ -11,6 +11,8 @@
  *   FR-25  proximity is reported as bands, never metres
  */
 
+import { createHash } from "node:crypto";
+
 import { Corpus, Matcher, MatchResult, Profile, SUGGEST_THRESHOLD } from "./engine.js";
 
 export const MIN_CELL_POPULATION = 8; // FR-26: below this a scan returns the empty state
@@ -79,6 +81,20 @@ function reasonOverlap(a: MatchResult, b: MatchResult): number {
 }
 
 /**
+ * FR-91/SEC-22 tie-break. Equal scores must not resolve to a stable ordering
+ * (a deterministic order is grindable). With a per-scan seed the ordering
+ * among ties is sha256(`${seed}:${userId}`) — deterministic inside one scan,
+ * rotating across scans. Without a seed the legacy userId order applies
+ * (tooling and tests stay reproducible).
+ */
+function tieCompare(a: string, b: string, seed?: number): number {
+  if (seed === undefined) return a < b ? -1 : a > b ? 1 : 0;
+  const ha = createHash("sha256").update(`${seed}:${a}`).digest("hex");
+  const hb = createHash("sha256").update(`${seed}:${b}`).digest("hex");
+  return ha < hb ? -1 : ha > hb ? 1 : 0;
+}
+
+/**
  * Rank a scan's candidate pool down to the final list (FR-20/21/22).
  * Candidates already filtered for consent state, suppression (FR-23) and
  * profile completeness (FR-11) arrive ready to score.
@@ -89,6 +105,7 @@ export function rankScan(
   matcher: Matcher,
   corpus: Corpus,
   venue: VenueConfig = {},
+  tieBreakSeed?: number,
 ): RankedCandidate[] {
   const scored = candidates.map((c) => ({
     candidate: c,
@@ -100,7 +117,8 @@ export function rankScan(
   );
   const eligible = scored
     .filter((s) => s.match.score >= threshold)
-    .sort((x, y) => y.match.score - x.match.score || (x.candidate.userId < y.candidate.userId ? -1 : 1));
+    .sort((x, y) =>
+      y.match.score - x.match.score || tieCompare(x.candidate.userId, y.candidate.userId, tieBreakSeed));
 
   const maxResults = Math.min(Math.max(venue.maxResults ?? MAX_SCAN_RESULTS, 1), MAX_SCAN_RESULTS);
 

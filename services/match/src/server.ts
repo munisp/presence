@@ -23,6 +23,7 @@ interface ScanBody {
   venue?: { baseThreshold?: number; maxResults?: number };
   ringK?: number;      // TR-12: k=1 default
   exclude?: string[];  // FR-23: suppressed pairs, computed by the edge
+  tieBreakSeed?: number; // FR-91/SEC-22: rotating tie-break, per-scan
 }
 
 export function buildServer(store: Store) {
@@ -71,7 +72,14 @@ export function buildServer(store: Store) {
     }
 
     const matcher = new Matcher(store.getGraph());
-    const results = rankScan(requesterProfile, candidates, matcher, store.getCorpus(), body.venue ?? {});
+    const results = rankScan(
+      requesterProfile,
+      candidates,
+      matcher,
+      store.getCorpus(),
+      body.venue ?? {},
+      body.tieBreakSeed,
+    );
     return reply.send({ state: "ok", results });
   });
 

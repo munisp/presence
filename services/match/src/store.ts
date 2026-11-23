@@ -17,6 +17,7 @@ import { Redis as Valkey } from "ioredis";
 import { Corpus, InterestGraph, Matcher, Profile } from "./engine.js";
 
 export const CORPUS_REFRESH_MS = 60_000; // TR-05: at least every 60 seconds
+export const PRIOR_REFRESH_MS = 600_000; // TR-36: global prior every 10 minutes
 export const PRESENCE_TTL_S = 900;       // FR-14
 
 export interface PresenceEntry {
@@ -30,6 +31,8 @@ export class Store {
   private corpus: Corpus | null = null;
   private profileCache = new Map<string, { profile: Profile; at: number }>();
   private corpusTimer: NodeJS.Timeout | null = null;
+  private priorTimer: NodeJS.Timeout | null = null;
+  private prior: { df: Map<string, number>; size: number } | null = null;
 
   constructor(
     private readonly pg: Postgres.Pool,
@@ -108,7 +111,45 @@ export class Store {
       }
     }
     this.corpus = Corpus.fromVectors(vectors);
+    // TR-36: re-attach the global prior — a rebuilt corpus starts prior-free.
+    if (this.prior) this.corpus.setPrior(this.prior.df, this.prior.size);
     return this.corpus;
+  }
+
+  /**
+   * TR-36: the global prior is the document frequency over ALL profiles
+   * (link-free closures), independent of who is present right now. It
+   * stabilises idf while the live corpus is small and fades out completely
+   * by N = PRIOR_FADE_N live profiles (see engine.ts).
+   */
+  async rebuildPrior(): Promise<void> {
+    const matcher = new Matcher(this.getGraph());
+    const rows = await this.pg.query(
+      "SELECT user_id, node_id, weight FROM profile_interests",
+    );
+    const byUser = new Map<string, Profile>();
+    for (const r of rows.rows) {
+      let p = byUser.get(r.user_id as string);
+      if (!p) {
+        p = {};
+        byUser.set(r.user_id as string, p);
+      }
+      p[r.node_id as string] = r.weight as number;
+    }
+    const df = new Map<string, number>();
+    let size = 0;
+    for (const profile of byUser.values()) {
+      if (Object.keys(profile).length < 2) continue; // FR-11
+      for (const nid of matcher.vector(profile, false).keys()) { // link-free (TR-05)
+        df.set(nid, (df.get(nid) ?? 0) + 1);
+      }
+      size += 1;
+    }
+    this.prior = size > 0 ? { df, size } : null;
+    if (this.corpus) {
+      if (this.prior) this.corpus.setPrior(this.prior.df, this.prior.size);
+      else this.corpus.clearPrior();
+    }
   }
 
   getCorpus(): Corpus {
@@ -124,10 +165,17 @@ export class Store {
       this.rebuildCorpus().catch((err) => console.error("corpus refresh failed", err));
     }, CORPUS_REFRESH_MS);
     this.corpusTimer.unref();
+    // TR-36: the global prior refreshes on a slower loop.
+    await this.rebuildPrior();
+    this.priorTimer = setInterval(() => {
+      this.rebuildPrior().catch((err) => console.error("prior refresh failed", err));
+    }, PRIOR_REFRESH_MS);
+    this.priorTimer.unref();
   }
 
   async stop(): Promise<void> {
     if (this.corpusTimer) clearInterval(this.corpusTimer);
+    if (this.priorTimer) clearInterval(this.priorTimer);
     await this.pg.end();
     this.valkey.disconnect();
   }

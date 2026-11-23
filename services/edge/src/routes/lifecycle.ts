@@ -73,7 +73,20 @@ export function registerLifecycleRoutes(app: FastifyInstance, ctx: EdgeContext):
     return reply.send({ pairId, kept: row.keep_lo && row.keep_hi, closesAt: row.closes_at });
   });
 
-  app.post("/v1/blocks", async (req, reply) => {
+  app.post(
+    "/v1/blocks",
+    {
+      // TR-23: strict body — unknown fields fail validation with a 400.
+      schema: {
+        body: {
+          type: "object",
+          required: ["userId"],
+          additionalProperties: false,
+          properties: { userId: { type: "string", format: "uuid" } },
+        },
+      },
+    },
+    async (req, reply) => {
     const { userId: target } = req.body as { userId?: string };
     if (!target || typeof target !== "string" || target === req.userId) {
       return reply.code(422).send({ error: "userId of the user to block is required" });
@@ -97,7 +110,8 @@ export function registerLifecycleRoutes(app: FastifyInstance, ctx: EdgeContext):
     await ctx.valkey.set(blockKey(req.userId, target), "1");
     // No realtime event: the removal is silent.
     return reply.code(201).send({ blocked: true });
-  });
+    },
+  );
 
   app.get("/v1/blocks", async (req, reply) => {
     const rows = await withRls(ctx.pg, req.userId, async (c) =>

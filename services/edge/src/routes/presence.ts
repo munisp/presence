@@ -28,10 +28,28 @@ export function resolutionFor(livePresences: number): number {
 }
 
 export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): void {
-  app.post("/v1/presence", async (req, reply) => {
+  app.post(
+    "/v1/presence",
+    {
+      // TR-23: strict schema — unknown fields (incl. coordinate-shaped keys)
+      // fail validation with a 400 before the handler runs.
+      schema: {
+        body: {
+          type: "object",
+          required: ["cell"],
+          additionalProperties: false,
+          properties: {
+            cell: { type: "string" },
+            venueId: { type: "string" },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
     const body = req.body as Record<string, unknown>;
     if (containsCoordinates(body)) {
-      // TR-15: raw coordinates are rejected, always.
+      // TR-15: raw coordinates are rejected, always. Defense in depth — the
+      // body schema above already rejects these keys (TR-23).
       return reply.code(422).send({ error: "coordinate fields are not accepted; send an H3 cell" });
     }
     const cell = body.cell;
@@ -73,7 +91,8 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     await pipe.exec();
 
     return reply.send({ ok: true, cell: storedCell, ttl: PRESENCE_TTL_S });
-  });
+    },
+  );
 
   app.delete("/v1/presence", async (req, reply) => {
     const userId = req.userId;

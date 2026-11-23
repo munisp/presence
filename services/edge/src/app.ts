@@ -13,7 +13,12 @@ import { registerPresenceRoutes } from "./routes/presence.js";
 import { registerScanRoutes } from "./routes/scan.js";
 
 export async function buildApp(ctx: EdgeContext) {
-  const app = Fastify({ logger: true });
+  // TR-23: ajv strict mode, no silent coercion-stripping — unknown fields in
+  // any schema'd body/query/params fail validation with a 400.
+  const app = Fastify({
+    logger: true,
+    ajv: { customOptions: { strict: true, removeAdditional: false, allErrors: true } },
+  });
 
   // TECH-07: Keycloak consumer-realm RS256 via JWKS when KEYCLOAK_ISSUER is
   // set; HS256 dev secret otherwise (ADR-0003).

@@ -43,7 +43,20 @@ export async function isDiscoveryAllowed(ctx: EdgeContext, userId: string): Prom
 export const DISCOVERY_BLOCKED_ERROR = "discovery is not available on this account";
 
 export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): void {
-  app.post("/v1/account/age-declaration", async (req, reply) => {
+  app.post(
+    "/v1/account/age-declaration",
+    {
+      // TR-23: strict body — unknown fields fail validation with a 400.
+      schema: {
+        body: {
+          type: "object",
+          required: ["birthYear"],
+          additionalProperties: false,
+          properties: { birthYear: { type: "integer", minimum: 1900 } },
+        },
+      },
+    },
+    async (req, reply) => {
     const { birthYear } = req.body as { birthYear?: unknown };
     const thisYear = new Date().getUTCFullYear();
     if (typeof birthYear !== "number" || !Number.isInteger(birthYear) || birthYear < 1900 || birthYear > thisYear) {
@@ -60,7 +73,8 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): v
     // Neutral response: the shape is identical either way; the client renders
     // a plain "discovery unavailable" notice, never a reason.
     return reply.send({ ok: true, discovery: !blocked });
-  });
+    },
+  );
 
   app.get("/v1/account/export", async (req, reply) => {
     // FR-62/SEC-14: the assemble half of the DSAR tooling. The function runs

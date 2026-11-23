@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 131,
+    "implemented": 133,
     "partial": 55,
-    "gap-p0": 11,
+    "gap-p0": 9,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -44,9 +44,9 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 25,
+      "implemented": 27,
       "partial": 5,
-      "gap-p0": 4,
+      "gap-p0": 2,
       "phase-gated": 4,
       "client": 6,
       "organisational": 0,
@@ -98,7 +98,11 @@
     "BR-01": {
       "family": "BR",
       "status": "organisational",
-      "evidence": [],
+      "evidence": [
+        "db/migrations/0014_markets.sql",
+        "services/edge/src/markets.ts",
+        "tests/test_markets.py"
+      ],
       "note": "Single-metro launch with >=3 venues in 2 km \u2014 launch-ops gate (ACC-07), not code."
     },
     "BR-02": {
@@ -1674,10 +1678,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0001_init.sql",
+        "db/migrations/0014_markets.sql",
         "docs/api/openapi.yaml",
         "docs/presence-model.md",
-        "services/edge/src/routes/presence.ts",
-        "services/edge/src/velocity.ts"
+        "services/edge/src/markets.ts"
       ],
       "note": "H3 res 9 default; k=1 ring; tested."
     },
@@ -1693,8 +1697,7 @@
       "family": "TR",
       "status": "implemented",
       "evidence": [
-        "docs/presence-model.md",
-        "services/edge/src/routes/presence.ts"
+        "docs/presence-model.md"
       ],
       "note": "Descent at 2 000 / 10 000 live presences; tested."
     },
@@ -1712,9 +1715,14 @@
     },
     "TR-16": {
       "family": "TR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "h3-pg native column type (TECH-04) \u2014 cells are Valkey strings today; no H3 column in Postgres."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0014_markets.sql",
+        "services/edge/src/markets.ts",
+        "services/edge/src/routes/presence.ts",
+        "tests/test_markets.py"
+      ],
+      "note": "h3-pg v4.2.1 builds into the deploy postgres image (deploy/postgres/Dockerfile, pinned tag, vendored H3 core submodule). market_config.center_cell is a native h3index column (migration 0014) and market resolution runs native operators in the database \u2014 market_for_cell(h3index) compares h3_cell_to_parent at the centre's own resolution. Presence ephemera stays Valkey-only by design; the native type serves configuration and every future persisted cell need."
     },
     "TR-17": {
       "family": "TR",
@@ -1894,9 +1902,15 @@
     },
     "TR-37": {
       "family": "TR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Per-market resolution calibration held in configuration \u2014 the ladder is code constants today (SHOULD)."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0014_markets.sql",
+        "services/edge/src/markets.ts",
+        "services/edge/src/routes/presence.ts",
+        "services/edge/test/edge.test.ts",
+        "tests/test_markets.py"
+      ],
+      "note": "The TR-12/14 storage-resolution ladder is per-market configuration: market_config (migration 0014) carries res_default/res_busy/res_crowd + busy/crowd presence thresholds with ordering CHECKs and a single-active-market index (BR-01). The presence route resolves the ladder via ladderForCell \u2014 native market_for_cell lookup, 60-second Valkey cache, governed fallback equal to the seeded Lagos row so day-one behaviour is unchanged (cross-pinned). Calibration changes propagate within a minute, no deploy."
     },
     "TR-38": {
       "family": "TR",
@@ -2438,6 +2452,7 @@
       "family": "TECH",
       "status": "partial",
       "evidence": [
+        "db/migrations/0014_markets.sql",
         "deploy/k8s/postgres.yaml"
       ],
       "note": "Postgres 17 + PostGIS deployed; h3-pg extension not yet added."

@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 131 | working in the repo with tests or structural evidence |
+| implemented | 133 | working in the repo with tests or structural evidence |
 | partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 11 | ARC-P0 product scope, code not yet built |
+| gap-p0 | 9 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -24,7 +24,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
 | FR | 65 | 18 | 0 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 7 | 5 | 0 | 1 | 11 | 0 | 13 | 0 | 37 |
-| TR | 25 | 5 | 4 | 4 | 6 | 0 | 0 | 0 | 44 |
+| TR | 27 | 5 | 2 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 10 | 7 | 1 | 1 | 3 | 1 | 0 | 1 | 24 |
@@ -34,7 +34,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
-| BR-01 | organisational | — | Single-metro launch with >=3 venues in 2 km — launch-ops gate (ACC-07), not code. |
+| BR-01 | organisational | `db/migrations/0014_markets.sql`<br>`services/edge/src/markets.ts`<br>`tests/test_markets.py` | Single-metro launch with >=3 venues in 2 km — launch-ops gate (ACC-07), not code. |
 | BR-02 | organisational | — | Positioning (friendship, not dating) — store copy / onboarding / marketing review; no dating surface exists in code. |
 | BR-03 | gap-p0 | — | Age declaration at onboarding, under-18 block, re-verification on escalation — no onboarding flow or age fields yet. |
 | BR-04 | organisational | — | Second-city expansion gate on anchor-venue metrics (§2.5 for 3 consecutive weeks). |
@@ -230,11 +230,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-09 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`scripts/export_golden.py`<br>`services/edge/src/screening.ts`<br>`services/match/src/engine.ts` | Deterministic template rendering; no LLM anywhere in reason generation. |
 | TR-10 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/test/engine.test.ts`<br>`tests/test_matching.py` | 81 Python tests incl. 60 key-pinned pairs; 120-pair TS golden parity at 1e-9. |
 | TR-11 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/test/scan.test.ts` | venues.base_threshold / max_scan_results configurable per venue row without deployment. |
-| TR-12 | implemented | `db/migrations/0001_init.sql`<br>`docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/velocity.ts` | H3 res 9 default; k=1 ring; tested. |
+| TR-12 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0014_markets.sql`<br>`docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/markets.ts` | H3 res 9 default; k=1 ring; tested. |
 | TR-13 | implemented | `docs/api/openapi.yaml` | Responses carry bands only — no neighbour cell or ring distance. |
-| TR-14 | implemented | `docs/presence-model.md`<br>`services/edge/src/routes/presence.ts` | Descent at 2 000 / 10 000 live presences; tested. |
+| TR-14 | implemented | `docs/presence-model.md` | Descent at 2 000 / 10 000 live presences; tested. |
 | TR-15 | implemented | `docs/adr/0008-maplibre-geolibre-postgis.md`<br>`docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/presence.ts` | Coordinate-shaped payload fields hard-422; tested. |
-| TR-16 | gap-p0 | — | h3-pg native column type (TECH-04) — cells are Valkey strings today; no H3 column in Postgres. |
+| TR-16 | implemented | `db/migrations/0014_markets.sql`<br>`services/edge/src/markets.ts`<br>`services/edge/src/routes/presence.ts`<br>`tests/test_markets.py` | h3-pg v4.2.1 builds into the deploy postgres image (deploy/postgres/Dockerfile, pinned tag, vendored H3 core submodule). market_config.center_cell is a native h3index column (migration 0014) and market resolution runs native operators in the database — market_for_cell(h3index) compares h3_cell_to_parent at the centre's own resolution. Presence ephemera stays Valkey-only by design; the native type serves configuration and every future persisted cell need. |
 | TR-17 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`presence/graph.py`<br>`services/edge/src/taxonomy.ts`<br>`services/edge/test/taxonomy.test.ts` | Graph enforces an acyclic hierarchy <=5 levels + typed non-hierarchical edges. |
 | TR-18 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`db/seed/taxonomy.sql`<br>`docs/api/openapi.yaml`<br>`presence/graph.py` | taxonomy_closure materialised, rebuilt by the seed/export pipeline. |
 | TR-19 | partial | `presence/graph.py` | redirect_to column + Python graph support exist; the TS engine does not resolve redirects yet. |
@@ -255,7 +255,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-34 | implemented | `db/migrations/0013_telemetry.sql`<br>`deploy/keycloak/realm-workforce.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts` | Stable governed event keys (scan.completed, consent.transitioned, pair.first_message — enforced identically by the DB CHECK and the edge constant, cross-pinned) and stable metric keys. GET /v1/telemetry/export.csv emits the presence-telemetry/v1 contract: a version marker line, then the stable column order metric_key,window_start,window_end,value,numerator,denominator; zero denominators export as empty fields, never a fake zero. Analyst console gated by the workforce analyst role + app.analyst GUC + RLS. |
 | TR-35 | partial | — | Reason payload is render-complete (TR-08); the versioned diagram spec is a client artifact. |
 | TR-36 | implemented | `docs/runbook.md`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/src/store.ts`<br>`services/match/test/prior.test.ts` | Optional global prior (all-profile link-free df, 10-min rebuild) blended with fade w(N)=(30-N)/30 — 0% shift at N>=30, exact-formula tests in TS+Python. |
-| TR-37 | gap-p0 | — | Per-market resolution calibration held in configuration — the ladder is code constants today (SHOULD). |
+| TR-37 | implemented | `db/migrations/0014_markets.sql`<br>`services/edge/src/markets.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/test/edge.test.ts`<br>`tests/test_markets.py` | The TR-12/14 storage-resolution ladder is per-market configuration: market_config (migration 0014) carries res_default/res_busy/res_crowd + busy/crowd presence thresholds with ordering CHECKs and a single-active-market index (BR-01). The presence route resolves the ladder via ladderForCell — native market_for_cell lookup, 60-second Valkey cache, governed fallback equal to the seeded Lagos row so day-one behaviour is unchanged (cross-pinned). Calibration changes propagate within a minute, no deploy. |
 | TR-38 | phase-gated | — | Polygon attribution as a lakehouse spatial join published to the operational store (P1 lakehouse). |
 | TR-39 | phase-gated | — | Gold-table owner/grain/SLO/retention + catalogue registration (P1 lakehouse). |
 | TR-40 | implemented | — | Phase-gate admission documented; 8 ADRs recorded (Valkey, Keycloak, Kafka, Dapr, OpenSearch, payments, GeoLibre, sequencing). |
@@ -339,7 +339,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TECH-01 | client | — | React Native + Expo custom dev client; Expo Go prohibited (BLE). |
 | TECH-02 | implemented | — | h3-js 4.x in both TS services; the client uses the same library family so cell ids agree bit-for-bit. |
 | TECH-03 | implemented | `deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | Dockerfiles on node:22-alpine, engines >=22, @types/node 22.10.2; TypeScript strict, pinned toolchain; tests green. |
-| TECH-04 | partial | `deploy/k8s/postgres.yaml` | Postgres 17 + PostGIS deployed; h3-pg extension not yet added. |
+| TECH-04 | partial | `db/migrations/0014_markets.sql`<br>`deploy/k8s/postgres.yaml` | Postgres 17 + PostGIS deployed; h3-pg extension not yet added. |
 | TECH-05 | implemented | `deploy/k8s/valkey.yaml` | Valkey 8 (BSD-3); no Redis anywhere. |
 | TECH-06 | partial | `deploy/k8s/centrifugo.yaml` | Centrifugo deployed; Valkey-as-broker not yet configured (in-memory engine in dev compose). |
 | TECH-07 | partial | `deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/keycloak.yaml`<br>`deploy/keycloak/README.md`<br>`services/edge/src/app.ts` | Three realm imports (consumer passkey policy / workforce hardware 2FA / partners roles) boot in compose; edge verifies RS256 via realm JWKS; passkey-only browser flow + SMS recovery config pending. |

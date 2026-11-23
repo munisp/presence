@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { containsCoordinates } from "../src/auth.js";
 import { newPresenceSessionId, sessionKey, suppressionKey } from "../src/context.js";
-import { resolutionFor } from "../src/routes/presence.js";
+import { FALLBACK_LADDER, resolutionFor } from "../src/markets.js";
 
 test("TR-15: any coordinate-shaped field is rejected", () => {
   assert.equal(containsCoordinates({ lat: 51.5 }), true);
@@ -17,11 +17,19 @@ test("TR-15: any coordinate-shaped field is rejected", () => {
 });
 
 test("TR-12/14: resolution ladder follows venue density", () => {
-  assert.equal(resolutionFor(0), 9);
-  assert.equal(resolutionFor(2_000), 9);
-  assert.equal(resolutionFor(2_001), 10);
-  assert.equal(resolutionFor(10_000), 10);
-  assert.equal(resolutionFor(10_001), 11);
+  // TR-37: the governed fallback ladder matches the seeded market config.
+  assert.equal(resolutionFor(0, FALLBACK_LADDER), 9);
+  assert.equal(resolutionFor(2_000, FALLBACK_LADDER), 9);
+  assert.equal(resolutionFor(2_001, FALLBACK_LADDER), 10);
+  assert.equal(resolutionFor(10_000, FALLBACK_LADDER), 10);
+  assert.equal(resolutionFor(10_001, FALLBACK_LADDER), 11);
+});
+
+test("TR-37: a market's configured ladder calibrates independently", () => {
+  const dense = { resDefault: 10, resBusy: 11, resCrowd: 11, busyMinPresences: 500, crowdMinPresences: 5_000 };
+  assert.equal(resolutionFor(0, dense), 10);
+  assert.equal(resolutionFor(501, dense), 11);
+  assert.equal(resolutionFor(5_001, dense), 11);
 });
 
 test("FR-23: suppression keys are canonically ordered", () => {

@@ -36,15 +36,14 @@ import {
 } from "../context.js";
 import { isImpossibleTravel } from "../velocity.js";
 import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed, isInvisible } from "./account.js";
+import { ladderForCell, resolutionFor } from "../markets.js";
 
 export const PRESENCE_TTL_S = 900; // FR-14
 
-/** TR-14: pick the storage resolution from live venue density. */
-export function resolutionFor(livePresences: number): number {
-  if (livePresences > 10_000) return 11;
-  if (livePresences > 2_000) return 10;
-  return 9;
-}
+/** TR-12/14: the storage-resolution ladder moved to per-market
+ * configuration (TR-37) — see services/edge/src/markets.ts. The pure
+ * function is re-exported here for existing callers. */
+export { resolutionFor } from "../markets.js";
 
 interface PresenceEntry {
   cell: string;
@@ -131,8 +130,11 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     }
 
     // TR-12/14: coarsen the client cell to the venue's active resolution.
+    // TR-37: the ladder comes from the market's configuration (TR-16 native
+    // h3-pg lookup, cached a minute), not from code constants.
     const live = venueId ? await ctx.valkey.scard(`presence:venue:${venueId}`) : 0;
-    const targetRes = resolutionFor(live);
+    const ladder = await ladderForCell(ctx, cell);
+    const targetRes = resolutionFor(live, ladder);
     const storedCell = getResolution(cell) === targetRes ? cell : cellToParent(cell, targetRes);
 
     const previous = await ctx.valkey.get(`presence:user:${userId}`);

@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 50 | working in the repo with tests or structural evidence |
-| partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 92 | ARC-P0 product scope, code not yet built |
+| implemented | 57 | working in the repo with tests or structural evidence |
+| partial | 53 | meaningful part implemented; named gap remains |
+| gap-p0 | 87 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -24,10 +24,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR | 3 | 4 | 4 | 0 | 0 | 22 | 0 | 0 | 33 |
 | FR | 18 | 13 | 52 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 1 | 6 | 5 | 1 | 11 | 0 | 13 | 0 | 37 |
-| TR | 18 | 6 | 10 | 4 | 6 | 0 | 0 | 0 | 44 |
+| TR | 19 | 6 | 9 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 3 | 12 | 13 | 1 | 1 | 5 | 3 | 0 | 38 |
-| INF | 0 | 5 | 5 | 0 | 0 | 1 | 8 | 1 | 20 |
-| TECH | 7 | 8 | 3 | 1 | 3 | 1 | 0 | 1 | 24 |
+| INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
+| TECH | 8 | 7 | 3 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
 ## BR — Business requirements (§3)
@@ -207,7 +207,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | NFR-28 | client | — | iOS 16+ / Android 10+ with graceful BLE-floor degradation. |
 | NFR-29 | client | — | Foreground battery <=2%/h on reference mid-tier. |
 | NFR-30 | client | — | Background battery parity with a no-op app when background presence is off. |
-| NFR-31 | partial | — | Fastify request ids per service; cross-service propagation + APISIX request-id land with the P0 gateway. |
+| NFR-31 | partial | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`scripts/validate_deploy.py` | Fastify request ids per service; APISIX request-id plugin generates and echoes X-Request-Id at the gateway; edge->match propagation of the id still missing. |
 | NFR-32 | gap-p0 | — | Four §2.5 product metrics computable from telemetry <=5 min — telemetry pipeline (TR-34). |
 | NFR-33 | gap-p0 | — | Alert set: SLO burn, error spike, presence-publish failure, match-rate collapse, moderation queue age. |
 | NFR-34 | gap-p0 | — | Runbook per alert, each alert naming an owner. |
@@ -221,7 +221,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 |---|---|---|---|
 | TR-01 | implemented | — | Edge + match are stateless; all state lives in Valkey/Postgres. |
 | TR-02 | partial | — | Scan reads Valkey + warmed caches; a cold profile cache miss still hits Postgres inline — bulk warming or async load outstanding. |
-| TR-03 | partial | — | Compose network is private; mTLS between services arrives with K8s/APISIX (P0). |
+| TR-03 | partial | — | K8s NetworkPolicies isolate east-west traffic (only declared flows allowed); mTLS between services awaits the mesh decision. |
 | TR-04 | implemented | `db/migrations/0001_init.sql`<br>`db/seed/taxonomy.sql`<br>`presence/graph.py`<br>`presence/matching.py`<br>`scripts/export_taxonomy_sql.py` | 0.55/hop, depth <=4, max-combine — pinned against the answer key (653/653). |
 | TR-05 | implemented | `docs/presence-model.md`<br>`presence/graph.py`<br>`presence/matching.py`<br>`scripts/export_golden.py`<br>`services/match/src/engine.ts` | df over live presence, link-free closures, 60 s refresh loop. |
 | TR-06 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | sqrt(ln(1+N/(1+df))) with cap — pinned. |
@@ -244,7 +244,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-23 | partial | — | /v1 path versioning done; machine-readable schema + strict unknown-field rejection missing. |
 | TR-24 | gap-p0 | — | Idempotency keys on every mutating endpoint — not implemented. |
 | TR-25 | partial | — | Errors carry a message only; stable machine codes + retry hints missing; no internal leaks observed. |
-| TR-26 | gap-p0 | — | TLS 1.3 + HTTP/2 with downgrade rejection terminate at APISIX (P0); dev compose is plaintext. |
+| TR-26 | implemented | `deploy/apisix/config.yaml`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml` | APISIX listener configured TLSv1.3-only with HTTP/2 (deploy/k8s/apisix.yaml); downgrade impossible at the listener; asserted by scripts/validate_deploy.py. Dev compose stays plaintext by design. |
 | TR-27 | client | — | Unsupported-version detection + update prompt. |
 | TR-28 | implemented | — | All expiry windows use server now(); no client-clock input anywhere. |
 | TR-29 | client | — | On-device cell computation; raw coordinates discarded before any network call. |
@@ -273,8 +273,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-03 | partial | `deploy/keycloak/README.md`<br>`deploy/keycloak/realm-workforce.json` | Workforce realm ships hardware-2FA policy, elevation-eligible role and a 4-hour session ceiling; the automated JIT grant workflow is pending. |
 | SEC-04 | implemented | — | RLS on every personal-data table; app connects as non-bypass roles; tested. |
 | SEC-05 | partial | — | Only the edge role reads envelopes, RLS-gated to pair members; no analytics/admin read path exists. |
-| SEC-06 | gap-p0 | — | TLS 1.3 everywhere at APISIX (P0); dev compose is plaintext. |
-| SEC-07 | external-evidence | — | AES-256-GCM at rest + KMS + annual rotation — production-infra evidence. |
+| SEC-06 | gap-p0 | `deploy/k8s/README.md` | TLS 1.3 everywhere at APISIX (P0); dev compose is plaintext. |
+| SEC-07 | external-evidence | `deploy/k8s/README.md` | AES-256-GCM at rest + KMS + annual rotation — production-infra evidence. |
 | SEC-08 | implemented | — | No coordinate columns anywhere; server rejects coordinate fields; H3 cells only. |
 | SEC-09 | gap-p0 | `deploy/keycloak/README.md` | Phone recovery stored as keyed hash only — lands with Keycloak SMS recovery config. |
 | SEC-10 | implemented | — | Server persists ciphertext bytea + routing metadata only; client MLS integration pending. |
@@ -295,7 +295,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-25 | gap-p0 | — | Dependency licence policy check in CI. |
 | SEC-26 | gap-p0 | — | SAST + dependency + secret scanning on every PR — CI not built. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
-| SEC-28 | partial | `deploy/keycloak/README.md` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
+| SEC-28 | partial | `deploy/k8s/README.md`<br>`deploy/keycloak/README.md` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
 | SEC-29 | gap-p0 | — | Log scrubber (no coords / cell+user pairs / content / tokens) + tests — not implemented. |
 | SEC-30 | partial | — | Append-only consent ledger exists; general security-event audit store + 12-month retention missing. |
 | SEC-31 | organisational | — | Incident response plan, severity levels, on-call, 72-h regulator path, twice-yearly rehearsal. |
@@ -312,21 +312,21 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
 | INF-01 | external-evidence | — | Single primary region + same-jurisdiction warm standby — production topology. |
-| INF-02 | partial | — | Local compose exists; integration/staging/production environments not provisioned. |
+| INF-02 | partial | `deploy/k8s/README.md` | Local compose exists; integration/staging/production environments not provisioned. |
 | INF-03 | partial | — | Synthetic distributional data generator exists (eval harness); environment separation pending INF-02. |
-| INF-04 | partial | — | Compose + migrations + ADRs are code; K8s manifests land in P0. |
-| INF-05 | external-evidence | — | API/match sizing 3x 2 vCPU/4 GB — production. |
-| INF-06 | external-evidence | — | Valkey 1 primary + 1 replica, 4 GB — production. |
-| INF-07 | external-evidence | — | Postgres 4 vCPU/16 GB, 500 GB SSD, PITR — production. |
+| INF-04 | implemented | `deploy/k8s/README.md` | Compose + migrations + ADRs + full K8s manifests (deploy/k8s: workloads, gateway, HPA, NetworkPolicy, canary) are code; scripts/validate_deploy.py asserts the invariants. |
+| INF-05 | external-evidence | `deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | API/match sizing 3x 2 vCPU/4 GB — production. |
+| INF-06 | external-evidence | `deploy/k8s/README.md`<br>`deploy/k8s/valkey.yaml` | Valkey 1 primary + 1 replica, 4 GB — production. |
+| INF-07 | external-evidence | `deploy/k8s/README.md`<br>`deploy/k8s/postgres.yaml` | Postgres 4 vCPU/16 GB, 500 GB SSD, PITR — production. |
 | INF-08 | external-evidence | — | Centrifugo 2 nodes x 2 vCPU — production. |
 | INF-09 | superseded | — | ClickHouse superseded by the OpenSearch-only decision (ADR-0006 / TECH-21). |
-| INF-10 | gap-p0 | — | HPA on p95>120 ms for 3 min; scale-in <=1 instance/10 min — K8s manifests (P0). |
-| INF-11 | gap-p0 | — | TLS at edge, HSTS, OCSP stapling, CSP — APISIX (P0). |
-| INF-12 | partial | — | Compose isolates services on an internal network but publishes dev ports; origin lockdown via K8s NetworkPolicy pending. |
+| INF-10 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml`<br>`deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | autoscaling/v2 HPAs on edge + match: external p95 metric (120 ms target, 3-min window) with CPU fallback; scaleDown capped at 1 pod per 600 s; asserted by scripts/validate_deploy.py. |
+| INF-11 | partial | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`scripts/validate_deploy.py` | TLS termination, HSTS and CSP configured at APISIX (validated); OCSP stapling is delegated to the cert-manager issuance chain and needs production evidence. |
+| INF-12 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml`<br>`deploy/k8s/namespace.yaml` | K8s: only APISIX reaches edge, only edge reaches match, everything else ClusterIP/headless; default-deny-all NetworkPolicy; asserted by scripts/validate_deploy.py. |
 | INF-13 | external-evidence | — | Edge DDoS mitigation + pre-launch test. |
-| INF-14 | gap-p0 | — | Egress allowlist — K8s NetworkPolicy. |
+| INF-14 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/namespace.yaml`<br>`deploy/k8s/networkpolicy.yaml`<br>`scripts/validate_deploy.py` | Default-deny egress + per-workload egress allowlists (DNS only otherwise) in deploy/k8s/networkpolicy.yaml; asserted by scripts/validate_deploy.py. |
 | INF-15 | gap-p0 | — | Merge -> signed reproducible artefact -> auto-deploy to integration — CI pipeline. |
-| INF-16 | gap-p0 | — | Canary 5%/10 min + automatic rollback on SLO breach — APISIX canary + K8s progressive delivery. |
+| INF-16 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml`<br>`scripts/validate_deploy.py` | Flagger Canary resources on the APISIX provider: 5% steps held 10 min, auto-rollback on success-rate/p95-latency breach (deploy/k8s/canary.yaml); asserted by scripts/validate_deploy.py. Requires Flagger + Prometheus in-cluster. |
 | INF-17 | partial | — | Forward-only migrations practised; rehearsal against a production-sized snapshot pending. |
 | INF-18 | external-evidence | — | PITR 5-min granularity, 35-day retention, quarterly timed restore. |
 | INF-19 | external-evidence | — | <=EUR1 500/mo at 100k MAU — Kubecost (P1) + monthly review. |
@@ -338,11 +338,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 |---|---|---|---|
 | TECH-01 | client | — | React Native + Expo custom dev client; Expo Go prohibited (BLE). |
 | TECH-02 | implemented | — | h3-js 4.x in both TS services; the client uses the same library family so cell ids agree bit-for-bit. |
-| TECH-03 | implemented | — | Dockerfiles on node:22-alpine, engines >=22, @types/node 22.10.2; TypeScript strict, pinned toolchain; tests green. |
-| TECH-04 | partial | — | Postgres 17 + PostGIS deployed; h3-pg extension not yet added. |
-| TECH-05 | implemented | — | Valkey 8 (BSD-3); no Redis anywhere. |
-| TECH-06 | partial | — | Centrifugo deployed; Valkey-as-broker not yet configured (in-memory engine in dev compose). |
-| TECH-07 | partial | `deploy/docker-compose.yml`<br>`deploy/keycloak/README.md`<br>`services/edge/src/app.ts`<br>`services/edge/src/auth.ts` | Three realm imports (consumer passkey policy / workforce hardware 2FA / partners roles) boot in compose; edge verifies RS256 via realm JWKS; passkey-only browser flow + SMS recovery config pending. |
+| TECH-03 | implemented | `deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | Dockerfiles on node:22-alpine, engines >=22, @types/node 22.10.2; TypeScript strict, pinned toolchain; tests green. |
+| TECH-04 | partial | `deploy/k8s/postgres.yaml` | Postgres 17 + PostGIS deployed; h3-pg extension not yet added. |
+| TECH-05 | implemented | `deploy/k8s/valkey.yaml` | Valkey 8 (BSD-3); no Redis anywhere. |
+| TECH-06 | partial | `deploy/k8s/centrifugo.yaml` | Centrifugo deployed; Valkey-as-broker not yet configured (in-memory engine in dev compose). |
+| TECH-07 | partial | `deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/keycloak.yaml`<br>`deploy/keycloak/README.md`<br>`services/edge/src/app.ts` | Three realm imports (consumer passkey policy / workforce hardware 2FA / partners roles) boot in compose; edge verifies RS256 via realm JWKS; passkey-only browser flow + SMS recovery config pending. |
 | TECH-08 | client | — | OpenMLS/vodozemac client crypto; libsignal prohibited (AGPL-3.0 vs closed client). |
 | TECH-09 | gap-p0 | — | pgvector for free-text linking only (FR-09), never in the match path — extension + service pending. |
 | TECH-10 | superseded | — | ClickHouse superseded by OpenSearch (ADR-0006 / TECH-21); aggregated events only. |
@@ -353,10 +353,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TECH-15 | partial | — | Python engine is pure/deterministic; TS services read the wall clock directly — clock/id injection not formalised. |
 | TECH-16 | client | — | Dependency maintenance/licence/size budget; 45 MB bundle cap. |
 | TECH-17 | organisational | — | Team skills: TypeScript, React Native, Postgres, one systems language. |
-| TECH-18 | gap-p0 | — | ARC language allocation: Rust match core + Go presence/venue/consent services outstanding; TS services are the documented P0 stand-in. |
+| TECH-18 | gap-p0 | `deploy/k8s/match.yaml` | ARC language allocation: Rust match core + Go presence/venue/consent services outstanding; TS services are the documented P0 stand-in. |
 | TECH-19 | implemented | — | Kafka designated event backbone (ADR-0004); no Fluvio deployed; Kafka rollout itself is ARC P1. |
 | TECH-20 | implemented | — | No Temporal calls on the scan path (none exist anywhere); Temporal rollout is ARC P1. |
-| TECH-21 | partial | — | No ClickHouse / second warehouse; APISIX as sole public ingress lands in P0 (INF-11); OpenSearch is P1. |
+| TECH-21 | implemented | `deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml`<br>`deploy/k8s/networkpolicy.yaml` | No ClickHouse / second warehouse; APISIX is the sole public ingress — the only LoadBalancer Service, enforced by NetworkPolicy (validated); OpenSearch is P1. |
 | TECH-22 | phase-gated | — | Delta-on-Parquet bronze/silver/gold — P1 lakehouse; no analytics on the live match path (satisfied). |
 | TECH-23 | implemented | — | No Mojaloop/TigerBeetle deployed; ARC-002 §9 gates them at P3. |
 | TECH-24 | partial | — | Canonical geometry in PostGIS (venues.geofence); GeoLibre authoring/QA workflow not built (TR-41). |

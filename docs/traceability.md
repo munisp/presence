@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 57 | working in the repo with tests or structural evidence |
-| partial | 53 | meaningful part implemented; named gap remains |
-| gap-p0 | 87 | ARC-P0 product scope, code not yet built |
+| implemented | 62 | working in the repo with tests or structural evidence |
+| partial | 54 | meaningful part implemented; named gap remains |
+| gap-p0 | 81 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,8 +22,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 3 | 4 | 4 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 18 | 13 | 52 | 1 | 15 | 1 | 0 | 0 | 100 |
-| NFR | 1 | 6 | 5 | 1 | 11 | 0 | 13 | 0 | 37 |
+| FR | 22 | 13 | 48 | 1 | 15 | 1 | 0 | 0 | 100 |
+| NFR | 2 | 7 | 3 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 19 | 6 | 9 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 3 | 12 | 13 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
@@ -94,21 +94,21 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-20 | implemented | `db/migrations/0001_init.sql`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/scan.test.ts` | <=3 candidates with ordered reasons; unit + golden tests. |
 | FR-21 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts` | Adaptive threshold: (1-5/n)-quantile floored at venue base; tested. |
 | FR-22 | partial | `services/match/src/scan.ts`<br>`services/match/src/server.ts` | MMR (lambda 0.7) over reason-node Jaccard; a hard no-shared-primary-reason guarantee is not enforced. |
-| FR-23 | implemented | `docs/presence-model.md`<br>`services/edge/src/context.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/test/edge.test.ts`<br>`services/match/src/scan.ts` | Canonical suppression keys, 600 s TTL, both directions; tested. |
+| FR-23 | implemented | `docs/presence-model.md`<br>`services/edge/src/context.ts`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/src/routes/scan.ts` | Canonical suppression keys, 600 s TTL, both directions; tested. |
 | FR-24 | implemented | `services/edge/src/routes/scan.ts`<br>`services/match/src/server.ts` | 6 scans/min per user at the edge; tested. |
 | FR-25 | implemented | `services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/test/scan.test.ts` | Bands from H3 grid distance only; no metres/bearing/cell ids in responses. |
 | FR-26 | implemented | `services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts` | Explanatory empty state below 8 discoverable users in scope; tested. |
 | FR-27 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts` | Ordered reason path in every scan payload; /v1/score re-scores any explicit pair. |
 | FR-28 | gap-p0 | — | Density-scaled match budget (3/hr sparse to 1/day crowd) not implemented. |
-| FR-29 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts` | DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested. |
+| FR-29 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts` | DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested. |
 | FR-30 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/routes/scan.ts` | Identity RLS-gated to OPEN; verified by policy + edge tests. |
 | FR-31 | implemented | — | One wave per offer via illegal-transition rejection; the wave carries no content. |
-| FR-32 | gap-p0 | — | Silent decline (counterpart sees only expiry) — no decline endpoint. |
-| FR-33 | gap-p0 | — | 30-min server-side offer expiry — matches has no expiry column or job. |
-| FR-34 | gap-p0 | — | Immediate, silent, permanent mutual discovery removal — no block table/endpoint. |
+| FR-32 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/test/lifecycle.test.ts` | Silent decline: POST /consent/:id/decline always answers 204, publishes 'expired'; maskCloseReason maps declined>expired; tested. |
+| FR-33 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/index.ts`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts` | 30-min offer window: expires_at set at first surfacing, renewed per action; lifecycle_tick expires overdue offers; tested. |
+| FR-34 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/src/routes/scan.ts` | Blocking: blocks table (no UPDATE/DELETE grants), permanent Valkey blockKey, scan excludes both directions via blocked_users_for; pair closes silently. |
 | FR-35 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/consent.ts` | Append-only ledger, no-update trigger, actor+timestamp per row; tested. |
 | FR-36 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/messages.ts` | Server stores opaque MLS envelopes only (bytea), RLS-gated to OPEN members; client MLS integration pending. |
-| FR-37 | gap-p0 | — | 24-h conversation auto-close unless both keep — no close transition or job. |
+| FR-37 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/test/lifecycle.test.ts` | 24-h conversation clock: closes_at set on OPEN, /consent/:id/keep from both sides clears it; lifecycle_tick lapses the rest; messages RLS gates on closed_at. |
 | FR-38 | gap-p0 | — | First-message screening (links/phones/emails, inline explanation) not implemented. |
 | FR-39 | implemented | — | Only text envelopes exist; no media/voice/file paths to disable. |
 | FR-40 | partial | — | Reports endpoint exists; no pair/offer anchor column; in-conversation control is client UX. |
@@ -195,8 +195,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | NFR-16 | external-evidence | — | RPO <=5 min consent ledger (PITR, INF-18). |
 | NFR-17 | implemented | — | Presence RPO deliberately zero — Valkey-only, disposable by design; documented. |
 | NFR-18 | partial | — | 15-min TTL enforced; the 45-min grace semantics for index residue are only partially explicit (lazy stale-member filtering). |
-| NFR-19 | gap-p0 | — | Offer retention 30 min + 24 h — with FR-33. |
-| NFR-20 | gap-p0 | — | Conversation ciphertext purge 24 h after close — with FR-37. |
+| NFR-19 | partial | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/routes/consent.ts` | 24-h visibility masking done (GET /consent hides pairs closed >24 h; decline shows as expired); hard row deletion lands with FR-04. |
+| NFR-20 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/index.ts`<br>`services/edge/src/lifecycle.ts` | lifecycle_tick deletes messages 24 h after pair close; messages RLS blocks reads on closed pairs immediately. |
 | NFR-21 | partial | — | Ledger append-only and retained; the 90-day abuse-hold enforcement job is missing. |
 | NFR-22 | partial | — | Reports persisted; 12-month retention policy job missing. |
 | NFR-23 | phase-gated | — | 25-month aggregate analytics retention — P1 lakehouse. |

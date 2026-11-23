@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 62 | working in the repo with tests or structural evidence |
-| partial | 54 | meaningful part implemented; named gap remains |
-| gap-p0 | 81 | ARC-P0 product scope, code not yet built |
+| implemented | 68 | working in the repo with tests or structural evidence |
+| partial | 53 | meaningful part implemented; named gap remains |
+| gap-p0 | 76 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,10 +22,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 3 | 4 | 4 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 22 | 13 | 48 | 1 | 15 | 1 | 0 | 0 | 100 |
-| NFR | 2 | 7 | 3 | 1 | 11 | 0 | 13 | 0 | 37 |
+| FR | 25 | 14 | 44 | 1 | 15 | 1 | 0 | 0 | 100 |
+| NFR | 4 | 5 | 3 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 19 | 6 | 9 | 4 | 6 | 0 | 0 | 0 | 44 |
-| SEC | 3 | 12 | 13 | 1 | 1 | 5 | 3 | 0 | 38 |
+| SEC | 4 | 12 | 12 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 8 | 7 | 3 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
@@ -73,9 +73,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
 | FR-01 | partial | `deploy/keycloak/README.md` | Consumer realm ships the passkey policy (platform authenticator, user verification required, passwords disabled); edge verifies RS256 via JWKS; passkey-only onboarding flow + RN client pending. |
-| FR-02 | gap-p0 | `deploy/keycloak/README.md` | Age declaration + neutral under-18 block — no onboarding endpoint yet. |
-| FR-03 | gap-p0 | — | In-app account deletion <=3 taps — DELETE /v1/account missing; client pending. |
-| FR-04 | gap-p0 | — | Deletion purge (presence/offers <=60 s, ledger anonymisation after retention, index removal) — no deletion flow. |
+| FR-02 | implemented | `db/migrations/0003_account_deletion.sql`<br>`deploy/keycloak/README.md`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | POST /account/age-declaration upserts a birth-year declaration; under-18 sets age_blocked; presence+scan refuse with a neutral 403 (no reason disclosed); boundary fails toward blocking; tested. |
+| FR-03 | partial | `db/migrations/0003_account_deletion.sql`<br>`services/edge/src/routes/account.ts` | DELETE /v1/account erases in one authenticated call; the <=3-tap journey is client UX, pending with the RN client. |
+| FR-04 | implemented | `db/migrations/0003_account_deletion.sql`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | delete_account purges envelopes/pairs/blocks/profile/identity synchronously and tombstones the user; the edge strips Valkey presence+suppress+block keys in the same call; ledger actors anonymised after the 90-day hold by lifecycle_tick. |
 | FR-05 | gap-p0 | — | <=3 concurrent devices + enrolment notification — device registry arrives with Keycloak device-bound tokens. |
 | FR-06 | partial | — | user_identities carries handle + photo gated to OPEN by RLS; display-name default and 140-char bio missing. |
 | FR-07 | gap-p0 | — | Duplicate-account detection on attestation key — needs real App Attest / Play Integrity verification. |
@@ -103,12 +103,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-29 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts` | DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested. |
 | FR-30 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/routes/scan.ts` | Identity RLS-gated to OPEN; verified by policy + edge tests. |
 | FR-31 | implemented | — | One wave per offer via illegal-transition rejection; the wave carries no content. |
-| FR-32 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/test/lifecycle.test.ts` | Silent decline: POST /consent/:id/decline always answers 204, publishes 'expired'; maskCloseReason maps declined>expired; tested. |
-| FR-33 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/index.ts`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts` | 30-min offer window: expires_at set at first surfacing, renewed per action; lifecycle_tick expires overdue offers; tested. |
-| FR-34 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/src/routes/scan.ts` | Blocking: blocks table (no UPDATE/DELETE grants), permanent Valkey blockKey, scan excludes both directions via blocked_users_for; pair closes silently. |
-| FR-35 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/consent.ts` | Append-only ledger, no-update trigger, actor+timestamp per row; tested. |
+| FR-32 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/consent.ts` | Silent decline: POST /consent/:id/decline always answers 204, publishes 'expired'; maskCloseReason maps declined>expired; tested. |
+| FR-33 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`services/edge/src/index.ts`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts` | 30-min offer window: expires_at set at first surfacing, renewed per action; lifecycle_tick expires overdue offers; tested. |
+| FR-34 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts` | Blocking: blocks table (no UPDATE/DELETE grants), permanent Valkey blockKey, scan excludes both directions via blocked_users_for; pair closes silently. |
+| FR-35 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`services/edge/src/routes/consent.ts` | Append-only ledger, no-update trigger, actor+timestamp per row; the sole exception is a transaction-local purge mode reachable only from SECURITY DEFINER retention functions (NFR-19/21); tested. |
 | FR-36 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/messages.ts` | Server stores opaque MLS envelopes only (bytea), RLS-gated to OPEN members; client MLS integration pending. |
-| FR-37 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts`<br>`services/edge/test/lifecycle.test.ts` | 24-h conversation clock: closes_at set on OPEN, /consent/:id/keep from both sides clears it; lifecycle_tick lapses the rest; messages RLS gates on closed_at. |
+| FR-37 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/lifecycle.ts` | 24-h conversation clock: closes_at set on OPEN, /consent/:id/keep from both sides clears it; lifecycle_tick lapses the rest; messages RLS gates on closed_at. |
 | FR-38 | gap-p0 | — | First-message screening (links/phones/emails, inline explanation) not implemented. |
 | FR-39 | implemented | — | Only text envelopes exist; no media/voice/file paths to disable. |
 | FR-40 | partial | — | Reports endpoint exists; no pair/offer anchor column; in-conversation control is client UX. |
@@ -133,7 +133,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-59 | gap-p0 | `deploy/keycloak/realm-workforce.json` | Taxonomy CMS draft/review/publish + one-action rollback not built (seed export scripts only). |
 | FR-60 | gap-p0 | — | Immutable admin audit log (actor, reason code, before/after) not implemented. |
 | FR-61 | phase-gated | — | Analytics pipeline is P1 lakehouse (Delta/Parquet) per ARC-002 §9; identifier exclusion + cell aggregation specified there. |
-| FR-62 | gap-p0 | — | Data-subject assemble/erase tool (30-day) not built. |
+| FR-62 | implemented | `db/migrations/0003_account_deletion.sql`<br>`services/edge/src/routes/account.ts` | GET /account/export assembles the full subject record (profile, interests, pairs, ledger actions, blocks, reports) via dsar_export() with FR-32/34 masking intact; erasure via DELETE /account. |
 | FR-63 | gap-p0 | — | Per-venue feature flags for §4.4/4.5/4.7 behaviours not implemented. |
 | FR-64 | gap-p0 | — | Structured prompts (<=3 x 120 chars, screened, reason material, not searchable) not implemented. |
 | FR-65 | gap-p0 | — | Post-OPEN allowlisted social link, counterpart-only, never fetched server-side — not implemented. |
@@ -195,9 +195,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | NFR-16 | external-evidence | — | RPO <=5 min consent ledger (PITR, INF-18). |
 | NFR-17 | implemented | — | Presence RPO deliberately zero — Valkey-only, disposable by design; documented. |
 | NFR-18 | partial | — | 15-min TTL enforced; the 45-min grace semantics for index residue are only partially explicit (lazy stale-member filtering). |
-| NFR-19 | partial | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/routes/consent.ts` | 24-h visibility masking done (GET /consent hides pairs closed >24 h; decline shows as expired); hard row deletion lands with FR-04. |
-| NFR-20 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`services/edge/src/index.ts`<br>`services/edge/src/lifecycle.ts` | lifecycle_tick deletes messages 24 h after pair close; messages RLS blocks reads on closed pairs immediately. |
-| NFR-21 | partial | — | Ledger append-only and retained; the 90-day abuse-hold enforcement job is missing. |
+| NFR-19 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`services/edge/src/routes/consent.ts` | 24-h visibility masking (GET /consent) + lifecycle_tick hard-deletes pre-OPEN closed pairs with their ledger rows after 24 h, under the governed purge mode. |
+| NFR-20 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`services/edge/src/index.ts`<br>`services/edge/src/lifecycle.ts` | lifecycle_tick deletes messages 24 h after pair close; messages RLS blocks reads on closed pairs immediately. |
+| NFR-21 | implemented | `db/migrations/0003_account_deletion.sql` | Ledger append-only for all app traffic (governed purge mode is unreachable by the app role); lifecycle_tick anonymises actors 90 days after account deletion. |
 | NFR-22 | partial | — | Reports persisted; 12-month retention policy job missing. |
 | NFR-23 | phase-gated | — | 25-month aggregate analytics retention — P1 lakehouse. |
 | NFR-24 | external-evidence | — | 35-day backup retention — production ops. |
@@ -281,10 +281,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-11 | external-evidence | — | Encrypted backups, separate key, dual-authorisation restore — production ops. |
 | SEC-12 | organisational | — | Per-category privacy-by-design rationale recorded in the DPIA. |
 | SEC-13 | partial | — | Introduction consent ledgered with actor+timestamp; data-processing consent artefacts (purpose/scope/policy version) missing. |
-| SEC-14 | gap-p0 | — | DSAR 30-day / erasure 72-h tooling (FR-62). |
+| SEC-14 | implemented | `db/migrations/0003_account_deletion.sql`<br>`services/edge/src/routes/account.ts` | DSAR assemble (GET /account/export) and erasure (DELETE /account) respond in seconds — far inside the 30-day/72-h SLAs; masking preserved in exports. |
 | SEC-15 | organisational | — | Record of processing activities per Appendix B. |
 | SEC-16 | phase-gated | — | Analytics pseudonymisation before leaving production — P1 pipeline. |
-| SEC-17 | gap-p0 | — | Privacy-preserving age assurance without ID-document storage — method selection pending (BR-03/FR-02). |
+| SEC-17 | gap-p0 | `db/migrations/0003_account_deletion.sql` | Privacy-preserving age assurance without ID-document storage — method selection pending (BR-03/FR-02). |
 | SEC-18 | gap-p0 | — | Third-party SDK allowlist enforced in CI — CI not built; client pending. |
 | SEC-19 | partial | `services/edge/src/auth.ts` | Assertion header required on presence write; cryptographic verification + documented fallback pending. |
 | SEC-20 | partial | — | 6 scans/min edge limit exists; 200 scans/h, 20 waves/day and impossible-travel rules missing. |

@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 49 | working in the repo with tests or structural evidence |
-| partial | 51 | meaningful part implemented; named gap remains |
-| gap-p0 | 97 | ARC-P0 product scope, code not yet built |
+| implemented | 50 | working in the repo with tests or structural evidence |
+| partial | 55 | meaningful part implemented; named gap remains |
+| gap-p0 | 92 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,12 +22,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 3 | 4 | 4 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 18 | 12 | 53 | 1 | 15 | 1 | 0 | 0 | 100 |
+| FR | 18 | 13 | 52 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 1 | 6 | 5 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 18 | 6 | 10 | 4 | 6 | 0 | 0 | 0 | 44 |
-| SEC | 3 | 9 | 16 | 1 | 1 | 5 | 3 | 0 | 38 |
+| SEC | 3 | 12 | 13 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 0 | 5 | 5 | 0 | 0 | 1 | 8 | 1 | 20 |
-| TECH | 6 | 8 | 4 | 1 | 3 | 1 | 0 | 1 | 24 |
+| TECH | 7 | 8 | 3 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
 ## BR — Business requirements (§3)
@@ -38,16 +38,16 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR-02 | organisational | — | Positioning (friendship, not dating) — store copy / onboarding / marketing review; no dating surface exists in code. |
 | BR-03 | gap-p0 | — | Age declaration at onboarding, under-18 block, re-verification on escalation — no onboarding flow or age fields yet. |
 | BR-04 | organisational | — | Second-city expansion gate on anchor-venue metrics (§2.5 for 3 consecutive weeks). |
-| BR-05 | partial | — | events table models venue+window; event-scoped instance mode and presence-to-event attribution not wired. |
+| BR-05 | partial | `deploy/keycloak/realm-partners.json` | events table models venue+window; event-scoped instance mode and presence-to-event attribution not wired. |
 | BR-06 | organisational | `docs/adr/0007-payments-gated-on-br06.md` | Five sequenced revenue lines only; payments gated per docs/adr/0007. |
 | BR-07 | partial | — | Reports endpoint exists and is ungated; two-tap reachability is client UX (not built); no monetisation gate exists. |
 | BR-08 | implemented | — | Structural: no endpoint exposes precise location, pre-OPEN identity, or unconsented data; no paid tier exists to violate it. |
 | BR-09 | organisational | — | Per-market local-currency pricing via store billing — monetisation phase. |
 | BR-10 | organisational | — | Pilot unit-economics targets (CAC <= EUR6, payback <=4 mo, conversion >=3%). |
 | BR-11 | organisational | — | Venue agreement: data-processing roles, signage, escalation, 30-day termination. |
-| BR-12 | gap-p0 | — | Aggregate-only venue dashboard not built; Keycloak partners realm (P0) is its identity surface. |
+| BR-12 | gap-p0 | `deploy/keycloak/realm-partners.json` | Aggregate-only venue dashboard not built; Keycloak partners realm (P0) is its identity surface. |
 | BR-13 | gap-p0 | — | k=11 suppression for venue aggregate figures — lands with the venue dashboard. |
-| BR-14 | partial | — | venues.active is checked on scan (immediate effect); suspension fully propagates within the 15-min TTL; venue self-serve suspend endpoint missing. |
+| BR-14 | partial | `deploy/keycloak/realm-workforce.json` | venues.active is checked on scan (immediate effect); suspension fully propagates within the 15-min TTL; venue self-serve suspend endpoint missing. |
 | BR-15 | organisational | — | Resourcing: 4 FTE + fractional design/DPO/T&S, 16 weeks to pilot. |
 | BR-16 | organisational | — | T&S staffing >=1 moderator per 10k MAU + named escalation path. |
 | BR-17 | organisational | — | Budget: build + 12-month run + EUR2M cyber insurance + independent pen test. |
@@ -72,8 +72,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
-| FR-01 | gap-p0 | — | Passkey auth via Keycloak consumer realm (P0) + RN client; current dev JWT is a stand-in. |
-| FR-02 | gap-p0 | — | Age declaration + neutral under-18 block — no onboarding endpoint yet. |
+| FR-01 | partial | `deploy/keycloak/README.md` | Consumer realm ships the passkey policy (platform authenticator, user verification required, passwords disabled); edge verifies RS256 via JWKS; passkey-only onboarding flow + RN client pending. |
+| FR-02 | gap-p0 | `deploy/keycloak/README.md` | Age declaration + neutral under-18 block — no onboarding endpoint yet. |
 | FR-03 | gap-p0 | — | In-app account deletion <=3 taps — DELETE /v1/account missing; client pending. |
 | FR-04 | gap-p0 | — | Deletion purge (presence/offers <=60 s, ledger anonymisation after retention, index removal) — no deletion flow. |
 | FR-05 | gap-p0 | — | <=3 concurrent devices + enrolment notification — device registry arrives with Keycloak device-bound tokens. |
@@ -113,8 +113,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-39 | implemented | — | Only text envelopes exist; no media/voice/file paths to disable. |
 | FR-40 | partial | — | Reports endpoint exists; no pair/offer anchor column; in-conversation control is client UX. |
 | FR-41 | gap-p0 | — | Local delete + 24-h own-message revocation not implemented. |
-| FR-42 | partial | — | venues carries geofence (PostGIS), h3_res, thresholds, active; partner status + operating schedule missing. |
-| FR-43 | partial | — | events = venue + window in schema; presence-to-event attribution not wired. |
+| FR-42 | partial | `deploy/keycloak/realm-workforce.json` | venues carries geofence (PostGIS), h3_res, thresholds, active; partner status + operating schedule missing. |
+| FR-43 | partial | `deploy/keycloak/realm-partners.json` | events = venue + window in schema; presence-to-event attribution not wired. |
 | FR-44 | gap-p0 | — | Crowd-mode transition to interest rooms — room surface not built. |
 | FR-45 | gap-p0 | — | Interest-room content rules (topic, suppressed count, opted-in notes) — with FR-44. |
 | FR-46 | gap-p0 | — | Room posting 1 note/5 min + first-message content filters — with FR-44/SEC-21. |
@@ -122,15 +122,15 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-48 | gap-p0 | — | Venue check-in codes — signed-token path (FR-100) not built. |
 | FR-49 | partial | — | reports accepts free-text reason; the fixed category enum is missing. |
 | FR-50 | organisational | — | 24/7 4-h high-severity triage — staffing/rota (BR-16) plus the moderation console (FR-54). |
-| FR-51 | partial | — | Attestation assertion header required on presence write; cryptographic verification + discovery gating pending. |
+| FR-51 | partial | `services/edge/src/auth.ts` | Attestation assertion header required on presence write; cryptographic verification + discovery gating pending. |
 | FR-52 | gap-p0 | — | Per-account trust score (verification, report outcomes, account age) not implemented. |
 | FR-53 | gap-p0 | — | Silent investigation removal + appeal path not implemented. |
-| FR-54 | gap-p0 | — | Moderation console (reason path, ledger, sessions, history; never message content) not built. |
+| FR-54 | gap-p0 | `deploy/keycloak/realm-workforce.json` | Moderation console (reason path, ledger, sessions, history; never message content) not built. |
 | FR-55 | gap-p0 | — | Independent suspension of attestation key / handle / payment instrument not implemented. |
 | FR-56 | partial | — | Realtime events carry only a type on an opaque pair channel; APNs/FCM push pipeline not built. |
 | FR-57 | gap-p0 | — | Nudge cap 3/day + user quiet window not implemented (no nudge sender). |
 | FR-58 | gap-p0 | — | Per-category notification switches (safety notices exempt) not implemented. |
-| FR-59 | gap-p0 | — | Taxonomy CMS draft/review/publish + one-action rollback not built (seed export scripts only). |
+| FR-59 | gap-p0 | `deploy/keycloak/realm-workforce.json` | Taxonomy CMS draft/review/publish + one-action rollback not built (seed export scripts only). |
 | FR-60 | gap-p0 | — | Immutable admin audit log (actor, reason code, before/after) not implemented. |
 | FR-61 | phase-gated | — | Analytics pipeline is P1 lakehouse (Delta/Parquet) per ARC-002 §9; identifier exclusion + cell aggregation specified there. |
 | FR-62 | gap-p0 | — | Data-subject assemble/erase tool (30-day) not built. |
@@ -268,15 +268,15 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
-| SEC-01 | gap-p0 | — | WebAuthn passkeys at AAL2 — Keycloak consumer realm (P0). |
-| SEC-02 | gap-p0 | — | Short-lived device-bound server-revocable tokens — Keycloak device flow + attestation. |
-| SEC-03 | gap-p0 | — | Workforce realm: hardware 2FA, JIT elevation <=4 h — Keycloak P0. |
+| SEC-01 | partial | — | Consumer realm enforces WebAuthn-with-UV, platform attachment, resident keys; AAL2 conformance evidence + client integration pending. |
+| SEC-02 | partial | `deploy/keycloak/README.md`<br>`services/edge/src/auth.ts` | 5-minute realm access tokens configured; device binding (attestation) and the 60-second revocation drill pending. |
+| SEC-03 | partial | `deploy/keycloak/README.md`<br>`deploy/keycloak/realm-workforce.json` | Workforce realm ships hardware-2FA policy, elevation-eligible role and a 4-hour session ceiling; the automated JIT grant workflow is pending. |
 | SEC-04 | implemented | — | RLS on every personal-data table; app connects as non-bypass roles; tested. |
 | SEC-05 | partial | — | Only the edge role reads envelopes, RLS-gated to pair members; no analytics/admin read path exists. |
 | SEC-06 | gap-p0 | — | TLS 1.3 everywhere at APISIX (P0); dev compose is plaintext. |
 | SEC-07 | external-evidence | — | AES-256-GCM at rest + KMS + annual rotation — production-infra evidence. |
 | SEC-08 | implemented | — | No coordinate columns anywhere; server rejects coordinate fields; H3 cells only. |
-| SEC-09 | gap-p0 | — | Phone recovery stored as keyed hash only — lands with Keycloak SMS recovery config. |
+| SEC-09 | gap-p0 | `deploy/keycloak/README.md` | Phone recovery stored as keyed hash only — lands with Keycloak SMS recovery config. |
 | SEC-10 | implemented | — | Server persists ciphertext bytea + routing metadata only; client MLS integration pending. |
 | SEC-11 | external-evidence | — | Encrypted backups, separate key, dual-authorisation restore — production ops. |
 | SEC-12 | organisational | — | Per-category privacy-by-design rationale recorded in the DPIA. |
@@ -286,7 +286,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-16 | phase-gated | — | Analytics pseudonymisation before leaving production — P1 pipeline. |
 | SEC-17 | gap-p0 | — | Privacy-preserving age assurance without ID-document storage — method selection pending (BR-03/FR-02). |
 | SEC-18 | gap-p0 | — | Third-party SDK allowlist enforced in CI — CI not built; client pending. |
-| SEC-19 | partial | — | Assertion header required on presence write; cryptographic verification + documented fallback pending. |
+| SEC-19 | partial | `services/edge/src/auth.ts` | Assertion header required on presence write; cryptographic verification + documented fallback pending. |
 | SEC-20 | partial | — | 6 scans/min edge limit exists; 200 scans/h, 20 waves/day and impossible-travel rules missing. |
 | SEC-21 | gap-p0 | — | First-message / room-note screening (links, contact details, abuse patterns) — not implemented. |
 | SEC-22 | partial | — | No list endpoints; results capped at 3; tie-break is deterministic userId — randomised/rotating tie-break (FR-91) pending. |
@@ -295,7 +295,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-25 | gap-p0 | — | Dependency licence policy check in CI. |
 | SEC-26 | gap-p0 | — | SAST + dependency + secret scanning on every PR — CI not built. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
-| SEC-28 | partial | — | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
+| SEC-28 | partial | `deploy/keycloak/README.md` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
 | SEC-29 | gap-p0 | — | Log scrubber (no coords / cell+user pairs / content / tokens) + tests — not implemented. |
 | SEC-30 | partial | — | Append-only consent ledger exists; general security-event audit store + 12-month retention missing. |
 | SEC-31 | organisational | — | Incident response plan, severity levels, on-call, 72-h regulator path, twice-yearly rehearsal. |
@@ -338,11 +338,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 |---|---|---|---|
 | TECH-01 | client | — | React Native + Expo custom dev client; Expo Go prohibited (BLE). |
 | TECH-02 | implemented | — | h3-js 4.x in both TS services; the client uses the same library family so cell ids agree bit-for-bit. |
-| TECH-03 | partial | — | TypeScript strict + pinned toolchain; Dockerfiles still on node:20-alpine — Node 22 LTS bump queued. |
+| TECH-03 | implemented | — | Dockerfiles on node:22-alpine, engines >=22, @types/node 22.10.2; TypeScript strict, pinned toolchain; tests green. |
 | TECH-04 | partial | — | Postgres 17 + PostGIS deployed; h3-pg extension not yet added. |
 | TECH-05 | implemented | — | Valkey 8 (BSD-3); no Redis anywhere. |
 | TECH-06 | partial | — | Centrifugo deployed; Valkey-as-broker not yet configured (in-memory engine in dev compose). |
-| TECH-07 | gap-p0 | — | Keycloak three realms (consumer passkeys / workforce hardware 2FA / partners SAML-OIDC). |
+| TECH-07 | partial | `deploy/docker-compose.yml`<br>`deploy/keycloak/README.md`<br>`services/edge/src/app.ts`<br>`services/edge/src/auth.ts` | Three realm imports (consumer passkey policy / workforce hardware 2FA / partners roles) boot in compose; edge verifies RS256 via realm JWKS; passkey-only browser flow + SMS recovery config pending. |
 | TECH-08 | client | — | OpenMLS/vodozemac client crypto; libsignal prohibited (AGPL-3.0 vs closed client). |
 | TECH-09 | gap-p0 | — | pgvector for free-text linking only (FR-09), never in the match path — extension + service pending. |
 | TECH-10 | superseded | — | ClickHouse superseded by OpenSearch (ADR-0006 / TECH-21); aggregated events only. |

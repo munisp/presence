@@ -1,0 +1,13 @@
+{
+  "version": "sdk-allowlist/v1",
+  "governance": "SEC-18: every third-party SDK that ships in a client artifact (client/ — iOS, Android, Flutter, web) must appear in this list before merge. The CI gate (scripts/check_sdk_allowlist.py via the sdk-allowlist job) is fail-closed: a dependency with no matching entry fails the build. Entries are added by PR with the justification and data-access review recorded inline; removal of an entry without removing the dependency also fails the build.",
+  "fields": {
+    "name": "package identity in its ecosystem (npm package name, pub.dev package, CocoaPods pod, Maven group:artifact)",
+    "ecosystem": "npm | pub | cocoapods | maven",
+    "versionConstraint": "exact version or caret/tilde range the client manifest must satisfy",
+    "justification": "why this SDK is required",
+    "dataAccess": "what personal data the SDK can touch — drives the SEC-12 DPIA linkage",
+    "approvedBy": "governance review reference (PR or ADR)"
+  },
+  "sdks": []
+}

@@ -1,0 +1,134 @@
+# INF-15: merge -> signed reproducible artefact -> auto-deploy to integration.
+#
+# On every merge to main each service image is built reproducibly (pinned
+# base images, SOURCE_DATE_EPOCH from the commit timestamp, content-
+# addressable by digest), carries a buildx SBOM and SLSA provenance
+# attestation (SEC-24), is signed keyless with cosign over the GitHub OIDC
+# identity, and is rolled out to the integration environment.
+#
+# Auto-deploy activates when the integration cluster exists: set the repo
+# variable INTEGRATION_DEPLOY_ENABLED=true and the environment secrets
+# (INTEGRATION_KUBECONFIG). Until then the deploy job is skipped — builds
+# and signatures still run on every merge, so the artefact half of the
+# pipeline is never allowed to rot.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write        # GHCR push
+  id-token: write        # cosign keyless (Fulcio OIDC)
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-sign:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [edge, match]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Registry login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Reproducibility: identical inputs -> identical digest. The epoch is
+      # the commit timestamp, so rebuilds of the same commit agree.
+      - name: Reproducible epoch
+        id: epoch
+        run: echo "value=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+
+      - name: Build, attest and push (SBOM + provenance)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}:main
+          build-args: |
+            SOURCE_DATE_EPOCH=${{ steps.epoch.outputs.value }}
+          sbom: true
+          provenance: mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # Keyless signature over the immutable digest — the artefact the
+      # integration environment runs is the artefact this pipeline signed.
+      - name: Sign the digest (keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign verify \
+            --certificate-identity-regexp \
+              "https://github.com/${{ github.repository }}/.github/workflows/deploy.yml" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${IMAGE}@${DIGEST}"
+
+      - name: Hand the digest to the fan-in job
+        run: echo "${{ steps.build.outputs.digest }}" > digest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.service }}
+          path: digest.txt
+          retention-days: 1
+
+  # Fan the matrix legs' digests into stable outputs for the deploy job.
+  artefacts:
+    needs: build-and-sign
+    runs-on: ubuntu-latest
+    outputs:
+      edge-digest: ${{ steps.digests.outputs.edge }}
+      match-digest: ${{ steps.digests.outputs.match }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          merge-multiple: false
+      - id: digests
+        run: |
+          echo "edge=$(cat digest-edge/digest.txt)" >> "$GITHUB_OUTPUT"
+          echo "match=$(cat digest-match/digest.txt)" >> "$GITHUB_OUTPUT"
+
+  deploy-integration:
+    needs: artefacts
+    runs-on: ubuntu-latest
+    environment: integration
+    # Activates when the integration cluster is wired (see header).
+    if: vars.INTEGRATION_DEPLOY_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-kustomize@v2
+      - name: Configure cluster access
+        env:
+          INTEGRATION_KUBECONFIG: ${{ secrets.INTEGRATION_KUBECONFIG }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$INTEGRATION_KUBECONFIG" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+      - name: Pin the signed digests and roll out
+        run: |
+          cd deploy/k8s
+          kustomize edit set image \
+            presence/edge="${{ env.REGISTRY }}/${{ github.repository }}/edge@${{ needs.artefacts.outputs.edge-digest }}" \
+            presence/match="${{ env.REGISTRY }}/${{ github.repository }}/match@${{ needs.artefacts.outputs.match-digest }}"
+          kubectl apply -k .
+          kubectl -n presence rollout status deployment/edge --timeout=300s
+          kubectl -n presence rollout status deployment/match --timeout=300s

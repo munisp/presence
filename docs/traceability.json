@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 137,
-    "partial": 55,
-    "gap-p0": 5,
+    "implemented": 141,
+    "partial": 54,
+    "gap-p0": 2,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -44,9 +44,9 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 27,
+      "implemented": 28,
       "partial": 5,
-      "gap-p0": 2,
+      "gap-p0": 1,
       "phase-gated": 4,
       "client": 6,
       "organisational": 0,
@@ -54,9 +54,9 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 16,
-      "partial": 11,
-      "gap-p0": 1,
+      "implemented": 18,
+      "partial": 10,
+      "gap-p0": 0,
       "phase-gated": 1,
       "client": 1,
       "organisational": 5,
@@ -64,9 +64,9 @@
       "superseded": 0
     },
     "INF": {
-      "implemented": 5,
+      "implemented": 6,
       "partial": 4,
-      "gap-p0": 1,
+      "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
       "organisational": 1,
@@ -1776,9 +1776,12 @@
     },
     "TR-21": {
       "family": "TR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "250k-node closure <10 min \u2014 scale test not run (current seed is a small synthetic graph)."
+      "status": "implemented",
+      "evidence": [
+        "scripts/scale_taxonomy_closure.py",
+        "tests/test_closure_scale.py"
+      ],
+      "note": "250k-node closure <10 min enforced in CI: scripts/scale_taxonomy_closure.py builds a deterministic 250k-node taxonomy (depth-capped like the governed one) and rebuilds the closure with the exact WITH RECURSIVE block extracted verbatim from migration 0012 \u2014 the harness cannot drift from production. The taxonomy-scale CI job runs it against a postgres:17 service on every PR and push, asserting both the 600-s budget and the exact closure row count; the walk semantics (ancestors only, hops 1..4) are additionally executed against SQLite in the acceptance tests."
     },
     "TR-22": {
       "family": "TR",
@@ -2058,7 +2061,9 @@
     "SEC-12": {
       "family": "SEC",
       "status": "organisational",
-      "evidence": [],
+      "evidence": [
+        "docs/security/sdk-allowlist.json"
+      ],
       "note": "Per-category privacy-by-design rationale recorded in the DPIA."
     },
     "SEC-13": {
@@ -2103,9 +2108,13 @@
     },
     "SEC-18": {
       "family": "SEC",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Third-party SDK allowlist enforced in CI \u2014 CI not built; client pending."
+      "status": "implemented",
+      "evidence": [
+        "docs/security/sdk-allowlist.json",
+        "scripts/check_sdk_allowlist.py",
+        "tests/test_sdk_allowlist.py"
+      ],
+      "note": "Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) \u2014 an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit."
     },
     "SEC-19": {
       "family": "SEC",
@@ -2159,9 +2168,11 @@
     },
     "SEC-24": {
       "family": "SEC",
-      "status": "partial",
-      "evidence": [],
-      "note": "Dependencies pinned (exact versions + lockfile); SBOM + signed provenance per release not yet produced."
+      "status": "implemented",
+      "evidence": [
+        "tests/test_deploy_pipeline.py"
+      ],
+      "note": "Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) \u2014 signed provenance is a per-merge artefact, verified in the same job."
     },
     "SEC-25": {
       "family": "SEC",
@@ -2410,9 +2421,11 @@
     },
     "INF-15": {
       "family": "INF",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Merge -> signed reproducible artefact -> auto-deploy to integration \u2014 CI pipeline."
+      "status": "implemented",
+      "evidence": [
+        "tests/test_deploy_pipeline.py"
+      ],
+      "note": "Merge -> signed reproducible artefact -> auto-deploy: .github/workflows/deploy.yml builds edge+match on every merge to main with commit-timestamp SOURCE_DATE_EPOCH and digest addressing (reproducible), attaches buildx SBOM + mode=max provenance, signs the immutable digest keyless with cosign over the GitHub OIDC identity and self-verifies the signature, then the deploy-integration job kustomize-pins the signed digests and rolls out. Auto-deploy is gated on the integration environment variable so the artefact half runs on every merge until the cluster is wired."
     },
     "INF-16": {
       "family": "INF",

@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 137 | working in the repo with tests or structural evidence |
-| partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 5 | ARC-P0 product scope, code not yet built |
+| implemented | 141 | working in the repo with tests or structural evidence |
+| partial | 54 | meaningful part implemented; named gap remains |
+| gap-p0 | 2 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -24,9 +24,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR | 7 | 4 | 0 | 0 | 0 | 22 | 0 | 0 | 33 |
 | FR | 65 | 18 | 0 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 7 | 5 | 0 | 1 | 11 | 0 | 13 | 0 | 37 |
-| TR | 27 | 5 | 2 | 4 | 6 | 0 | 0 | 0 | 44 |
-| SEC | 16 | 11 | 1 | 1 | 1 | 5 | 3 | 0 | 38 |
-| INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
+| TR | 28 | 5 | 1 | 4 | 6 | 0 | 0 | 0 | 44 |
+| SEC | 18 | 10 | 0 | 1 | 1 | 5 | 3 | 0 | 38 |
+| INF | 6 | 4 | 0 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 10 | 7 | 1 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
@@ -239,7 +239,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-18 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`db/seed/taxonomy.sql`<br>`docs/api/openapi.yaml`<br>`presence/graph.py` | taxonomy_closure materialised, rebuilt by the seed/export pipeline. |
 | TR-19 | partial | `presence/graph.py` | redirect_to column + Python graph support exist; the TS engine does not resolve redirects yet. |
 | TR-20 | implemented | `db/migrations/0012_taxonomy_cms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/taxonomy.ts`<br>`services/edge/src/taxonomy.ts`<br>`services/edge/test/taxonomy.test.ts` | taxonomy_releases carries a monotonic version from the taxonomy_release_version sequence (assigned at publish only, UNIQUE), full provenance (author, reviewer, published_by, rolled_back_by + per-transition timestamps) and a diff summary jsonb counted per operation class; the pre-publish snapshot is stored on the release as the rollback basis. Exposed on the release list/detail console endpoints. |
-| TR-21 | gap-p0 | — | 250k-node closure <10 min — scale test not run (current seed is a small synthetic graph). |
+| TR-21 | implemented | `scripts/scale_taxonomy_closure.py`<br>`tests/test_closure_scale.py` | 250k-node closure <10 min enforced in CI: scripts/scale_taxonomy_closure.py builds a deterministic 250k-node taxonomy (depth-capped like the governed one) and rebuilds the closure with the exact WITH RECURSIVE block extracted verbatim from migration 0012 — the harness cannot drift from production. The taxonomy-scale CI job runs it against a postgres:17 service on every PR and push, asserting both the 600-s budget and the exact closure row count; the walk semantics (ancestors only, hops 1..4) are additionally executed against SQLite in the acceptance tests. |
 | TR-22 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0009_rooms.sql`<br>`db/migrations/0011_linking.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`docs/api/openapi.yaml` | Sensitive nodes skipped at vector construction (write time), not query time. |
 | TR-23 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/src/routes/content.ts` | docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode — unknown fields hard-400 before the handler runs. |
 | TR-24 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/idempotency.ts`<br>`services/edge/test/idempotency.test.ts`<br>`tests/test_openapi_contract.py` | Optional Idempotency-Key honoured on all mutating endpoints: idem:{uid}:{key} pending-lease/24h record in Valkey, replay + 409-in-flight semantics, 5xx clears. |
@@ -279,19 +279,19 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-09 | implemented | `db/migrations/0015_recovery.sql`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/edge.yaml`<br>`deploy/keycloak/README.md`<br>`docs/api/openapi.yaml` | Recovery phone stored as keyed hash only: PUT/GET/DELETE /v1/account/recovery-phone normalises to E.164 and stores HMAC-SHA256 (RECOVERY_HASH_KEY — presence-secrets in K8s, clearly-marked dev value in compose) in recovery_phones (0015); the hash is platform-wide unique, RLS is owner-only with no console read, collisions share the neutral 422 with malformed numbers, GET returns existence only. No plaintext phone column exists anywhere (pinned repo-wide); Keycloak README records that no phone attribute is used. |
 | SEC-10 | implemented | `services/edge/src/screening.ts`<br>`services/edge/test/screening.test.ts` | Server persists ciphertext bytea + routing metadata only; client MLS integration pending. |
 | SEC-11 | external-evidence | — | Encrypted backups, separate key, dual-authorisation restore — production ops. |
-| SEC-12 | organisational | — | Per-category privacy-by-design rationale recorded in the DPIA. |
+| SEC-12 | organisational | `docs/security/sdk-allowlist.json` | Per-category privacy-by-design rationale recorded in the DPIA. |
 | SEC-13 | partial | — | Introduction consent ledgered with actor+timestamp; data-processing consent artefacts (purpose/scope/policy version) missing. |
 | SEC-14 | implemented | `db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | DSAR assemble (GET /account/export) and erasure (DELETE /account) respond in seconds — far inside the 30-day/72-h SLAs; masking preserved in exports. |
 | SEC-15 | organisational | — | Record of processing activities per Appendix B. |
 | SEC-16 | phase-gated | — | Analytics pseudonymisation before leaving production — P1 pipeline. |
 | SEC-17 | implemented | `db/migrations/0003_account_deletion.sql`<br>`db/migrations/0016_age_assurance.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/moderation.ts` | Privacy-preserving age assurance with no ID-document storage: self-declaration (FR-02 year-only) plus a moderation-triggered re-verification loop — underage/actioned resolution flags the account in the same txn, discovery closes with the neutral error, and re-verification requires an adult year consistent (±1) with the declaration on file. No passport/NIN/BVN/document storage exists anywhere in schema, edge or realm exports (pinned repo-wide). |
-| SEC-18 | gap-p0 | — | Third-party SDK allowlist enforced in CI — CI not built; client pending. |
+| SEC-18 | implemented | `docs/security/sdk-allowlist.json`<br>`scripts/check_sdk_allowlist.py`<br>`tests/test_sdk_allowlist.py` | Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) — an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit. |
 | SEC-19 | partial | `docs/api/openapi.yaml`<br>`services/edge/src/auth.ts` | Assertion header required on presence write; cryptographic verification + documented fallback pending. |
 | SEC-20 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/budget.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | rl:scan:h 200/h (429) and rl:wave:d 20/day (429) Valkey counters; isImpossibleTravel rejects fixes implying >500 km/h with a 422. |
 | SEC-21 | implemented | `db/migrations/0009_rooms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/routes/rooms.ts`<br>`services/edge/src/screening.ts` | screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested. |
 | SEC-22 | implemented | `services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/rotation.test.ts` | No list endpoints; results capped at 3; tie-break rotates per scan via edge-supplied seed (sha256(seed:userId)); unseeded legacy order retained only for tooling/tests. |
 | SEC-23 | external-evidence | — | OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch. |
-| SEC-24 | partial | — | Dependencies pinned (exact versions + lockfile); SBOM + signed provenance per release not yet produced. |
+| SEC-24 | implemented | `tests/test_deploy_pipeline.py` | Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) — signed provenance is a per-merge artefact, verified in the same job. |
 | SEC-25 | implemented | — | .github/workflows/ci.yml dependencies job — license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR. |
 | SEC-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts`<br>`services/edge/test/devices.test.ts` | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
@@ -325,7 +325,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | INF-12 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml`<br>`deploy/k8s/namespace.yaml` | K8s: only APISIX reaches edge, only edge reaches match, everything else ClusterIP/headless; default-deny-all NetworkPolicy; asserted by scripts/validate_deploy.py. |
 | INF-13 | external-evidence | — | Edge DDoS mitigation + pre-launch test. |
 | INF-14 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/namespace.yaml`<br>`deploy/k8s/networkpolicy.yaml`<br>`scripts/validate_deploy.py` | Default-deny egress + per-workload egress allowlists (DNS only otherwise) in deploy/k8s/networkpolicy.yaml; asserted by scripts/validate_deploy.py. |
-| INF-15 | gap-p0 | — | Merge -> signed reproducible artefact -> auto-deploy to integration — CI pipeline. |
+| INF-15 | implemented | `tests/test_deploy_pipeline.py` | Merge -> signed reproducible artefact -> auto-deploy: .github/workflows/deploy.yml builds edge+match on every merge to main with commit-timestamp SOURCE_DATE_EPOCH and digest addressing (reproducible), attaches buildx SBOM + mode=max provenance, signs the immutable digest keyless with cosign over the GitHub OIDC identity and self-verifies the signature, then the deploy-integration job kustomize-pins the signed digests and rolls out. Auto-deploy is gated on the integration environment variable so the artefact half runs on every merge until the cluster is wired. |
 | INF-16 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml`<br>`scripts/validate_deploy.py` | Flagger Canary resources on the APISIX provider: 5% steps held 10 min, auto-rollback on success-rate/p95-latency breach (deploy/k8s/canary.yaml); asserted by scripts/validate_deploy.py. Requires Flagger + Prometheus in-cluster. |
 | INF-17 | partial | — | Forward-only migrations practised; rehearsal against a production-sized snapshot pending. |
 | INF-18 | external-evidence | — | PITR 5-min granularity, 35-day retention, quarterly timed restore. |

@@ -3,6 +3,7 @@
 import Postgres from "pg";
 import { Redis as Valkey } from "ioredis";
 import { buildApp } from "./app.js";
+import { startLifecycleJob } from "./lifecycle.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 
@@ -20,7 +21,11 @@ async function main() {
   const app = await buildApp(ctx);
   await app.listen({ port: PORT, host: "0.0.0.0" });
 
+  // FR-33/37, NFR-20: offer expiry, conversation lapse, ciphertext purge.
+  const stopLifecycle = startLifecycleJob(ctx.pg);
+
   const shutdown = async () => {
+    stopLifecycle();
     await app.close();
     await ctx.pg.end();
     ctx.valkey.disconnect();

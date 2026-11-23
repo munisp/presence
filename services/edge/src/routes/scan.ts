@@ -62,6 +62,28 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         }
       } while (cursor !== "0");
 
+      // FR-34: permanent blocks, both key directions (no TTL, unlike FR-23)…
+      cursor = "0";
+      do {
+        const [next, keys] = await ctx.valkey.scan(cursor, "MATCH", `block:${userId}:*`, "COUNT", 100);
+        cursor = next;
+        for (const k of keys) suppressed.push(k.split(":").pop()!);
+      } while (cursor !== "0");
+      cursor = "0";
+      do {
+        const [next, keys] = await ctx.valkey.scan(cursor, "MATCH", `block:*:${userId}`, "COUNT", 100);
+        cursor = next;
+        for (const key of keys) {
+          const other = key.split(":")[1];
+          if (other !== userId) suppressed.push(other);
+        }
+      } while (cursor !== "0");
+      // …and the durable record behind them (covers a Valkey flush). The
+      // SECURITY DEFINER function erases direction, preserving FR-34 silence.
+      const blockRows = await ctx.pg.query("SELECT blocked_users_for($1::uuid) AS other", [userId]);
+      for (const r of blockRows.rows) suppressed.push(r.other);
+      const exclude = [...new Set(suppressed)];
+
       // TR-11: venue threshold configuration
       let venue: { baseThreshold?: number; maxResults?: number } = {};
       if (venueId) {
@@ -80,7 +102,7 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       const res = await fetch(`${ctx.matchServiceUrl}/v1/scan`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId, cell, venue, exclude: suppressed }),
+        body: JSON.stringify({ userId, cell, venue, exclude }),
       });
       if (!res.ok) {
         return reply.code(502).send({ error: "match service unavailable" });
@@ -98,12 +120,14 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
 
       // FR-29: the first surfacing of a pair records DETECTED in the
       // append-only ledger (idempotent — later scans find the pair exists).
+      // FR-33: first surfacing also starts the 30-minute offer window.
       if (body.results.length > 0) {
         await withRls(ctx.pg, userId, async (c) => {
           for (const r of body.results) {
             const [lo, hi] = userId < r.userId ? [userId, r.userId] : [r.userId, userId];
             const inserted = await c.query(
-              `INSERT INTO matches (user_lo, user_hi) VALUES ($1, $2)
+              `INSERT INTO matches (user_lo, user_hi, expires_at)
+               VALUES ($1, $2, now() + interval '30 minutes')
                ON CONFLICT (user_lo, user_hi) DO NOTHING RETURNING pair_id`,
               [lo, hi],
             );

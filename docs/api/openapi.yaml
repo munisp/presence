@@ -36,11 +36,15 @@ paths:
                   ok: { type: boolean }
   /v1/presence:
     post:
-      summary: Enter or heartbeat presence (FR-14, TR-12/14/15)
+      summary: Enter or heartbeat presence (FR-14, FR-16, TR-12/14/15)
       description: >-
         Body carries a client-computed H3 cell only — coordinate-shaped fields
         are rejected (TR-15). Age-blocked or deleted accounts receive the
-        neutral 403 (FR-02/FR-04).
+        neutral 403 (FR-02/FR-04); invisible accounts cannot publish at all
+        (FR-18). A publish without a live session starts one and returns its
+        FR-16 session id; heartbeats present the live id to keep it, and a
+        stale id is rejected with a 409. Consecutive fixes that imply
+        impossible travel are refused with a 422 (SEC-20).
       parameters:
         - name: x-app-attest-assertion
           in: header
@@ -58,6 +62,10 @@ paths:
               properties:
                 cell: { type: string, description: H3 cell id, resolution 11 }
                 venueId: { type: string }
+                sessionId:
+                  type: string
+                  pattern: "^[0-9a-f]{32}$"
+                  description: live FR-16 session id on heartbeats; omit to start a new session
       responses:
         "200":
           description: Presence stored with the 900 s TTL.
@@ -65,15 +73,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ok, cell, ttl]
+                required: [ok, cell, ttl, sessionId]
                 properties:
                   ok: { type: boolean }
                   cell: { type: string, description: cell as stored, coarsened to the venue resolution }
                   ttl: { type: integer, example: 900 }
+                  sessionId: { type: string, description: FR-16 session id — the only handle scan results expose pre-OPEN }
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "401": { description: Missing token or app-attestation assertion. }
-        "403": { description: Discovery unavailable on this account (neutral — FR-02/FR-04). }
-        "422": { description: Invalid H3 cell or coordinate-shaped payload (TR-15). }
+        "403": { description: Discovery unavailable (neutral — FR-02/FR-04) or account invisible (FR-18). }
+        "409": { description: Presented session id is not the live one; start a new session (FR-16). }
+        "422": { description: Invalid H3 cell, coordinate-shaped payload (TR-15), or impossible travel (SEC-20). }
     delete:
       summary: Leave; presence and cell membership are removed
       responses:
@@ -88,11 +98,14 @@ paths:
                   ok: { type: boolean }
   /v1/scan:
     post:
-      summary: Rate-limited discovery scan (FR-20…FR-27)
+      summary: Rate-limited discovery scan (FR-20…FR-27, SEC-20)
       description: >-
-        Six scans per minute per user (FR-24). Results carry score, band,
-        ordered reasons and an icebreaker — never coordinates or identity
-        (FR-25/FR-30). Age-blocked or deleted accounts receive the neutral 403.
+        Six scans per minute per user (FR-24), 200 per hour on top (SEC-20).
+        Results carry score, band, ordered reasons and an icebreaker — never
+        coordinates or identity (FR-25/FR-30). Each result is keyed by the
+        pair id and the candidate's FR-16 presence session id; account ids
+        never leave the edge before OPEN. Age-blocked or deleted accounts
+        receive the neutral 403.
       responses:
         "200":
           description: Scan results (possibly the explanatory empty state, FR-26).
@@ -108,9 +121,10 @@ paths:
                     maxItems: 3
                     items:
                       type: object
-                      required: [userId, score, band, reasons, icebreaker]
+                      required: [pairId, sessionId, score, band, reasons, icebreaker]
                       properties:
-                        userId: { type: string, description: pseudonymous until OPEN (FR-30) }
+                        pairId: { type: string, format: uuid, description: the DETECTED pair (FR-29) }
+                        sessionId: { type: string, description: candidate's FR-16 presence session id }
                         score: { type: number, minimum: 0, maximum: 1 }
                         band: { type: string, description: H3 grid-distance band, never metres }
                         reasons:
@@ -120,7 +134,7 @@ paths:
                         icebreaker: { type: string }
         "403": { description: Discovery unavailable on this account (neutral — FR-02/FR-04). }
         "409": { description: No live presence; enter a venue first. }
-        "429": { description: Scan rate limit exceeded (FR-24). }
+        "429": { description: Scan rate limit exceeded (FR-24 per-minute or SEC-20 hourly). }
   /v1/consent:
     get:
       summary: My pairs and their states (FR-29…FR-37)
@@ -332,6 +346,7 @@ paths:
   /v1/announcements:
     get:
       summary: Live announcements (venue + global)
+      description: Removed announcements never surface (FR-98).
       parameters:
         - name: venueId
           in: query
@@ -352,10 +367,149 @@ paths:
                       properties:
                         announcement_id: { type: string, format: uuid }
                         venue_id: { type: [string, "null"] }
+                        category: { type: string, enum: [social, work, lost_found, notice] }
                         body: { type: string }
                         publish_at: { type: string, format: date-time }
                         expire_at: { type: string, format: date-time }
         "400": { $ref: "#/components/responses/SchemaViolation" }
+    post:
+      summary: Publish an announcement (FR-93, FR-95, FR-96, FR-97)
+      description: >-
+        Declared, unblocked accounts at least 24 h old only (FR-93 trust
+        floor). One live announcement per account and one publish per 24 h
+        (FR-95). The TTL is capped at four hours. Bodies are screened before
+        storage (FR-96/SEC-37). The work category requires a
+        verified-organisation token (FR-97, BR-33).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body, category]
+              additionalProperties: false
+              properties:
+                venueId: { type: string }
+                body: { type: string, minLength: 1, maxLength: 500 }
+                category: { type: string, enum: [social, work, lost_found, notice] }
+                ttlMinutes: { type: integer, minimum: 1, maximum: 240 }
+      responses:
+        "201":
+          description: Announcement published.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [announcementId, category, ttlMinutes, publishAt, expireAt]
+                properties:
+                  announcementId: { type: string, format: uuid }
+                  category: { type: string }
+                  ttlMinutes: { type: integer }
+                  publishAt: { type: string, format: date-time }
+                  expireAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Trust floor not met (FR-93) or work category without a verified organisation (FR-97). }
+        "409": { description: One live announcement per account (FR-95). }
+        "422": { description: Screened content rejected (SEC-37). }
+        "429": { description: One publish per 24 h (FR-95). }
+  /v1/announcements/{announcementId}/respond:
+    post:
+      summary: Respond to a live announcement (FR-94, FR-95)
+      description: >-
+        One screened response per account per announcement. The responder is
+        anonymous to the publisher until accepted (inverted consent, FR-94).
+      parameters:
+        - name: announcementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              additionalProperties: false
+              properties:
+                body: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "201":
+          description: Response recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, responseId]
+                properties:
+                  ok: { type: boolean }
+                  responseId: { type: string, format: uuid }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Announcement not found. }
+        "409": { description: Announcement not live, own announcement, or already responded (FR-95). }
+        "422": { description: Screened content rejected (SEC-37). }
+  /v1/announcements/{announcementId}/responses:
+    get:
+      summary: Read responses — publisher only (FR-94, SEC-38)
+      description: >-
+        At most five responses are ever shown (FR-95). Responder identity is
+        masked until the publisher accepts (SEC-38).
+      parameters:
+        - name: announcementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Masked responses.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [announcementId, responses]
+                properties:
+                  announcementId: { type: string, format: uuid }
+                  responses:
+                    type: array
+                    maxItems: 5
+                    items:
+                      type: object
+                      required: [responseId, body, createdAt, accepted, responder]
+                      properties:
+                        responseId: { type: string, format: uuid }
+                        body: { type: string }
+                        createdAt: { type: string, format: date-time }
+                        accepted: { type: boolean }
+                        responder: { type: [string, "null"], description: revealed only after acceptance (FR-94) }
+        "403": { description: Only the publisher can read responses (SEC-38). }
+        "404": { description: Announcement not found. }
+  /v1/announcements/{announcementId}/responses/{responseId}/accept:
+    post:
+      summary: Accept a response (FR-94)
+      description: Accepting reveals the responder's identity to the publisher.
+      parameters:
+        - name: announcementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: responseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Response accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, responseId, accepted]
+                properties:
+                  ok: { type: boolean }
+                  responseId: { type: string, format: uuid }
+                  accepted: { type: boolean }
+        "403": { description: Only the publisher can accept responses (FR-94). }
+        "404": { description: Announcement or response not found, or already accepted. }
   /v1/offers:
     get:
       summary: Venue offers inside their validity window
@@ -384,20 +538,55 @@ paths:
                         starts_at: { type: string, format: date-time }
                         ends_at: { type: string, format: date-time }
         "400": { $ref: "#/components/responses/SchemaViolation" }
+  /v1/venues/{venueId}/dashboard:
+    get:
+      summary: Aggregate-only venue dashboard (BR-12, BR-13)
+      description: >-
+        Venue partner tokens only, and only for venues named in the token's
+        venue_ids claim. Every figure is k-anonymity suppressed (k = 11):
+        below k the value is null, never the small number. No user-level
+        data is served.
+      parameters:
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Suppressed aggregates.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venueId, k, livePresence, scansLastHour, activeOffers, liveAnnouncements]
+                properties:
+                  venueId: { type: string, format: uuid }
+                  k: { type: integer, example: 11 }
+                  livePresence: { type: [integer, "null"] }
+                  scansLastHour: { type: [integer, "null"] }
+                  activeOffers: { type: [integer, "null"] }
+                  liveAnnouncements: { type: [integer, "null"] }
+        "403": { description: Venue partner token required (BR-12). }
   /v1/reports:
     post:
-      summary: File a report (BR-07, FR-40, FR-49)
+      summary: File a report (BR-07, FR-40, FR-49, FR-98)
+      description: >-
+        Reports target a user (reported) or an announcement (announcementId);
+        for an announcement the edge resolves the publisher server-side. Two
+        reports against one announcement inside ten minutes remove it; the
+        evidence is retained (FR-98).
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [reported, reason]
+              required: [reason]
               additionalProperties: false
               properties:
                 reported: { type: string, format: uuid }
                 venueId: { type: string }
+                announcementId: { type: string, format: uuid }
                 reason: { type: string, minLength: 1 }
                 details: { type: string }
       responses:
@@ -407,11 +596,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [reportId, status]
+                required: [reportId, status, announcementRemoved]
                 properties:
                   reportId: { type: string, format: uuid }
                   status: { type: string, enum: [open] }
+                  announcementRemoved: { type: boolean, description: FR-98 auto-removal fired }
         "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Announcement not found. }
         "422": { description: Missing fields or self-report. }
   /v1/account/age-declaration:
     post:
@@ -454,6 +645,47 @@ paths:
           content:
             application/json:
               schema: { type: object }
+  /v1/account/visibility:
+    put:
+      summary: Set the invisible switch (FR-18)
+      description: >-
+        Persistent across sessions and devices. Flipping invisible on purges
+        live presence immediately; while set, presence publishes are refused
+        with a 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invisible]
+              additionalProperties: false
+              properties:
+                invisible: { type: boolean }
+      responses:
+        "200":
+          description: Switch state stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, invisible]
+                properties:
+                  ok: { type: boolean }
+                  invisible: { type: boolean }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+    get:
+      summary: Read the invisible switch (FR-18)
+      responses:
+        "200":
+          description: Current switch state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invisible]
+                properties:
+                  invisible: { type: boolean }
   /v1/account:
     delete:
       summary: Erase the account (FR-03, FR-04)

@@ -15,7 +15,7 @@
 
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
-import { EdgeContext, publishRealtime } from "../context.js";
+import { EdgeContext, publishRealtime, ROTATION_TTL_S, rotationKey } from "../context.js";
 import { CloseReason, maskCloseReason } from "../lifecycle.js";
 import { WAVE_DAILY_MAX } from "../velocity.js";
 
@@ -65,7 +65,7 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
     try {
       const state = await withRls(ctx.pg, req.userId, async (c) => {
         const cur = await c.query(
-          "SELECT state, closed_at, expires_at FROM matches WHERE pair_id = $1",
+          "SELECT state, closed_at, expires_at, user_lo, user_hi FROM matches WHERE pair_id = $1",
           [pairId],
         );
         if (cur.rows.length === 0) throw Object.assign(new Error("pair not found"), { code: 404 });
@@ -91,10 +91,13 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
           "UPDATE matches SET expires_at = now() + interval '30 minutes' WHERE pair_id = $1 AND closed_at IS NULL",
           [pairId],
         );
-        return to;
+        return { to, lo: cur.rows[0].user_lo as string, hi: cur.rows[0].user_hi as string };
       });
-      if (state === "MUTUAL") await publish(ctx, pairId, { type: "mutual" });
-      return reply.send({ pairId, state });
+      // FR-91: an acted-on offer rotates out of both users' scan results for
+      // seven days — a declined or expired offer is not re-served.
+      await ctx.valkey.set(rotationKey(state.lo, state.hi), "1", "EX", ROTATION_TTL_S);
+      if (state.to === "MUTUAL") await publish(ctx, pairId, { type: "mutual" });
+      return reply.send({ pairId, state: state.to });
     } catch (err) {
       return consentError(reply, err);
     }

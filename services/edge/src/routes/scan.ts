@@ -18,6 +18,7 @@
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
 import { EdgeContext, SUPPRESSION_TTL_S, suppressionKey } from "../context.js";
+import { FloorDeclaration, floorsCompatible } from "../floors.js";
 import { SCAN_HOURLY_MAX } from "../velocity.js";
 import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed } from "./account.js";
 
@@ -58,7 +59,11 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       if (!presence) {
         return reply.code(409).send({ error: "no live presence; enter a venue first" });
       }
-      const { cell, venueId } = JSON.parse(presence) as { cell: string; venueId?: string | null };
+      const { cell, venueId, floorId } = JSON.parse(presence) as {
+        cell: string;
+        venueId?: string | null;
+        floorId?: string | null;
+      };
 
       // BR-12: venue scan counter behind the dashboard's scansLastHour.
       if (venueId) {
@@ -105,10 +110,35 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       // SECURITY DEFINER function erases direction, preserving FR-34 silence.
       const blockRows = await ctx.pg.query("SELECT blocked_users_for($1::uuid) AS other", [userId]);
       for (const r of blockRows.rows) suppressed.push(r.other);
+
+      // FR-91: pairs whose offer was acted on rotate out for seven days.
+      cursor = "0";
+      do {
+        const [next, keys] = await ctx.valkey.scan(cursor, "MATCH", `rotate:${userId}:*`, "COUNT", 100);
+        cursor = next;
+        for (const k of keys) suppressed.push(k.split(":").pop()!);
+      } while (cursor !== "0");
+      cursor = "0";
+      do {
+        const [next, keys] = await ctx.valkey.scan(cursor, "MATCH", `rotate:*:${userId}`, "COUNT", 100);
+        cursor = next;
+        for (const key of keys) {
+          const other = key.split(":")[1];
+          if (other !== userId) suppressed.push(other);
+        }
+      } while (cursor !== "0");
       const exclude = [...new Set(suppressed)];
+
+      // FR-91/SEC-22: a per-user counter feeds the match service's rotating
+      // tie-break, so equal-score ordering is not stable across scans.
+      const tieBreakSeed = await ctx.valkey.incr(`tbreak:${userId}`);
+      if (tieBreakSeed === 1) await ctx.valkey.expire(`tbreak:${userId}`, 86400);
 
       // TR-11: venue threshold configuration
       let venue: { baseThreshold?: number; maxResults?: number } = {};
+      // FR-99/TR-42: the venue's floor declarations, for same-venue floor
+      // scoping of the surfaced list below.
+      let floors: FloorDeclaration[] = [];
       if (venueId) {
         const rows = await ctx.pg.query(
           "SELECT base_threshold, max_scan_results FROM venues WHERE venue_id = $1 AND active",
@@ -120,12 +150,20 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
             maxResults: rows.rows[0].max_scan_results,
           };
         }
+        const floorRows = await ctx.pg.query(
+          "SELECT floor_id, connected_to FROM venue_floors WHERE venue_id = $1",
+          [venueId],
+        );
+        floors = floorRows.rows.map((r) => ({
+          floorId: r.floor_id as string,
+          connectedTo: r.connected_to as string[],
+        }));
       }
 
       const res = await fetch(`${ctx.matchServiceUrl}/v1/scan`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId, cell, venue, exclude }),
+        body: JSON.stringify({ userId, cell, venue, exclude, tieBreakSeed }),
       });
       if (!res.ok) {
         return reply.code(502).send({ error: "match service unavailable" });
@@ -177,15 +215,22 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       // FR-16/FR-30: the wire result carries the pair id and the candidate's
       // live presence session id — never an account id. Candidates whose
       // presence lapsed between the match call and this response are dropped.
+      // FR-99: at the same venue, a candidate on a different floor is dropped
+      // unless the venue declared the two floors connected.
+      const requesterFloor = typeof floorId === "string" ? floorId : null;
       const results: Array<Record<string, unknown>> = [];
       for (const r of detected) {
         const p = await ctx.valkey.get(`presence:user:${r.candidateId}`);
         if (!p) continue;
-        const { sessionId } = JSON.parse(p) as { sessionId?: string };
-        if (!sessionId) continue;
+        const cand = JSON.parse(p) as { sessionId?: string; venueId?: string | null; floorId?: string | null };
+        if (!cand.sessionId) continue;
+        if (venueId && cand.venueId === venueId && floors.length > 0) {
+          const candFloor = typeof cand.floorId === "string" ? cand.floorId : null;
+          if (!floorsCompatible(requesterFloor, candFloor, floors)) continue;
+        }
         results.push({
           pairId: r.pairId,
-          sessionId,
+          sessionId: cand.sessionId,
           score: r.score,
           band: r.band,
           reasons: r.reasons,

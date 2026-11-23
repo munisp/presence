@@ -49,6 +49,7 @@ export function resolutionFor(livePresences: number): number {
 interface PresenceEntry {
   cell: string;
   venueId: string | null;
+  floorId: string | null;
   sessionId: string;
   publishedAt: number;
 }
@@ -67,6 +68,7 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
           properties: {
             cell: { type: "string" },
             venueId: { type: "string" },
+            floorId: { type: "string", pattern: "^[A-Za-z0-9_-]{1,32}$" },
             sessionId: { type: "string", pattern: "^[0-9a-f]{32}$" },
           },
         },
@@ -91,7 +93,23 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
 
     const userId = req.userId;
     const venueId = typeof body.venueId === "string" ? body.venueId : null;
+    const floorId = typeof body.floorId === "string" ? body.floorId : null;
     const presentedSessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+
+    // FR-99: a floor attribution is only meaningful with its venue, and only
+    // for a floor the venue actually declared.
+    if (floorId !== null && venueId === null) {
+      return reply.code(422).send({ error: "floorId requires venueId (FR-99)" });
+    }
+    if (floorId !== null && venueId !== null) {
+      const floor = await ctx.pg.query(
+        "SELECT 1 FROM venue_floors WHERE venue_id = $1 AND floor_id = $2",
+        [venueId, floorId],
+      );
+      if (floor.rows.length === 0) {
+        return reply.code(422).send({ error: "floor not declared for this venue (FR-99)" });
+      }
+    }
 
     // FR-02/FR-04: age-blocked and deleted accounts cannot publish presence.
     if (!(await isDiscoveryAllowed(ctx, userId))) {
@@ -160,6 +178,7 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     const entry: PresenceEntry = {
       cell: storedCell,
       venueId,
+      floorId,
       sessionId,
       publishedAt: Date.now(),
     };

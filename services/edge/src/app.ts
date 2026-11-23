@@ -4,6 +4,9 @@ import fastifyRateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { authenticate, registerAuth } from "./auth.js";
 import { EdgeContext } from "./context.js";
+import { registerIdempotency } from "./idempotency.js";
+import { scrubLogArgs } from "./logscrub.js";
+import { registerCheckinRoutes } from "./routes/checkin.js";
 import { registerConsentRoutes } from "./routes/consent.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerAnnouncementRoutes } from "./routes/announcements.js";
@@ -18,7 +21,15 @@ export async function buildApp(ctx: EdgeContext) {
   // TR-23: ajv strict mode, no silent coercion-stripping — unknown fields in
   // any schema'd body/query/params fail validation with a 400.
   const app = Fastify({
-    logger: true,
+    // SEC-29: every log line is scrubbed — no coordinates, no cell+user
+    // pairings, no user content, no bearer material.
+    logger: {
+      hooks: {
+        logMethod(args, method) {
+          return method.apply(this, scrubLogArgs(args));
+        },
+      },
+    },
     ajv: { customOptions: { strict: true, removeAdditional: false, allErrors: true } },
   });
 
@@ -33,6 +44,8 @@ export async function buildApp(ctx: EdgeContext) {
   // request.userId, which withRls() turns into the RLS context).
   await app.register(async (authed) => {
     authed.addHook("onRequest", authenticate);
+    // TR-24: Idempotency-Key dedupe on every mutating endpoint in the scope.
+    registerIdempotency(authed, ctx);
     registerPresenceRoutes(authed, ctx);
     registerScanRoutes(authed, ctx);
     registerConsentRoutes(authed, ctx);
@@ -41,6 +54,7 @@ export async function buildApp(ctx: EdgeContext) {
     registerContentRoutes(authed, ctx);
     registerAnnouncementRoutes(authed, ctx);
     registerVenueRoutes(authed, ctx);
+    registerCheckinRoutes(authed, ctx);
     registerMessageRoutes(authed, ctx);
   });
 

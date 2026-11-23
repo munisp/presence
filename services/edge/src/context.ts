@@ -27,6 +27,17 @@ export function suppressionKey(a: string, b: string): string {
 export const SUPPRESSION_TTL_S = 600; // FR-23
 
 /**
+ * FR-91 rotation key — canonical pair ordering, seven-day TTL. Set when a
+ * pair's offer is acted on (consent express); the scan excludes rotating
+ * pairs so a declined/expired offer is not re-served for a week.
+ */
+export function rotationKey(a: string, b: string): string {
+  return a < b ? `rotate:${a}:${b}` : `rotate:${b}:${a}`;
+}
+
+export const ROTATION_TTL_S = 604_800; // FR-91: seven days
+
+/**
  * FR-16: opaque per-presence-session identifier (128-bit random, hex).
  *
  * The session id — not the account id — is what a scan hands to candidates

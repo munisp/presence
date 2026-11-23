@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 125 | working in the repo with tests or structural evidence |
+| implemented | 127 | working in the repo with tests or structural evidence |
 | partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 17 | ARC-P0 product scope, code not yet built |
+| gap-p0 | 15 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,12 +22,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 63 | 18 | 2 | 1 | 15 | 1 | 0 | 0 | 100 |
+| FR | 64 | 18 | 1 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 6 | 5 | 1 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 23 | 5 | 6 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
-| TECH | 9 | 7 | 2 | 1 | 3 | 1 | 0 | 1 | 24 |
+| TECH | 10 | 7 | 1 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
 ## BR — Business requirements (§3)
@@ -79,12 +79,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-05 | implemented | `db/migrations/0010_devices.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/routes/devices.ts`<br>`services/edge/test/devices.test.ts` | POST/GET/DELETE /v1/devices over the devices registry (migration 0010): device_cap() trigger locks the user row FOR UPDATE and rejects the fourth concurrent device (SEC-33 idiom; re-enrolment of a live fingerprint is a refresh, exempt from the count); one active row per key_fingerprint via partial unique index; enrolment publishes device_enrolled to the account's own channel with label only — never the fingerprint; revocation is idempotent and owner-scoped by RLS. |
 | FR-06 | partial | — | user_identities carries handle + photo gated to OPEN by RLS; display-name default and 140-char bio missing. |
 | FR-07 | implemented | `db/migrations/0010_devices.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/routes/devices.ts`<br>`services/edge/src/routes/moderation.ts` | register_attestation_key() SECURITY DEFINER enrols/refreshes/detects atomically: a cross-account collision keeps the key with its original account, inserts attestation_duplicates and writes admin_audit_log('moderation.duplicate.detected','impersonation'); the enrolment route returns the same neutral 201 regardless — the console-only registry (RLS app_moderator) surfaces collisions on the moderation account card as keyHashPrefix + both accounts + detected_at. P0 uses the assertion SHA-256 as the key stand-in until cryptographic App Attest verification lands (FR-51 idiom). |
-| FR-08 | partial | `db/migrations/0006_profile_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/profile.ts`<br>`services/edge/src/routes/profile.ts`<br>`services/edge/test/profile.test.ts` | PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Gap: the searchable <=3-level picker UI is client work (RN milestone). |
-| FR-09 | gap-p0 | — | Free-text entity linking with per-node confirmation — pgvector linking service (TECH-09) not built. |
+| FR-08 | partial | `db/migrations/0006_profile_safety.sql`<br>`db/migrations/0011_linking.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/linking.ts`<br>`services/edge/src/profile.ts` | PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Gap: the searchable <=3-level picker UI is client work (RN milestone). |
+| FR-09 | implemented | `db/migrations/0011_linking.sql`<br>`db/seed/taxonomy_embeddings.sql`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/postgres.yaml`<br>`docs/api/openapi.yaml` | POST /v1/profile/interests/link: free text (<=500 chars, screened SEC-26 idiom) is embedded with the deterministic ngram-hash-384.v1 embedder and matched over the pgvector taxonomy space (migration 0011 + generated seed); top-5 candidates above a 0.15 cosine floor, sensitive/redirected nodes excluded at seed and query time (TR-22), already-declared nodes excluded via the owner-GUC read (FR-13 discipline). Per-node confirmation: the route never writes (test-pinned) — confirmed nodes go through the governed FR-08 endpoint. |
 | FR-10 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/edge/src/routes/profile.ts`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | Sensitive nodes excluded from vectors, reasons, idf and bonus at build time; covered by engine tests. |
 | FR-11 | partial | `presence/matching.py`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/src/store.ts` | Candidates need >=2 interests to be scored; publish-side >=3 enforcement + client explanation missing. |
 | FR-12 | implemented | `deploy/k8s/prometheusrules.yaml`<br>`docs/runbook.md` | Profile and corpus caches refresh on a 60 s loop (TR-05). |
-| FR-13 | implemented | `db/migrations/0009_rooms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/interests.ts`<br>`tests/test_rooms.py` | GET /v1/interests/:nodeId/popularity — live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22). |
+| FR-13 | implemented | `db/migrations/0009_rooms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/interests.ts`<br>`services/edge/src/routes/linking.ts`<br>`tests/test_linking.py` | GET /v1/interests/:nodeId/popularity — live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22). |
 | FR-14 | implemented | `docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`docs/runbook.md`<br>`services/edge/src/routes/presence.ts`<br>`services/match/src/store.ts` | 900 s Valkey TTL; stale cell members filtered at read; tested. |
 | FR-15 | partial | `services/edge/src/context.ts` | Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work. |
 | FR-16 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/rooms.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts` | newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId — account ids never leave the edge pre-OPEN. |
@@ -240,7 +240,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-19 | partial | `presence/graph.py` | redirect_to column + Python graph support exist; the TS engine does not resolve redirects yet. |
 | TR-20 | gap-p0 | — | Monotonic version + provenance + diff summary per taxonomy release — no release tooling. |
 | TR-21 | gap-p0 | — | 250k-node closure <10 min — scale test not run (current seed is a small synthetic graph). |
-| TR-22 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0009_rooms.sql`<br>`docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/edge/src/profile.ts` | Sensitive nodes skipped at vector construction (write time), not query time. |
+| TR-22 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0009_rooms.sql`<br>`db/migrations/0011_linking.sql`<br>`docs/api/openapi.yaml`<br>`presence/matching.py` | Sensitive nodes skipped at vector construction (write time), not query time. |
 | TR-23 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/src/routes/content.ts` | docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode — unknown fields hard-400 before the handler runs. |
 | TR-24 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/idempotency.ts`<br>`services/edge/test/idempotency.test.ts`<br>`tests/test_openapi_contract.py` | Optional Idempotency-Key honoured on all mutating endpoints: idem:{uid}:{key} pending-lease/24h record in Valkey, replay + 409-in-flight semantics, 5xx clears. |
 | TR-25 | partial | — | Errors carry a message only; stable machine codes + retry hints missing; no internal leaks observed. |
@@ -344,7 +344,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TECH-06 | partial | `deploy/k8s/centrifugo.yaml` | Centrifugo deployed; Valkey-as-broker not yet configured (in-memory engine in dev compose). |
 | TECH-07 | partial | `deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/keycloak.yaml`<br>`deploy/keycloak/README.md`<br>`services/edge/src/app.ts` | Three realm imports (consumer passkey policy / workforce hardware 2FA / partners roles) boot in compose; edge verifies RS256 via realm JWKS; passkey-only browser flow + SMS recovery config pending. |
 | TECH-08 | client | `services/edge/src/screening.ts` | OpenMLS/vodozemac client crypto; libsignal prohibited (AGPL-3.0 vs closed client). |
-| TECH-09 | gap-p0 | — | pgvector for free-text linking only (FR-09), never in the match path — extension + service pending. |
+| TECH-09 | implemented | `db/migrations/0011_linking.sql`<br>`db/seed/taxonomy_embeddings.sql`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/postgres.yaml`<br>`docs/api/openapi.yaml` | pgvector lives only in the linking stack: extension + taxonomy_node_embeddings vector(384) with HNSW cosine index (migration 0011), link_taxonomy_nodes() excludes sensitive/redirected nodes, app role is SELECT-only; the deterministic ngram-hash-384.v1 embedder is implemented bit-identically in Python (seed generation) and TypeScript (query time), pinned against shared golden vectors. The never-in-match-path boundary is test-pinned: match service, scan route and presence model reference nothing from the linking stack. Deploy postgres image builds pgvector v0.8.0 (deploy/postgres/Dockerfile); migration + seed mounted in compose and k8s. |
 | TECH-10 | superseded | — | ClickHouse superseded by OpenSearch (ADR-0006 / TECH-21); aggregated events only. |
 | TECH-11 | partial | — | Fastify structured logs; OpenTelemetry traces + Grafana stack not wired (AGPL internal-only constraint noted). |
 | TECH-12 | partial | — | Health endpoints + structured logs done; OpenTelemetry traces missing. |

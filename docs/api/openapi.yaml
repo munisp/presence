@@ -229,6 +229,48 @@ paths:
         - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "200": { description: Revoked (or nothing to revoke). }
+  /v1/profile/interests/link:
+    post:
+      summary: Link free text to taxonomy nodes (FR-09, TECH-09)
+      description: >-
+        Proposes up to five governed taxonomy nodes for a free-text phrase,
+        ranked by pgvector cosine similarity over the taxonomy embedding
+        space. Sensitive and redirected nodes never surface, and nodes the
+        caller already declared are excluded. This route never writes:
+        per-node confirmation happens client-side and each confirmed node
+        is added through the governed interests endpoint (FR-08).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              additionalProperties: false
+              properties:
+                text: { type: string }
+      responses:
+        "200":
+          description: Ranked link candidates with the embedder identity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [embedder, candidates]
+                properties:
+                  embedder: { type: string }
+                  candidates:
+                    type: array
+                    items:
+                      type: object
+                      required: [nodeId, label, similarity]
+                      properties:
+                        nodeId: { type: string }
+                        label: { type: string }
+                        similarity: { type: number }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Text fails validation or screening. }
   /v1/venues/{venueId}/checkin-tokens:
     post:
       summary: Mint a per-floor check-in token (FR-99, FR-100)

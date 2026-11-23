@@ -20,7 +20,7 @@ spec:
         fsGroup: 70
       containers:
         - name: postgres
-          image: postgis/postgis:17-3.5-alpine
+          image: presence/postgres:p0   # built from deploy/postgres (postgis + pgvector, FR-09/TECH-09)
           ports: [{ containerPort: 5432 }]
           env:
             - name: POSTGRES_USER

@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 125,
+    "implemented": 127,
     "partial": 55,
-    "gap-p0": 17,
+    "gap-p0": 15,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -24,9 +24,9 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 63,
+      "implemented": 64,
       "partial": 18,
-      "gap-p0": 2,
+      "gap-p0": 1,
       "phase-gated": 1,
       "client": 15,
       "organisational": 1,
@@ -74,9 +74,9 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 9,
+      "implemented": 10,
       "partial": 7,
-      "gap-p0": 2,
+      "gap-p0": 1,
       "phase-gated": 1,
       "client": 3,
       "organisational": 1,
@@ -398,18 +398,24 @@
       "status": "partial",
       "evidence": [
         "db/migrations/0006_profile_safety.sql",
+        "db/migrations/0011_linking.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/profile.ts",
-        "services/edge/src/routes/profile.ts",
-        "services/edge/test/profile.test.ts"
+        "services/edge/src/linking.ts",
+        "services/edge/src/profile.ts"
       ],
       "note": "PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Gap: the searchable <=3-level picker UI is client work (RN milestone)."
     },
     "FR-09": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Free-text entity linking with per-node confirmation \u2014 pgvector linking service (TECH-09) not built."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0011_linking.sql",
+        "db/seed/taxonomy_embeddings.sql",
+        "deploy/docker-compose.yml",
+        "deploy/k8s/postgres.yaml",
+        "docs/api/openapi.yaml"
+      ],
+      "note": "POST /v1/profile/interests/link: free text (<=500 chars, screened SEC-26 idiom) is embedded with the deterministic ngram-hash-384.v1 embedder and matched over the pgvector taxonomy space (migration 0011 + generated seed); top-5 candidates above a 0.15 cosine floor, sensitive/redirected nodes excluded at seed and query time (TR-22), already-declared nodes excluded via the owner-GUC read (FR-13 discipline). Per-node confirmation: the route never writes (test-pinned) \u2014 confirmed nodes go through the governed FR-08 endpoint."
     },
     "FR-10": {
       "family": "FR",
@@ -450,7 +456,8 @@
         "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/routes/interests.ts",
-        "tests/test_rooms.py"
+        "services/edge/src/routes/linking.ts",
+        "tests/test_linking.py"
       ],
       "note": "GET /v1/interests/:nodeId/popularity \u2014 live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22)."
     },
@@ -1748,9 +1755,9 @@
       "evidence": [
         "db/migrations/0001_init.sql",
         "db/migrations/0009_rooms.sql",
+        "db/migrations/0011_linking.sql",
         "docs/api/openapi.yaml",
-        "presence/matching.py",
-        "services/edge/src/profile.ts"
+        "presence/matching.py"
       ],
       "note": "Sensitive nodes skipped at vector construction (write time), not query time."
     },
@@ -2450,9 +2457,15 @@
     },
     "TECH-09": {
       "family": "TECH",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "pgvector for free-text linking only (FR-09), never in the match path \u2014 extension + service pending."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0011_linking.sql",
+        "db/seed/taxonomy_embeddings.sql",
+        "deploy/docker-compose.yml",
+        "deploy/k8s/postgres.yaml",
+        "docs/api/openapi.yaml"
+      ],
+      "note": "pgvector lives only in the linking stack: extension + taxonomy_node_embeddings vector(384) with HNSW cosine index (migration 0011), link_taxonomy_nodes() excludes sensitive/redirected nodes, app role is SELECT-only; the deterministic ngram-hash-384.v1 embedder is implemented bit-identically in Python (seed generation) and TypeScript (query time), pinned against shared golden vectors. The never-in-match-path boundary is test-pinned: match service, scan route and presence model reference nothing from the linking stack. Deploy postgres image builds pgvector v0.8.0 (deploy/postgres/Dockerfile); migration + seed mounted in compose and k8s."
     },
     "TECH-10": {
       "family": "TECH",

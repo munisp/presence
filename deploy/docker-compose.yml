@@ -4,7 +4,8 @@
 
 services:
   postgres:
-    image: postgis/postgis:17-3.5-alpine
+    build: ./postgres   # postgis + pgvector (FR-09/TECH-09 linking)
+    image: presence/postgres:p0
     environment:
       POSTGRES_USER: presence
       POSTGRES_PASSWORD: presence
@@ -21,6 +22,8 @@ services:
       - ../db/migrations/0008_moderation.sql:/docker-entrypoint-initdb.d/09_moderation.sql:ro
       - ../db/migrations/0009_rooms.sql:/docker-entrypoint-initdb.d/10_rooms.sql:ro
       - ../db/migrations/0010_devices.sql:/docker-entrypoint-initdb.d/11_devices.sql:ro
+      - ../db/migrations/0011_linking.sql:/docker-entrypoint-initdb.d/12_linking.sql:ro
+      - ../db/seed/taxonomy_embeddings.sql:/docker-entrypoint-initdb.d/13_taxonomy_embeddings.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

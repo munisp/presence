@@ -15,6 +15,7 @@ import { registerDeviceRoutes } from "./routes/devices.js";
 import { registerInterestRoutes } from "./routes/interests.js";
 import { registerIntentRoutes } from "./routes/intents.js";
 import { registerLifecycleRoutes } from "./routes/lifecycle.js";
+import { registerLinkingRoutes } from "./routes/linking.js";
 import { registerLinkRoutes } from "./routes/links.js";
 import { registerMessageRoutes } from "./routes/messages.js";
 import { registerModerationRoutes } from "./routes/moderation.js";
@@ -72,6 +73,7 @@ export async function buildApp(ctx: EdgeContext) {
     registerRoomRoutes(authed, ctx);
     registerIntentRoutes(authed, ctx);
     registerDeviceRoutes(authed, ctx);
+    registerLinkingRoutes(authed, ctx);
   });
 
   return app;

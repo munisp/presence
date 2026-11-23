@@ -2,6 +2,7 @@
   "name": "@presence/match",
   "version": "0.1.0",
   "private": true,
+  "engines": { "node": ">=22" },
   "type": "module",
   "description": "Presence match service — stateless scoring core (PRS-SRS-001 §6)",
   "scripts": {
@@ -16,7 +17,7 @@
     "pg": "^8.13.1"
   },
   "devDependencies": {
-    "@types/node": "20.17.0",
+    "@types/node": "22.10.2",
     "@types/pg": "^8.11.10",
     "typescript": "5.6.3"
   }

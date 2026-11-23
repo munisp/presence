@@ -1,6 +1,7 @@
 # ADR 0003: Keycloak over Ory
 
-Status: accepted (lands P1)
+Status: accepted (lands P0 — amended 2026-11-23; this ADR originally said P1,
+which misread the ARC-002 §9 phase table)
 
 ## Context
 
@@ -10,9 +11,11 @@ are elegant but multiply operational surface.
 
 ## Decision
 
-Keycloak, three realms: `consumer`, `workforce`, `partners`. P0 ships with a
-shared HS256 secret so the stack runs self-contained; the edge's JWT plumbing
-is realm-agnostic and switches to Keycloak-issued RS256 tokens unchanged.
+Keycloak, three realms: `consumer`, `workforce`, `partners`. The realms are
+versioned as import files in `deploy/keycloak/` and boot with the P0 compose
+stack. The edge verifies Keycloak-issued RS256 tokens against the realm JWKS
+when `KEYCLOAK_ISSUER` is set; with the variable unset it falls back to a
+shared HS256 dev secret so unit tests and offline runs stay self-contained.
 
 ## Consequences
 

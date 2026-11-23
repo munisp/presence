@@ -11,11 +11,17 @@ delays the only question that matters first: does the matching loop work?
 ## Decision
 
 A component is admitted only when its predecessor is the measured bottleneck.
-P0 is five processes: client, Fastify edge, stateless match service, Valkey 8
-presence, Postgres 17 — plus Centrifugo for realtime fan-out. Enterprise
-components land phased: P1 identity (Keycloak), P2 analytics (OpenSearch,
-Kafka), P3 payments (Mojaloop/TigerBeetle) and streaming depth (Fluvio
-evaluation).
+P0 is five product processes: client, Fastify edge, stateless match service,
+Valkey 8 presence, Postgres 17 — plus Centrifugo for realtime fan-out.
+
+Amended 2026-11-23: the original text of this ADR placed Keycloak in P1. That
+misread ARC-002 §9, whose phase table puts Go, Rust, Python, Kubernetes,
+Postgres, Valkey, **APISIX and Keycloak** in P0 — "pilot needs them on day
+one". Identity (Keycloak, three realms) and the gateway (APISIX) are therefore
+P0, and Keycloak now ships in the P0 compose stack with the edge verifying
+realm RS256 tokens via JWKS (ADR-0003). Later components stay phase-gated:
+P1 streaming/analytics (Kafka, Temporal, OpenSearch, Delta lakehouse), P2
+stream depth and security analytics, P3 payments (Mojaloop/TigerBeetle).
 
 ## Consequences
 

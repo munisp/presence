@@ -1,0 +1,34 @@
+{
+  "realm": "partners",
+  "enabled": true,
+  "displayName": "Presence Partners",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "rememberMe": false,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "roles": {
+    "realm": [
+      { "name": "venue-manager", "description": "Aggregate dashboard access (BR-12); never individual user data" },
+      { "name": "event-organiser", "description": "Event-scoped instance management (BR-05, FR-43)" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "venue-dashboard",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["https://venues.presence.example/auth/callback", "http://localhost:8083/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "identityProviders": []
+}

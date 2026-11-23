@@ -12,6 +12,7 @@ services:
     volumes:
       - ../db/migrations/0001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - ../db/seed/taxonomy.sql:/docker-entrypoint-initdb.d/02_taxonomy.sql:ro
+      - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]
     healthcheck:
@@ -41,6 +42,25 @@ services:
       CENTRIFUGO_ADMIN_SECRET: p0-dev-admin-secret
     ports: ["8000:8000"]
 
+  # TECH-07 / ARC-002 §8.2: Keycloak, three realms imported at boot
+  # (consumer / workforce / partners — see deploy/keycloak/).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: p0-dev-admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: presence
+      KC_DB_PASSWORD: presence
+      KC_HOSTNAME: localhost
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
   match:
     build: ../services/match
     environment:
@@ -62,9 +82,11 @@ services:
       CENTRIFUGO_URL: http://centrifugo:8000
       CENTRIFUGO_API_KEY: p0-dev-api-key
       JWT_SECRET: p0-dev-secret-change-me
+      KEYCLOAK_ISSUER: http://keycloak:8080/realms/consumer
     depends_on:
       - match
       - centrifugo
+      - keycloak
     ports: ["4000:4000"]
 
 volumes:

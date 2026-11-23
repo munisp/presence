@@ -1,0 +1,47 @@
+{
+  "realm": "consumer",
+  "enabled": true,
+  "displayName": "Presence",
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "failureFactor": 10,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "webAuthnPolicyPasswordlessRpEntityName": "Presence",
+  "webAuthnPolicyPasswordlessRpId": "presence.example",
+  "webAuthnPolicyPasswordlessSignatureAlgorithms": ["ES256", "RS256"],
+  "webAuthnPolicyPasswordlessAttestationConveyancePreference": "indirect",
+  "webAuthnPolicyPasswordlessAuthenticatorAttachment": "platform",
+  "webAuthnPolicyPasswordlessRequireResidentKey": "Yes",
+  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
+  "clients": [
+    {
+      "clientId": "presence-app",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["presence://auth/callback", "http://localhost:8081/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "presence://auth/logout"
+      }
+    },
+    {
+      "clientId": "presence-edge",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false
+    }
+  ]
+}

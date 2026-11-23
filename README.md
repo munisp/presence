@@ -5,9 +5,10 @@ your venue who share something specific with you — with the reason why —
 and keeps you anonymous until both sides choose to open a channel.
 
 Built to **PRS-SRS-001 v1.0** and the enterprise architecture addendum
-**PRS-ARC-002**. The P0 stack is five processes: React Native client, Fastify
-edge, stateless match service, Valkey 8 presence, Postgres 17 (+ Centrifugo
-for realtime fan-out). Async work never touches the scan path.
+**PRS-ARC-002**. The P0 stack: React Native client, Fastify edge, stateless
+match service, Valkey 8 presence, Postgres 17, Centrifugo for realtime
+fan-out, and Keycloak with three realms (consumer / workforce / partners,
+ARC-002 §8.2). Async work never touches the scan path.
 
 ## Repository layout
 
@@ -25,6 +26,7 @@ services/match/         TypeScript match service (port of the reference engine)
 services/edge/          Fastify edge API
   src/routes/           presence, scan, consent, content, messages
 db/                     Postgres 17 schema + taxonomy seed
+deploy/keycloak/        realm imports (consumer/workforce/partners) + KC db init
 deploy/docker-compose.yml   the P0 stack
 docs/                   presence model, traceability, ADRs
 tests/                  Python regression suite (TR-10, 60 key-pinned pairs)
@@ -50,7 +52,9 @@ the reference to 1e-9 on a 120-pair golden fixture.
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build
-# edge on :4000, match on :4100, centrifugo on :8000
+# edge on :4000, match on :4100, centrifugo on :8000, keycloak on :8080
+# (admin / p0-dev-admin — dev only). The edge verifies consumer-realm RS256
+# tokens via JWKS (KEYCLOAK_ISSUER); unset it to fall back to the HS256 dev secret.
 ```
 
 ## Development
@@ -63,7 +67,7 @@ python3 -m pytest tests/test_matching.py -q
 python3 -m presence.eval_harness            # writes eval/key.csv, rating-pack.xlsx
 python3 -m presence.eval_score --simulate   # pipeline self-test (not a result)
 
-# TypeScript services (Node 20+)
+# TypeScript services (Node 22 LTS, TECH-03)
 cd services/match && npm install && npm test
 cd services/edge  && npm install && npm test
 

@@ -2,6 +2,7 @@
   "name": "@presence/edge",
   "version": "0.1.0",
   "private": true,
+  "engines": { "node": ">=22" },
   "type": "module",
   "description": "Presence edge API — auth, presence, scan, consent, content (PRS-SRS-001 §5)",
   "scripts": {
@@ -14,11 +15,12 @@
     "@fastify/rate-limit": "^10.2.2",
     "fastify": "^5.2.0",
     "h3-js": "^4.2.1",
+    "jwks-rsa": "^3.2.0",
     "ioredis": "^6.0.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {
-    "@types/node": "20.17.0",
+    "@types/node": "22.10.2",
     "@types/pg": "^8.11.10",
     "typescript": "5.6.3"
   }

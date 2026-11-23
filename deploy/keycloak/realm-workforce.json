@@ -1,0 +1,46 @@
+{
+  "realm": "workforce",
+  "enabled": true,
+  "displayName": "Presence Workforce",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": true,
+  "resetPasswordAllowed": true,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 14400,
+  "webAuthnPolicyRpEntityName": "Presence Workforce",
+  "webAuthnPolicyRpId": "presence.example",
+  "webAuthnPolicySignatureAlgorithms": ["ES256", "RS256"],
+  "webAuthnPolicyAttestationConveyancePreference": "direct",
+  "webAuthnPolicyAuthenticatorAttachment": "cross-platform",
+  "webAuthnPolicyRequireResidentKey": "No",
+  "webAuthnPolicyUserVerificationRequirement": "required",
+  "roles": {
+    "realm": [
+      { "name": "moderator", "description": "Trust & safety console (FR-54)" },
+      { "name": "taxonomist", "description": "Taxonomy CMS draft/review/publish (FR-59)" },
+      { "name": "venue-ops", "description": "Venue registry and suspension (FR-42, BR-14)" },
+      { "name": "elevation-eligible", "description": "May request just-in-time admin elevation, max 4 h (SEC-03)" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "workforce-console",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["https://ops.presence.example/auth/callback", "http://localhost:8082/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ]
+}

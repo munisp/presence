@@ -7,6 +7,9 @@
  *                                      advances to MUTUAL
  *   POST /v1/consent/:pairId/open    — open the channel from MUTUAL; only now
  *                                      does identity become visible
+ *   POST /v1/consent/:pairId/nudge   — FR-57: one nudge moves DETECTED to
+ *                                      NUDGED; capped per day and silenced
+ *                                      by the recipient's quiet window
  *   GET  /v1/consent                 — my pairs and their states
  *
  * Illegal transitions are rejected by the database trigger — the edge computes
@@ -17,6 +20,8 @@ import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
 import { EdgeContext, publishRealtime, ROTATION_TTL_S, rotationKey } from "../context.js";
 import { CloseReason, maskCloseReason } from "../lifecycle.js";
+import { NUDGE_DAILY_MAX } from "../moderation.js";
+import { getQuietWindow, inQuietWindow, mergePrefs } from "../notifications.js";
 import { WAVE_DAILY_MAX } from "../velocity.js";
 
 type State = "DETECTED" | "NUDGED" | "EXPRESSED" | "MUTUAL" | "OPEN";
@@ -98,6 +103,58 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
       await ctx.valkey.set(rotationKey(state.lo, state.hi), "1", "EX", ROTATION_TTL_S);
       if (state.to === "MUTUAL") await publish(ctx, pairId, { type: "mutual" });
       return reply.send({ pairId, state: state.to });
+    } catch (err) {
+      return consentError(reply, err);
+    }
+  });
+
+  app.post("/v1/consent/:pairId/nudge", async (req, reply) => {
+    const { pairId } = req.params as { pairId: string };
+
+    // FR-57: nudges are deliberately scarce — a small daily ceiling, counted
+    // per sender per UTC day.
+    const nudges = await ctx.valkey.incr(`nudge:d:${req.userId}`);
+    if (nudges === 1) await ctx.valkey.expire(`nudge:d:${req.userId}`, 86400);
+    if (nudges > NUDGE_DAILY_MAX) {
+      return reply.code(429).send({ error: "daily nudge limit reached (FR-57)" });
+    }
+
+    try {
+      const out = await withRls(ctx.pg, req.userId, async (c) => {
+        const cur = await c.query(
+          "SELECT state, closed_at, expires_at, user_lo, user_hi FROM matches WHERE pair_id = $1",
+          [pairId],
+        );
+        if (cur.rows.length === 0) throw Object.assign(new Error("pair not found"), { code: 404 });
+        const { state: from, closed_at: closedAt, expires_at: expiresAt } = cur.rows[0];
+        if (closedAt || (expiresAt && new Date(expiresAt) <= new Date())) {
+          throw Object.assign(new Error("offer expired (FR-33)"), { code: 409 });
+        }
+        // FR-29: only DETECTED → NUDGED; the trigger guards every other from-state.
+        await c.query(
+          "INSERT INTO consent_ledger (pair_id, actor, from_state, to_state) VALUES ($1, $2, $3, 'NUDGED')",
+          [pairId, req.userId, from],
+        );
+        // FR-33: a nudge renews the offer window like any other action.
+        await c.query(
+          "UPDATE matches SET expires_at = now() + interval '30 minutes' WHERE pair_id = $1 AND closed_at IS NULL",
+          [pairId],
+        );
+        const recipient =
+          cur.rows[0].user_lo === req.userId ? (cur.rows[0].user_hi as string) : (cur.rows[0].user_lo as string);
+        // FR-57: the recipient's quiet window and category switch gate the
+        // realtime event, not the state change.
+        const prefs = await c.query("SELECT notification_prefs FROM users WHERE user_id = $1", [recipient]);
+        return { recipient, stored: prefs.rows[0]?.notification_prefs };
+      });
+      const recipientPrefs = mergePrefs(out.stored);
+      const silenced = recipientPrefs.nudges === false || inQuietWindow(getQuietWindow(out.stored), new Date());
+      if (!silenced) {
+        // FR-30: the event carries no actor identity — pre-OPEN the pair
+        // channel is the only address, and the payload is just the type.
+        await publish(ctx, pairId, { type: "nudged" });
+      }
+      return reply.send({ pairId, state: "NUDGED" });
     } catch (err) {
       return consentError(reply, err);
     }

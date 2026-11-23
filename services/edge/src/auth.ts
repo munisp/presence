@@ -23,33 +23,49 @@ import Postgres from "pg";
 
 export interface AuthedRequest extends FastifyRequest {
   userId: string;
+  tokenPayload?: Record<string, unknown>;
 }
 
 interface CompleteToken {
   header: { kid?: string };
-  payload: { sub?: string };
+  payload: { sub?: string; iss?: string };
 }
 
 /**
  * Register JWT verification. Keycloak RS256+JWKS when KEYCLOAK_ISSUER is set,
  * HS256 dev secret otherwise. The `consumer` realm issues 5-minute access
  * tokens (SEC-02); revocation within 60 s is a Keycloak session operation.
+ *
+ * The `workforce` realm (FR-54 moderation console) is a second accepted
+ * issuer with its own JWKS — moderator tokens never mix with consumer ones,
+ * and requireModerator below still checks the realm and role claim.
  */
 export async function registerAuth(app: FastifyInstance): Promise<void> {
   const issuer = process.env.KEYCLOAK_ISSUER;
+  const workforceIssuer =
+    process.env.KEYCLOAK_WORKFORCE_ISSUER ??
+    (issuer ? issuer.replace(/\/realms\/[^/]+\/?$/, "/realms/workforce") : undefined);
   if (issuer) {
-    const jwks = jwksRsa({
-      jwksUri: `${issuer}/protocol/openid-connect/certs`,
-      cache: true,
-      rateLimit: true,
-    });
+    const clients = new Map<string, jwksRsa.JwksClient>();
+    for (const iss of [issuer, workforceIssuer]) {
+      if (iss && !clients.has(iss)) {
+        clients.set(iss, jwksRsa({
+          jwksUri: `${iss}/protocol/openid-connect/certs`,
+          cache: true,
+          rateLimit: true,
+        }));
+      }
+    }
     await app.register(fastifyJwt, {
       decode: { complete: true },
-      verify: { allowedIss: [issuer], algorithms: ["RS256"] },
+      verify: { allowedIss: [...clients.keys()], algorithms: ["RS256"] },
       secret: (_req: unknown, token: unknown, cb: (e: Error | null, key?: string) => void) => {
-        const kid = (token as CompleteToken).header.kid;
+        const t = token as CompleteToken;
+        const kid = t.header.kid;
         if (!kid) return cb(new Error("token header has no kid"));
-        jwks.getSigningKey(kid, (err, key) => cb(err ?? null, key?.getPublicKey()));
+        const client = clients.get(t.payload.iss ?? "") ?? clients.get(issuer);
+        if (!client) return cb(new Error("unrecognised issuer"));
+        client.getSigningKey(kid, (err, key) => cb(err ?? null, key?.getPublicKey()));
       },
     });
   } else {
@@ -59,13 +75,37 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
   }
 }
 
-/** Verify the bearer token and stash the subject on the request. */
+/** Verify the bearer token and stash the subject and claims on the request. */
 export async function authenticate(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
-    const payload = await req.jwtVerify<{ sub: string }>();
+    const payload = await req.jwtVerify<Record<string, unknown> & { sub: string }>();
     (req as AuthedRequest).userId = payload.sub;
+    (req as AuthedRequest).tokenPayload = payload;
   } catch {
     await reply.code(401).send({ error: "invalid or missing token" });
+  }
+}
+
+/**
+ * FR-54: the moderation console requires a workforce-realm token carrying
+ * the `moderator` realm role. Consumer tokens — even valid ones — stop here.
+ */
+export async function requireModerator(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const payload = ((req as AuthedRequest).tokenPayload ?? {}) as {
+    iss?: string;
+    realm_access?: { roles?: unknown };
+  };
+  const roles = Array.isArray(payload.realm_access?.roles)
+    ? (payload.realm_access.roles as string[])
+    : [];
+  // In the RS256 path the issuer must be the workforce realm; in the offline
+  // HS256 dev path (no KEYCLOAK_ISSUER) the role claim alone gates.
+  const workforceRealm =
+    payload.iss !== undefined
+      ? payload.iss.includes("/realms/workforce")
+      : !process.env.KEYCLOAK_ISSUER;
+  if (!workforceRealm || !roles.includes("moderator")) {
+    await reply.code(403).send({ error: "moderator role required" });
   }
 }
 
@@ -95,6 +135,32 @@ export async function withRls<T>(
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * FR-54: run `fn` inside a transaction with `app.moderator` set. Moderation
+ * console routes use this instead of withRls — the moderator GUC unlocks the
+ * RESTRICTIVE-aware moderation policies (reports outcome updates, suspensions,
+ * appeals) without ever opening consumer rows to a second principal. The GUC
+ * is set server-side only, on routes already gated by requireModerator.
+ */
+export async function withModerator<T>(
+  pool: Postgres.Pool,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.moderator', 'on', true)");
     const out = await fn(client);
     await client.query("COMMIT");
     return out;

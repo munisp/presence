@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 113 | working in the repo with tests or structural evidence |
+| implemented | 118 | working in the repo with tests or structural evidence |
 | partial | 55 | meaningful part implemented; named gap remains |
-| gap-p0 | 29 | ARC-P0 product scope, code not yet built |
+| gap-p0 | 24 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,7 +22,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 51 | 18 | 14 | 1 | 15 | 1 | 0 | 0 | 100 |
+| FR | 56 | 18 | 9 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 6 | 5 | 1 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 23 | 5 | 6 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
@@ -123,15 +123,15 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-49 | partial | `docs/api/openapi.yaml` | reports accepts free-text reason; the fixed category enum is missing. |
 | FR-50 | organisational | — | 24/7 4-h high-severity triage — staffing/rota (BR-16) plus the moderation console (FR-54). |
 | FR-51 | partial | `docs/api/openapi.yaml`<br>`services/edge/src/auth.ts` | Attestation assertion header required on presence write; cryptographic verification + discovery gating pending. |
-| FR-52 | gap-p0 | — | Per-account trust score (verification, report outcomes, account age) not implemented. |
-| FR-53 | gap-p0 | — | Silent investigation removal + appeal path not implemented. |
-| FR-54 | gap-p0 | `db/migrations/0006_profile_safety.sql`<br>`deploy/keycloak/realm-workforce.json` | Moderation console (reason path, ledger, sessions, history; never message content) not built. |
-| FR-55 | gap-p0 | — | Independent suspension of attestation key / handle / payment instrument not implemented. |
+| FR-52 | implemented | `db/migrations/0008_moderation.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts`<br>`services/edge/test/moderation.test.ts` | trust_score() (db/migrations/0008): deterministic SECURITY DEFINER score — base 0.50, +0.20 age-verified, +0.10 at 30/180 days, -0.15/actioned report (cap -0.45), +0.05/dismissed (cap +0.15), -0.02/unresolved (cap -0.10), clamped [0,1]; drives the moderation queue ordering and account card. |
+| FR-53 | implemented | `db/migrations/0008_moderation.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/moderation.ts` | users.investigation_removed_at (discovery gate shares the neutral FR-02 error) + silent purgePresence (no realtime event) via POST /v1/moderation/accounts/:id/investigation-remove|restore; appeals table (one open per account, partial unique index) with POST/GET /v1/account/appeals (screened SEC-26) and console resolve — overturn lifts the suspension and clears the removal in one transaction. |
+| FR-54 | implemented | `db/migrations/0006_profile_safety.sql`<br>`db/migrations/0008_moderation.sql`<br>`deploy/keycloak/realm-workforce.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts` | Workforce-realm moderator gate (requireModerator + per-issuer JWKS, app.moderator GUC via withModerator) fronting 8 console routes: trust-ordered queue, account card (trust inputs, suspensions, report stats, account_ledger_stats aggregates, liveNow, audit trail — never message content), report resolve, investigation remove/restore, suspension lift, appeals queue/resolve; every action admin_audit-logged with governed reason codes. |
+| FR-55 | implemented | `db/migrations/0008_moderation.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/moderation.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/test/moderation.test.ts` | suspensions table + suspension_dimension enum (attestation_key/handle/payment_instrument), one active per (user, dimension) partial unique index; attestation gate wired into presence publish (neutral 403), handle mask via display_handle() inside group_member_directory, payment_instrument record-only until the P3 payments surface; lift is per-dimension. |
 | FR-56 | partial | — | Realtime events carry only a type on an opaque pair channel; APNs/FCM push pipeline not built. |
-| FR-57 | gap-p0 | — | Nudge cap 3/day + user quiet window not implemented (no nudge sender). |
+| FR-57 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/notifications.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/consent.ts` | POST /v1/consent/:pairId/nudge (DETECTED→NUDGED ledger transition, window renewed) capped at 3/sender/UTC-day via Valkey (429); recipient quiet window {start,end} HH:MM UTC (overnight-aware, equal=disabled) stored in notification_prefs and editable via PUT /v1/account/notifications; realtime event suppressed in the window or when the nudges category is off; the event carries no actor identity (FR-30). |
 | FR-58 | partial | `db/migrations/0006_profile_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/notifications.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/test/notifications.test.ts` | GET/PUT /v1/account/notifications over users.notification_prefs: six categories default-on, safety exemption enforced (422 on safety=false). Gap: enforcement lands with the notification dispatcher (no sender yet). |
 | FR-59 | gap-p0 | `deploy/keycloak/realm-workforce.json` | Taxonomy CMS draft/review/publish + one-action rollback not built (seed export scripts only). |
-| FR-60 | implemented | `db/migrations/0006_profile_safety.sql`<br>`db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/features.ts`<br>`tests/test_group_surface.py` | db/migrations/0006 admin_audit — append-only (immutability trigger for every role), actor/action/reason_code/target/before+after jsonb; SECURITY DEFINER admin_audit_log writer for ops and the FR-54 console. |
+| FR-60 | implemented | `db/migrations/0006_profile_safety.sql`<br>`db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/features.ts`<br>`services/edge/src/routes/moderation.ts` | db/migrations/0006 admin_audit — append-only (immutability trigger for every role), actor/action/reason_code/target/before+after jsonb; SECURITY DEFINER admin_audit_log writer for ops and the FR-54 console. |
 | FR-61 | phase-gated | — | Analytics pipeline is P1 lakehouse (Delta/Parquet) per ARC-002 §9; identifier exclusion + cell aggregation specified there. |
 | FR-62 | implemented | `db/migrations/0003_account_deletion.sql`<br>`db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | GET /account/export assembles the full subject record (profile, interests, pairs, ledger actions, blocks, reports) via dsar_export() with FR-32/34 masking intact; erasure via DELETE /account. |
 | FR-63 | implemented | `db/migrations/0006_profile_safety.sql`<br>`services/edge/src/features.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/features.test.ts` | db/migrations/0006 venue_features (default-on, ops-written with admin_audit) + features.ts consulted by the announcements route (403 when disabled); further surfaces inherit as they land. |
@@ -293,7 +293,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-23 | external-evidence | — | OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch. |
 | SEC-24 | partial | — | Dependencies pinned (exact versions + lockfile); SBOM + signed provenance per release not yet produced. |
 | SEC-25 | implemented | — | .github/workflows/ci.yml dependencies job — license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR. |
-| SEC-26 | implemented | — | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
+| SEC-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts` | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
 | SEC-28 | partial | `deploy/k8s/README.md`<br>`deploy/keycloak/README.md` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
 | SEC-29 | implemented | `docs/runbook.md`<br>`services/edge/src/app.ts`<br>`services/edge/src/logscrub.ts`<br>`services/edge/test/logscrub.test.ts` | pino hooks.logMethod scrubber: coordinate/content/credential keys redacted, Bearer/apikey/JWT strings scrubbed, cell+user pairings redacted; 10 unit tests. |

@@ -111,8 +111,18 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       }
     }
 
-    // FR-02/FR-04: age-blocked and deleted accounts cannot publish presence.
+    // FR-02/FR-04/FR-53: age-blocked, deleted and investigation-removed
+    // accounts cannot publish presence.
     if (!(await isDiscoveryAllowed(ctx, userId))) {
+      return reply.code(403).send({ error: DISCOVERY_BLOCKED_ERROR });
+    }
+    // FR-55: an attestation-key suspension closes presence publishing with
+    // the same neutral error — the suspension is never named to the client.
+    const suspended = await ctx.pg.query(
+      "SELECT has_active_suspension($1::uuid, 'attestation_key') AS s",
+      [userId],
+    );
+    if (suspended.rows[0]?.s === true) {
       return reply.code(403).send({ error: DISCOVERY_BLOCKED_ERROR });
     }
     // FR-18: invisible accounts cannot publish presence.

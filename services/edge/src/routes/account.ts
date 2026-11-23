@@ -22,7 +22,7 @@
 
 import { FastifyInstance } from "fastify";
 import { EdgeContext, purgePresence } from "../context.js";
-import { applyPrefsPatch, mergePrefs, NOTIFICATION_CATEGORIES } from "../notifications.js";
+import { applyPrefsPatch, getQuietWindow, mergePrefs, NOTIFICATION_CATEGORIES } from "../notifications.js";
 
 export const AGE_LIMIT = 18; // FR-02
 
@@ -35,14 +35,19 @@ export function isUnderage(birthYear: number, refYear = new Date().getUTCFullYea
 }
 
 /**
- * Discovery gate (FR-02/FR-04): age-blocked and deleted accounts cannot
- * publish presence or scan. Accounts without a row (pre-onboarding dev
- * flows) are allowed; the declaration endpoint creates the row.
+ * Discovery gate (FR-02/FR-04/FR-53): age-blocked, deleted and
+ * investigation-removed accounts cannot publish presence or scan. The
+ * investigation removal shares the same neutral error — the account is never
+ * told why. Accounts without a row (pre-onboarding dev flows) are allowed;
+ * the declaration endpoint creates the row.
  */
 export async function isDiscoveryAllowed(ctx: EdgeContext, userId: string): Promise<boolean> {
-  const r = await ctx.pg.query("SELECT age_blocked, deleted_at FROM users WHERE user_id = $1", [userId]);
+  const r = await ctx.pg.query(
+    "SELECT age_blocked, deleted_at, investigation_removed_at FROM users WHERE user_id = $1",
+    [userId],
+  );
   if (r.rows.length === 0) return true;
-  return !r.rows[0].age_blocked && !r.rows[0].deleted_at;
+  return !r.rows[0].age_blocked && !r.rows[0].deleted_at && !r.rows[0].investigation_removed_at;
 }
 
 export const DISCOVERY_BLOCKED_ERROR = "discovery is not available on this account";
@@ -135,7 +140,10 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): v
   // safety category is exempt and can never be switched off.
   app.get("/v1/account/notifications", async (req, reply) => {
     const r = await ctx.pg.query("SELECT notification_prefs FROM users WHERE user_id = $1", [req.userId]);
-    return reply.send({ prefs: mergePrefs(r.rows[0]?.notification_prefs) });
+    return reply.send({
+      prefs: mergePrefs(r.rows[0]?.notification_prefs),
+      quiet: getQuietWindow(r.rows[0]?.notification_prefs),
+    });
   });
 
   app.put(
@@ -150,9 +158,27 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): v
             prefs: {
               type: "object",
               additionalProperties: false,
-              properties: Object.fromEntries(
-                NOTIFICATION_CATEGORIES.map((c) => [c, { type: "boolean" }]),
-              ),
+              properties: {
+                ...Object.fromEntries(
+                  NOTIFICATION_CATEGORIES.map((c) => [c, { type: "boolean" }]),
+                ),
+                // FR-57: quiet window; strict HH:MM validation lives in
+                // applyPrefsPatch so it can return a 422 with an explanation.
+                quiet: {
+                  anyOf: [
+                    { type: "null" },
+                    {
+                      type: "object",
+                      required: ["start", "end"],
+                      additionalProperties: false,
+                      properties: {
+                        start: { type: "string" },
+                        end: { type: "string" },
+                      },
+                    },
+                  ],
+                },
+              },
             },
           },
         },

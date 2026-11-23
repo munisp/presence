@@ -280,6 +280,33 @@ paths:
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "404": { description: Pair not found. }
         "409": { description: Illegal transition (FR-29) or expired offer (FR-33). }
+  /v1/consent/{pairId}/nudge:
+    post:
+      summary: Nudge a DETECTED pair (FR-57)
+      description: >-
+        Moves the pair DETECTED → NUDGED and renews the offer window. Nudges
+        are scarce — a small daily ceiling per sender (429 when reached) —
+        and quiet: the recipient's realtime event is suppressed inside their
+        quiet window or when their nudges category is off. The event carries
+        no actor identity (FR-30).
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200":
+          description: Nudge recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pairId, state]
+                properties:
+                  pairId: { type: string, format: uuid }
+                  state: { type: string, enum: [NUDGED] }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Pair not found. }
+        "409": { description: Illegal transition (FR-29) or expired offer (FR-33). }
+        "429": { description: Daily nudge limit reached (FR-57). }
   /v1/consent/{pairId}/open:
     post:
       summary: Open the channel from MUTUAL (FR-30, FR-37)
@@ -1194,6 +1221,297 @@ paths:
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "404": { description: Announcement not found. }
         "422": { description: Missing fields or self-report. }
+  /v1/moderation/queue:
+    get:
+      summary: Moderation queue (FR-52, FR-54)
+      description: >-
+        Workforce-realm tokens with the moderator role only (403 otherwise).
+        Open reports ordered by the reported account's trust score ascending,
+        then report age — the accounts most likely to need action surface
+        first.
+      responses:
+        "200":
+          description: Open reports, lowest trust first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queue]
+                properties:
+                  queue:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        reportId: { type: string, format: uuid }
+                        reported: { type: string, format: uuid }
+                        reason: { type: string }
+                        status: { type: string }
+                        trust: { type: number, nullable: true }
+                        createdAt: { type: string, format: date-time }
+        "403": { description: Moderator role required. }
+  /v1/moderation/accounts/{userId}:
+    get:
+      summary: Account card for the console (FR-52, FR-54)
+      description: >-
+        Trust score and its inputs, suspensions, report statistics, consent
+        ledger aggregate counts, live-presence flag and the recent audit
+        trail. Message content is never part of this view.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Account card. }
+        "403": { description: Moderator role required. }
+        "404": { description: Account not found. }
+  /v1/moderation/reports/{reportId}/resolve:
+    post:
+      summary: Resolve a report (FR-52, FR-54, FR-55)
+      description: >-
+        Closes the report with an outcome (feeds the trust score) and
+        optionally creates a suspension and/or flags an investigation removal
+        in the same transaction. The reason code is from the governed
+        vocabulary; the action is audit-logged (FR-60). An investigation
+        removal is silent — presence is purged without a realtime event.
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome, reasonCode]
+              additionalProperties: false
+              properties:
+                outcome: { type: string, enum: [actioned, dismissed] }
+                reasonCode:
+                  type: string
+                  enum: [spam, harassment, scam, underage, impersonation, sexual_content, hate, other_policy]
+                suspension:
+                  type: object
+                  required: [dimension]
+                  additionalProperties: false
+                  properties:
+                    dimension: { type: string, enum: [attestation_key, handle, payment_instrument] }
+                investigationRemove: { type: boolean }
+      responses:
+        "200": { description: Report closed; outcome recorded. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Report not found. }
+        "409": { description: Already resolved, or an active suspension exists on that dimension (FR-55). }
+        "422": { description: Outcome or reason code outside the governed vocabulary. }
+  /v1/moderation/accounts/{userId}/investigation-remove:
+    post:
+      summary: Silent investigation removal (FR-53)
+      description: >-
+        Closes the account's discovery surfaces with the same neutral error
+        as an age block and purges live presence without a realtime event.
+        The account is never notified; the appeal path stays open.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reasonCode]
+              additionalProperties: false
+              properties:
+                reasonCode:
+                  type: string
+                  enum: [spam, harassment, scam, underage, impersonation, sexual_content, hate, other_policy]
+      responses:
+        "200": { description: Account removed from discovery, silently. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "409": { description: Already investigation-removed or unknown account. }
+        "422": { description: Reason code outside the governed vocabulary. }
+  /v1/moderation/accounts/{userId}/investigation-restore:
+    post:
+      summary: Restore an investigation-removed account (FR-53)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reasonCode]
+              additionalProperties: false
+              properties:
+                reasonCode:
+                  type: string
+                  enum: [spam, harassment, scam, underage, impersonation, sexual_content, hate, other_policy]
+      responses:
+        "200": { description: Removal cleared. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "409": { description: Account is not investigation-removed. }
+        "422": { description: Reason code outside the governed vocabulary. }
+  /v1/moderation/suspensions/{suspensionId}/lift:
+    post:
+      summary: Lift one suspension dimension (FR-55)
+      description: >-
+        Lifts a single active suspension; other dimensions are unaffected —
+        independence is the point of the model.
+      parameters:
+        - name: suspensionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reasonCode]
+              additionalProperties: false
+              properties:
+                reasonCode:
+                  type: string
+                  enum: [spam, harassment, scam, underage, impersonation, sexual_content, hate, other_policy]
+      responses:
+        "200": { description: Suspension lifted. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "409": { description: Suspension is not active or unknown. }
+        "422": { description: Reason code outside the governed vocabulary. }
+  /v1/moderation/appeals:
+    get:
+      summary: Open appeals queue (FR-53)
+      responses:
+        "200":
+          description: Open appeals, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [appeals]
+                properties:
+                  appeals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        appealId: { type: string, format: uuid }
+                        userId: { type: string, format: uuid }
+                        suspensionId: { type: string, format: uuid, nullable: true }
+                        body: { type: string }
+                        createdAt: { type: string, format: date-time }
+        "403": { description: Moderator role required. }
+  /v1/moderation/appeals/{appealId}/resolve:
+    post:
+      summary: Resolve an appeal (FR-53, FR-55)
+      description: >-
+        Upholding closes the appeal; overturning additionally lifts the
+        referenced suspension (when still active) and clears any
+        investigation removal — the user is made whole in one transaction.
+      parameters:
+        - name: appealId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reasonCode]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [upheld, overturned] }
+                reasonCode:
+                  type: string
+                  enum: [spam, harassment, scam, underage, impersonation, sexual_content, hate, other_policy]
+                note: { type: string, maxLength: 2000 }
+      responses:
+        "200": { description: Appeal resolved. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Appeal not found. }
+        "409": { description: Appeal already resolved. }
+        "422": { description: Decision or reason code outside the governed vocabulary. }
+  /v1/account/appeals:
+    post:
+      summary: File an appeal (FR-53)
+      description: >-
+        Always available, even to a suspended or investigation-removed
+        account. The body is screened like any other free text (SEC-26). One
+        open appeal per account — a second attempt answers 409.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              additionalProperties: false
+              properties:
+                # Bounds (10–2000 chars) are enforced by the edge parser so
+                # they can return a 422 with an explanation.
+                body: { type: string }
+                suspensionId: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Appeal filed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [appealId, state]
+                properties:
+                  appealId: { type: string, format: uuid }
+                  state: { type: string, enum: [open] }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Suspension not found (not one of yours). }
+        "409": { description: An appeal is already open (FR-53). }
+        "422": { description: Body bounds or screening rejection (SEC-26). }
+    get:
+      summary: My appeals (FR-53)
+      responses:
+        "200":
+          description: The caller's appeals, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [appeals]
+                properties:
+                  appeals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        appealId: { type: string, format: uuid }
+                        suspensionId: { type: string, format: uuid, nullable: true }
+                        body: { type: string }
+                        state: { type: string, enum: [open, upheld, overturned] }
+                        createdAt: { type: string, format: date-time }
+                        resolvedAt: { type: string, format: date-time, nullable: true }
+                        resolutionNote: { type: string, nullable: true }
   /v1/account/age-declaration:
     post:
       summary: Declare birth year (FR-02)
@@ -1410,7 +1728,7 @@ paths:
 
   /v1/account/notifications:
     get:
-      summary: Read notification switches (FR-58)
+      summary: Read notification switches (FR-58) and quiet window (FR-57)
       responses:
         "200":
           description: Per-category switches; safety is always on.
@@ -1418,7 +1736,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [prefs]
+                required: [prefs, quiet]
                 properties:
                   prefs:
                     type: object
@@ -1429,11 +1747,20 @@ paths:
                       offers: { type: boolean }
                       nudges: { type: boolean }
                       safety: { type: boolean }
+                  quiet:
+                    type: object
+                    nullable: true
+                    description: FR-57 quiet window, "HH:MM" UTC; may wrap midnight.
+                    properties:
+                      start: { type: string }
+                      end: { type: string }
     put:
-      summary: Set notification switches (FR-58)
+      summary: Set notification switches (FR-58) and quiet window (FR-57)
       description: >-
         Partial patch per category. The safety category is exempt: setting it
-        false is rejected with 422, and it is always stored as on.
+        false is rejected with 422, and it is always stored as on. The quiet
+        key sets {start,end} "HH:MM" UTC — equal values disable the window —
+        or null to clear it.
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -1454,10 +1781,18 @@ paths:
                     offers: { type: boolean }
                     nudges: { type: boolean }
                     safety: { type: boolean }
+                    quiet:
+                      nullable: true
+                      type: object
+                      required: [start, end]
+                      additionalProperties: false
+                      properties:
+                        start: { type: string }
+                        end: { type: string }
       responses:
         "200": { description: Switches stored. }
         "400": { $ref: "#/components/responses/SchemaViolation" }
-        "422": { description: Attempt to switch off safety notices (FR-58). }
+        "422": { description: Attempt to switch off safety notices (FR-58) or a malformed quiet window. }
 
   /v1/account:
     delete:

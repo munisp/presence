@@ -18,6 +18,7 @@ services:
       - ../db/migrations/0005_floors_checkin.sql:/docker-entrypoint-initdb.d/06_floors.sql:ro
       - ../db/migrations/0006_profile_safety.sql:/docker-entrypoint-initdb.d/07_profile_safety.sql:ro
       - ../db/migrations/0007_group_surface.sql:/docker-entrypoint-initdb.d/08_group_surface.sql:ro
+      - ../db/migrations/0008_moderation.sql:/docker-entrypoint-initdb.d/09_moderation.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

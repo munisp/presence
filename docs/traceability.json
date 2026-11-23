@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 113,
+    "implemented": 118,
     "partial": 55,
-    "gap-p0": 29,
+    "gap-p0": 24,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -24,9 +24,9 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 51,
+      "implemented": 56,
       "partial": 18,
-      "gap-p0": 14,
+      "gap-p0": 9,
       "phase-gated": 1,
       "client": 15,
       "organisational": 1,
@@ -807,30 +807,51 @@
     },
     "FR-52": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Per-account trust score (verification, report outcomes, account age) not implemented."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0008_moderation.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/moderation.ts",
+        "services/edge/src/routes/moderation.ts",
+        "services/edge/test/moderation.test.ts"
+      ],
+      "note": "trust_score() (db/migrations/0008): deterministic SECURITY DEFINER score \u2014 base 0.50, +0.20 age-verified, +0.10 at 30/180 days, -0.15/actioned report (cap -0.45), +0.05/dismissed (cap +0.15), -0.02/unresolved (cap -0.10), clamped [0,1]; drives the moderation queue ordering and account card."
     },
     "FR-53": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Silent investigation removal + appeal path not implemented."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0008_moderation.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/moderation.ts",
+        "services/edge/src/routes/account.ts",
+        "services/edge/src/routes/moderation.ts"
+      ],
+      "note": "users.investigation_removed_at (discovery gate shares the neutral FR-02 error) + silent purgePresence (no realtime event) via POST /v1/moderation/accounts/:id/investigation-remove|restore; appeals table (one open per account, partial unique index) with POST/GET /v1/account/appeals (screened SEC-26) and console resolve \u2014 overturn lifts the suspension and clears the removal in one transaction."
     },
     "FR-54": {
       "family": "FR",
-      "status": "gap-p0",
+      "status": "implemented",
       "evidence": [
         "db/migrations/0006_profile_safety.sql",
-        "deploy/keycloak/realm-workforce.json"
+        "db/migrations/0008_moderation.sql",
+        "deploy/keycloak/realm-workforce.json",
+        "docs/api/openapi.yaml",
+        "services/edge/src/auth.ts"
       ],
-      "note": "Moderation console (reason path, ledger, sessions, history; never message content) not built."
+      "note": "Workforce-realm moderator gate (requireModerator + per-issuer JWKS, app.moderator GUC via withModerator) fronting 8 console routes: trust-ordered queue, account card (trust inputs, suspensions, report stats, account_ledger_stats aggregates, liveNow, audit trail \u2014 never message content), report resolve, investigation remove/restore, suspension lift, appeals queue/resolve; every action admin_audit-logged with governed reason codes."
     },
     "FR-55": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Independent suspension of attestation key / handle / payment instrument not implemented."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0008_moderation.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/moderation.ts",
+        "services/edge/src/routes/presence.ts",
+        "services/edge/test/moderation.test.ts"
+      ],
+      "note": "suspensions table + suspension_dimension enum (attestation_key/handle/payment_instrument), one active per (user, dimension) partial unique index; attestation gate wired into presence publish (neutral 403), handle mask via display_handle() inside group_member_directory, payment_instrument record-only until the P3 payments surface; lift is per-dimension."
     },
     "FR-56": {
       "family": "FR",
@@ -840,9 +861,15 @@
     },
     "FR-57": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Nudge cap 3/day + user quiet window not implemented (no nudge sender)."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "services/edge/src/moderation.ts",
+        "services/edge/src/notifications.ts",
+        "services/edge/src/routes/account.ts",
+        "services/edge/src/routes/consent.ts"
+      ],
+      "note": "POST /v1/consent/:pairId/nudge (DETECTED\u2192NUDGED ledger transition, window renewed) capped at 3/sender/UTC-day via Valkey (429); recipient quiet window {start,end} HH:MM UTC (overnight-aware, equal=disabled) stored in notification_prefs and editable via PUT /v1/account/notifications; realtime event suppressed in the window or when the nudges category is off; the event carries no actor identity (FR-30)."
     },
     "FR-58": {
       "family": "FR",
@@ -872,7 +899,7 @@
         "db/migrations/0007_group_surface.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/features.ts",
-        "tests/test_group_surface.py"
+        "services/edge/src/routes/moderation.ts"
       ],
       "note": "db/migrations/0006 admin_audit \u2014 append-only (immutability trigger for every role), actor/action/reason_code/target/before+after jsonb; SECURITY DEFINER admin_audit_log writer for ops and the FR-54 console."
     },
@@ -2041,7 +2068,11 @@
     "SEC-26": {
       "family": "SEC",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "services/edge/src/moderation.ts",
+        "services/edge/src/routes/moderation.ts"
+      ],
       "note": ".github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml \u2014 all gated on every PR and push to main."
     },
     "SEC-27": {

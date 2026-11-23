@@ -277,7 +277,16 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         await pipe.exec();
       }
 
-      return reply.send({ state: body.state, results });
+      // FR-44: in the crowd band discovery transitions to interest rooms —
+      // the response says so and points at the room surface.
+      const crowdMode = budget.band === "crowd" && typeof venueId === "string" && venueId.length > 0;
+      return reply.send({
+        state: body.state,
+        results,
+        ...(crowdMode
+          ? { mode: "rooms" as const, roomsUrl: `/v1/venues/${venueId}/rooms` }
+          : {}),
+      });
     },
   );
 }

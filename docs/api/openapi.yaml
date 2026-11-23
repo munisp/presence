@@ -229,6 +229,13 @@ paths:
                             properties:
                               slot: { type: integer, minimum: 1, maximum: 3 }
                               body: { type: string, maxLength: 120 }
+                  mode:
+                    type: string
+                    enum: [rooms]
+                    description: FR-44 crowd-mode transition — present only in the crowd band.
+                  roomsUrl:
+                    type: string
+                    description: FR-44 — the venue's interest-room surface when mode is rooms.
         "403": { description: Discovery unavailable on this account (neutral — FR-02/FR-04). }
         "409": { description: No live presence; enter a venue first. }
         "429": { description: Scan rate limit exceeded (FR-24 per-minute, SEC-20 hourly, or FR-28 density budget). }
@@ -1183,6 +1190,154 @@ paths:
         "204": { description: The counterpart has not shared a link yet. }
         "404": { description: Pair not found. }
         "409": { description: Link sharing opens once the pair is OPEN. }
+  /v1/venues/{venueId}/rooms:
+    get:
+      summary: Crowd-mode interest rooms (FR-44, FR-45)
+      description: >-
+        The discovery surface once the venue crosses the crowd density band
+        (FR-44): rooms formed from the live population's declared,
+        non-sensitive interests, each with a k-suppressed member count
+        (FR-45). Below the crowd band the list is empty and the mode field
+        says why. Requires live presence at the venue. Rooms are ephemeral —
+        they dissolve with the crowd.
+      parameters:
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Current mode and the venue's rooms (empty outside crowd mode).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode, rooms]
+                properties:
+                  mode: { type: string, enum: [sparse, busy, crowd] }
+                  rooms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string, description: opaque room key (venue and topic are not recoverable from it) }
+                        topic: { type: string, description: taxonomy node }
+                        members: { type: integer, nullable: true, description: k-suppressed }
+                        suppressed: { type: boolean }
+                        k: { type: integer }
+                        joined: { type: boolean }
+        "403": { description: Live presence at the venue is required. }
+  /v1/rooms/{roomKey}/join:
+    post:
+      summary: Opt into a room (FR-44)
+      description: >-
+        Requires live presence at the room's venue, a still-crowded venue,
+        and a declared interest in the room topic — a room is formed from
+        declared interests, so joining one is declaring you share it.
+        Idempotent.
+      parameters:
+        - name: roomKey
+          in: path
+          required: true
+          schema: { type: string }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Joined (or already a member). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Live presence at the venue is required. }
+        "404": { description: Room not found (or dissolved). }
+        "409": { description: The room has dissolved with the crowd. }
+        "422": { description: Joining needs a declared interest in the room topic. }
+  /v1/rooms/{roomKey}:
+    get:
+      summary: Room content (FR-45)
+      description: >-
+        Topic, k-suppressed member count and the recent notes ring buffer.
+        Members only — non-members get the same 404 as a missing room.
+        Notes carry no author field: opting in is what publishes a note.
+      parameters:
+        - name: roomKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Room state and notes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key: { type: string }
+                  topic: { type: string }
+                  members: { type: integer, nullable: true }
+                  suppressed: { type: boolean }
+                  k: { type: integer }
+                  notes:
+                    type: array
+                    items:
+                      type: object
+                      required: [noteId, body, at]
+                      properties:
+                        noteId: { type: string, format: uuid }
+                        body: { type: string }
+                        at: { type: string, format: date-time }
+        "404": { description: Room not found or not a member (indistinguishable). }
+  /v1/rooms/{roomKey}/notes:
+    post:
+      summary: Post a room note (FR-46)
+      description: >-
+        One note per member per room per five minutes (429 inside the
+        window). The member's first note in the room passes the SEC-21
+        content filters; later notes are not re-screened. Notes are
+        ephemeral and unattributed.
+      parameters:
+        - name: roomKey
+          in: path
+          required: true
+          schema: { type: string }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              additionalProperties: false
+              properties:
+                # Bounds (1–280 chars) are enforced by the edge parser so
+                # they can return a 422 with an explanation.
+                body: { type: string }
+      responses:
+        "201":
+          description: Note posted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [noteId, body, at]
+                properties:
+                  noteId: { type: string, format: uuid }
+                  body: { type: string }
+                  at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Room not found or not a member (indistinguishable). }
+        "422": { description: Body bounds or first-note screening rejection (SEC-21). }
+        "429": { description: One note per five minutes per room (FR-46). }
+  /v1/rooms/{roomKey}/leave:
+    delete:
+      summary: Leave a room (FR-45)
+      description: Idempotent opt-out; leaving a dissolved room is a no-op.
+      parameters:
+        - name: roomKey
+          in: path
+          required: true
+          schema: { type: string }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Left (or never a member). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
   /v1/reports:
     post:
       summary: File a report (BR-07, FR-40, FR-49, FR-98)

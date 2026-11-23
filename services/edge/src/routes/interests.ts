@@ -58,13 +58,11 @@ export function registerInterestRoutes(app: FastifyInstance, ctx: EdgeContext): 
       let count = 0;
       if (live.length > 0) {
         // Declarations of the node itself plus its descendants (the closure
-        // table has no self-hop, hence the OR).
+        // table has no self-hop, hence the OR inside the function). Runs as
+        // owner: the profile_owner RLS policy would otherwise hide every row
+        // but the caller's own and the count would always be zero.
         const r = await ctx.pg.query(
-          `SELECT count(DISTINCT pi.user_id) AS n
-             FROM profile_interests pi
-             LEFT JOIN taxonomy_closure tc ON tc.node_id = pi.node_id
-            WHERE (pi.node_id = $1 OR tc.ancestor_id = $1)
-              AND pi.user_id = ANY($2::uuid[])`,
+          "SELECT interest_popularity($1, $2::uuid[]) AS n",
           [nodeId, live],
         );
         count = Number(r.rows[0].n);

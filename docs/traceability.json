@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 118,
+    "implemented": 121,
     "partial": 55,
-    "gap-p0": 24,
+    "gap-p0": 21,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -24,9 +24,9 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 56,
+      "implemented": 59,
       "partial": 18,
-      "gap-p0": 9,
+      "gap-p0": 6,
       "phase-gated": 1,
       "client": 15,
       "organisational": 1,
@@ -435,8 +435,10 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
+        "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/interests.ts"
+        "services/edge/src/routes/interests.ts",
+        "tests/test_rooms.py"
       ],
       "note": "GET /v1/interests/:nodeId/popularity \u2014 live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22)."
     },
@@ -466,9 +468,9 @@
       "evidence": [
         "docs/api/openapi.yaml",
         "services/edge/src/context.ts",
+        "services/edge/src/rooms.ts",
         "services/edge/src/routes/account.ts",
-        "services/edge/src/routes/presence.ts",
-        "services/edge/src/routes/scan.ts"
+        "services/edge/src/routes/presence.ts"
       ],
       "note": "newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId \u2014 account ids never leave the edge pre-OPEN."
     },
@@ -750,25 +752,39 @@
     },
     "FR-44": {
       "family": "FR",
-      "status": "gap-p0",
+      "status": "implemented",
       "evidence": [
-        "services/edge/src/screening.ts"
+        "db/migrations/0009_rooms.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/rooms.ts",
+        "services/edge/src/routes/rooms.ts",
+        "services/edge/src/routes/scan.ts"
       ],
-      "note": "Crowd-mode transition to interest rooms \u2014 room surface not built."
+      "note": "Crowd-band transition: GET /v1/venues/:id/rooms lists rooms derived owner-side (room_topics() SECURITY DEFINER) from live members' declared non-sensitive interests; below crowd the list is empty with the mode field; scan responses announce mode=rooms + roomsUrl in the crowd band; joins need live venue presence, a still-crowded venue and a declared interest in the topic."
     },
     "FR-45": {
       "family": "FR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Interest-room content rules (topic, suppressed count, opted-in notes) \u2014 with FR-44."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0009_rooms.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/rooms.ts",
+        "services/edge/src/routes/rooms.ts",
+        "tests/test_rooms.py"
+      ],
+      "note": "Room content rules: opaque roomKey (sha256 venue:node), topic, kSuppressed member count, member-only GET with uniform 404, opt-in join/leave; notes carry no author field \u2014 opting in is what publishes; everything lives in Valkey with presence-aligned TTL (900s), no room table in Postgres (test-pinned)."
     },
     "FR-46": {
       "family": "FR",
-      "status": "gap-p0",
+      "status": "implemented",
       "evidence": [
+        "db/migrations/0009_rooms.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/rooms.ts",
+        "services/edge/src/routes/rooms.ts",
         "services/edge/src/screening.ts"
       ],
-      "note": "Room posting 1 note/5 min + first-message content filters \u2014 with FR-44/SEC-21."
+      "note": "Posting discipline: SET NX EX 300 gate \u2192 one note per member per room per five minutes (429); first note per member per room screened via screenText (SEC-21 idiom, room:screened marker), later notes not re-screened; notes ring-buffered at 50 with TTL refresh on activity."
     },
     "FR-47": {
       "family": "FR",
@@ -1707,10 +1723,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0001_init.sql",
+        "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
         "presence/matching.py",
-        "services/edge/src/profile.ts",
-        "services/edge/src/routes/interests.ts"
+        "services/edge/src/profile.ts"
       ],
       "note": "Sensitive nodes skipped at vector construction (write time), not query time."
     },
@@ -2029,10 +2045,11 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
+        "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/routes/messages.ts",
-        "services/edge/src/screening.ts",
-        "services/edge/test/screening.test.ts"
+        "services/edge/src/routes/rooms.ts",
+        "services/edge/src/screening.ts"
       ],
       "note": "screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested."
     },

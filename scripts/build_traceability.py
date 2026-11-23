@@ -140,9 +140,12 @@ CLASSIFICATION: dict[str, tuple[str, str]] = {
     "FR-41": ("partial", "DELETE /v1/pairs/:pairId/messages/:messageId — sender-only (RESTRICTIVE policy + column-limited grant), 24-h window blanks the envelope and tombstones; 410 after. Gap: local delete UX is client work."),
     "FR-42": ("partial", "venues carries geofence (PostGIS), h3_res, thresholds, active; partner status + operating schedule missing."),
     "FR-43": ("partial", "events = venue + window in schema; presence-to-event attribution not wired."),
-    "FR-44": ("gap-p0", "Crowd-mode transition to interest rooms — room surface not built."),
-    "FR-45": ("gap-p0", "Interest-room content rules (topic, suppressed count, opted-in notes) — with FR-44."),
-    "FR-46": ("gap-p0", "Room posting 1 note/5 min + first-message content filters — with FR-44/SEC-21."),
+    "FR-44": ("implemented", "Crowd-band transition: GET /v1/venues/:id/rooms lists rooms derived owner-side (room_topics() SECURITY DEFINER) from live members' declared non-sensitive interests; below crowd the list is empty with the mode field; scan responses announce mode=rooms + roomsUrl in the crowd band; joins need live venue presence, a still-crowded venue and a declared interest in the topic."),
+
+    "FR-45": ("implemented", "Room content rules: opaque roomKey (sha256 venue:node), topic, kSuppressed member count, member-only GET with uniform 404, opt-in join/leave; notes carry no author field — opting in is what publishes; everything lives in Valkey with presence-aligned TTL (900s), no room table in Postgres (test-pinned)."),
+
+    "FR-46": ("implemented", "Posting discipline: SET NX EX 300 gate → one note per member per room per five minutes (429); first note per member per room screened via screenText (SEC-21 idiom, room:screened marker), later notes not re-screened; notes ring-buffered at 50 with TTL refresh on activity."),
+
     "FR-47": ("implemented", "Resolution ladder 9>10 (2 000) >11 (10 000) on live venue density; tested."),
     "FR-48": ("partial", "Venue check-in codes live via FR-99/FR-100 signed per-floor tokens; venue-side code printing/distribution ops remain with the client workstream."),
     "FR-49": ("partial", "reports accepts free-text reason; the fixed category enum is missing."),

@@ -6,11 +6,13 @@ import { authenticate, registerAuth } from "./auth.js";
 import { EdgeContext } from "./context.js";
 import { registerConsentRoutes } from "./routes/consent.js";
 import { registerAccountRoutes } from "./routes/account.js";
+import { registerAnnouncementRoutes } from "./routes/announcements.js";
 import { registerContentRoutes } from "./routes/content.js";
 import { registerLifecycleRoutes } from "./routes/lifecycle.js";
 import { registerMessageRoutes } from "./routes/messages.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
 import { registerScanRoutes } from "./routes/scan.js";
+import { registerVenueRoutes } from "./routes/venue.js";
 
 export async function buildApp(ctx: EdgeContext) {
   // TR-23: ajv strict mode, no silent coercion-stripping — unknown fields in
@@ -37,6 +39,8 @@ export async function buildApp(ctx: EdgeContext) {
     registerLifecycleRoutes(authed, ctx);
     registerAccountRoutes(authed, ctx);
     registerContentRoutes(authed, ctx);
+    registerAnnouncementRoutes(authed, ctx);
+    registerVenueRoutes(authed, ctx);
     registerMessageRoutes(authed, ctx);
   });
 

@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 103 | working in the repo with tests or structural evidence |
-| partial | 54 | meaningful part implemented; named gap remains |
-| gap-p0 | 40 | ARC-P0 product scope, code not yet built |
+| implemented | 113 | working in the repo with tests or structural evidence |
+| partial | 55 | meaningful part implemented; named gap remains |
+| gap-p0 | 29 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,10 +22,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 42 | 18 | 23 | 1 | 15 | 1 | 0 | 0 | 100 |
+| FR | 51 | 18 | 14 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 6 | 5 | 1 | 1 | 11 | 0 | 13 | 0 | 37 |
 | TR | 23 | 5 | 6 | 4 | 6 | 0 | 0 | 0 | 44 |
-| SEC | 12 | 10 | 6 | 1 | 1 | 5 | 3 | 0 | 38 |
+| SEC | 13 | 11 | 4 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 9 | 7 | 2 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
@@ -101,7 +101,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-27 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/match/src/engine.ts` | Ordered reason path in every scan payload; /v1/score re-scores any explicit pair. |
 | FR-28 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/budget.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/test/budget.test.ts` | budget.ts ladder (sparse <25: 3/hr; busy <100: 2/hr; crowd: 1/day) enforced in scan.ts via budget:scan:{uid} Valkey counters; separate from the SEC-20 abuse ceiling. |
 | FR-29 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0002_offer_lifecycle.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts` | DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested. |
-| FR-30 | implemented | `db/migrations/0001_init.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/messages.ts` | Identity RLS-gated to OPEN; verified by policy + edge tests. |
+| FR-30 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts` | Identity RLS-gated to OPEN; verified by policy + edge tests. |
 | FR-31 | implemented | `docs/api/openapi.yaml` | One wave per offer via illegal-transition rejection; the wave carries no content. |
 | FR-32 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/lifecycle.ts`<br>`services/edge/src/routes/account.ts` | Silent decline: POST /consent/:id/decline always answers 204, publishes 'expired'; maskCloseReason maps declined>expired; tested. |
 | FR-33 | implemented | `db/migrations/0002_offer_lifecycle.sql`<br>`db/migrations/0003_account_deletion.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/index.ts`<br>`services/edge/src/lifecycle.ts` | 30-min offer window: expires_at set at first surfacing, renewed per action; lifecycle_tick expires overdue offers; tested. |
@@ -131,22 +131,22 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-57 | gap-p0 | — | Nudge cap 3/day + user quiet window not implemented (no nudge sender). |
 | FR-58 | partial | `db/migrations/0006_profile_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/notifications.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/test/notifications.test.ts` | GET/PUT /v1/account/notifications over users.notification_prefs: six categories default-on, safety exemption enforced (422 on safety=false). Gap: enforcement lands with the notification dispatcher (no sender yet). |
 | FR-59 | gap-p0 | `deploy/keycloak/realm-workforce.json` | Taxonomy CMS draft/review/publish + one-action rollback not built (seed export scripts only). |
-| FR-60 | implemented | `db/migrations/0006_profile_safety.sql`<br>`services/edge/src/features.ts` | db/migrations/0006 admin_audit — append-only (immutability trigger for every role), actor/action/reason_code/target/before+after jsonb; SECURITY DEFINER admin_audit_log writer for ops and the FR-54 console. |
+| FR-60 | implemented | `db/migrations/0006_profile_safety.sql`<br>`db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/features.ts`<br>`tests/test_group_surface.py` | db/migrations/0006 admin_audit — append-only (immutability trigger for every role), actor/action/reason_code/target/before+after jsonb; SECURITY DEFINER admin_audit_log writer for ops and the FR-54 console. |
 | FR-61 | phase-gated | — | Analytics pipeline is P1 lakehouse (Delta/Parquet) per ARC-002 §9; identifier exclusion + cell aggregation specified there. |
 | FR-62 | implemented | `db/migrations/0003_account_deletion.sql`<br>`db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts` | GET /account/export assembles the full subject record (profile, interests, pairs, ledger actions, blocks, reports) via dsar_export() with FR-32/34 masking intact; erasure via DELETE /account. |
 | FR-63 | implemented | `db/migrations/0006_profile_safety.sql`<br>`services/edge/src/features.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/features.test.ts` | db/migrations/0006 venue_features (default-on, ops-written with admin_audit) + features.ts consulted by the announcements route (403 when disabled); further surfaces inherit as they land. |
 | FR-64 | implemented | `db/migrations/0006_profile_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/profile.ts`<br>`services/edge/src/routes/profile.ts`<br>`services/edge/src/routes/scan.ts` | profile_prompts (slot 1-3, varchar 120) behind PUT/GET /v1/profile/prompts, screened like announcements (SEC-37); attached to surfaced scan candidates as reason material; no search endpoint, no content index. |
-| FR-65 | gap-p0 | — | Post-OPEN allowlisted social link, counterpart-only, never fetched server-side — not implemented. |
-| FR-66 | gap-p0 | — | Group tables <=6, member-only visibility — not implemented. |
-| FR-67 | gap-p0 | — | Table conversation cards from shared reasons, labelled generated — not implemented. |
-| FR-68 | gap-p0 | — | Bookable 1:1 slots where booking is the consent act — not implemented. |
-| FR-69 | gap-p0 | — | Host designation, name+role display, scoped visibility — not implemented. |
+| FR-65 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/links.ts`<br>`services/edge/src/routes/links.ts`<br>`services/edge/test/links.test.ts` | PUT/GET /v1/pairs/:pairId/link over pair_links: OPEN-gated by an RLS policy mirroring messages, one link per member (upsert keeps shared_at), counterpart-only reads (owner <> caller), https-only + <=300 chars at the data layer; the server stores and returns the string and never fetches it (SEC-34). |
+| FR-66 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts`<br>`services/edge/test/groups.test.ts` | group_tables + group_table_members with member-only RLS; create/join require live venue presence; the six-seat cap is a data-layer trigger (SEC-33), re-join idempotent; self-serve leave, host remove, last-member-out closes. |
+| FR-67 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts`<br>`services/edge/test/groups.test.ts` | GET /v1/tables/:id/cards — join-time snapshot (group_table_interests, joining is the act that shares) aggregated over nodes shared by >=2 members, sensitive excluded, ranked by reach, top 5; every card labelled generated:true (buildCards, unit-tested). |
+| FR-68 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts` | table_slots (5-60 min, future start) + slot_bookings: the booking row IS the consent act (actor+timestamp, PK caps one booking per slot); conditional state flip guards races; cancel by booker or offerer re-opens future slots, idempotent. |
+| FR-69 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts`<br>`tests/test_group_surface.py` | Exactly-one-host trigger + creator seated as host; group_member_directory (SECURITY DEFINER) returns co-member handle+role to members only — the scoped FR-30 carve-out; no photos, nothing leaves the table. |
 | FR-70 | client | — | Verification status at identity reveal — client rendering (+ data from FR-51/52). |
 | FR-71 | gap-p0 | — | Recurrence signal (hashed pair, day counter, <=1/day, no timestamps) — optional MAY, not implemented. |
-| FR-72 | gap-p0 | — | Table boundary acceptance criteria — with FR-66. |
-| FR-73 | gap-p0 | — | Booked-slot acceptance criteria — with FR-68. |
-| FR-74 | gap-p0 | — | Host accountability + visibility limits — with FR-69. |
-| FR-75 | gap-p0 | — | Group enumeration restrictions — with FR-66/68. |
+| FR-72 | implemented | `tests/test_group_surface.py` | tests/test_group_surface.py asserts the cap/single-host triggers, RLS on all six tables, member-only policies, creator-scoped insert, the member-scoped directory (no photos), the open-only join probe, and membership-scoped listing with uniform 404s. |
+| FR-73 | implemented | `tests/test_group_surface.py` | tests/test_group_surface.py asserts the slot_bookings PK double-book guard, state/duration CHECKs, actor-scoped booking/cancel policies, column-limited grants, the atomic state flip, and host-action audit logging. |
+| FR-74 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/tables.ts`<br>`tests/test_group_surface.py` | Host remove and close write admin_audit rows (FR-60, governed host_discretion reason); host visibility stops at directory name+role; a host with members cannot leave (409) — they close the table instead. |
+| FR-75 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/tables.ts`<br>`tests/test_group_surface.py` | GET /v1/tables returns only the caller's memberships (no venue-wide listing exists); every table/slot-scoped route answers a uniform 404 to non-members; group_join_info reveals only venue+headcount of open tables, closed indistinguishable from nonexistent. |
 | FR-76 | client | — | Convergence rendering from the reason payload — payload complete server-side (TR-08). |
 | FR-77 | implemented | — | Structural: no endpoint exposes maps, bearings, distances, radii, or proximity arrangements. |
 | FR-78 | client | — | Density-as-texture rendering, no positional component. |
@@ -300,8 +300,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-30 | partial | — | Append-only consent ledger exists; general security-event audit store + 12-month retention missing. |
 | SEC-31 | organisational | — | Incident response plan, severity levels, on-call, 72-h regulator path, twice-yearly rehearsal. |
 | SEC-32 | organisational | — | Law-enforcement request procedure + annual transparency report. |
-| SEC-33 | gap-p0 | — | Group-surface participant caps enforced in the data layer — with rooms/tables (FR-44/66). |
-| SEC-34 | gap-p0 | — | External links plain-text + interstitial + allowlist, no server fetch — with FR-65. |
+| SEC-33 | implemented | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/groups.ts`<br>`services/edge/src/routes/tables.ts`<br>`services/edge/test/groups.test.ts` | group_table_member_cap() trigger locks the table row FOR UPDATE and rejects the seventh member; slot_bookings PK caps one booking per slot; rooms (FR-44) inherit the same pattern when built. |
+| SEC-34 | partial | `db/migrations/0007_group_surface.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/links.ts`<br>`services/edge/src/routes/links.ts`<br>`services/edge/test/links.test.ts` | Code-owned domain allowlist + https-only/credential-free/length-bound validation (links.ts, unit-tested), https CHECK at the data layer, plain-text responses carrying interstitial:true, and a no-fetch guarantee pinned by test_group_surface. Gap: rendering the warning sheet is client work, pending with the RN client. |
 | SEC-35 | client | — | Contentless ambient surfaces — client enforcement. |
 | SEC-36 | partial | — | Mock-location refusal is client-side; the server-side refusal record endpoint is missing. |
 | SEC-37 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/src/routes/profile.ts` | screenText gates both announcement publish and respond routes; findings return category-coded 422, never the matched text. |

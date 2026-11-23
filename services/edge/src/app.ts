@@ -13,10 +13,12 @@ import { registerAnnouncementRoutes } from "./routes/announcements.js";
 import { registerContentRoutes } from "./routes/content.js";
 import { registerInterestRoutes } from "./routes/interests.js";
 import { registerLifecycleRoutes } from "./routes/lifecycle.js";
+import { registerLinkRoutes } from "./routes/links.js";
 import { registerMessageRoutes } from "./routes/messages.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
 import { registerProfileRoutes } from "./routes/profile.js";
 import { registerScanRoutes } from "./routes/scan.js";
+import { registerTableRoutes } from "./routes/tables.js";
 import { registerVenueRoutes } from "./routes/venue.js";
 
 export async function buildApp(ctx: EdgeContext) {
@@ -60,6 +62,8 @@ export async function buildApp(ctx: EdgeContext) {
     registerMessageRoutes(authed, ctx);
     registerProfileRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
+    registerTableRoutes(authed, ctx);
+    registerLinkRoutes(authed, ctx);
   });
 
   return app;

@@ -701,6 +701,461 @@ paths:
                   activeOffers: { type: [integer, "null"] }
                   liveAnnouncements: { type: [integer, "null"] }
         "403": { description: Venue partner token required (BR-12). }
+  /v1/tables:
+    post:
+      summary: Create a group table (FR-66, FR-69)
+      description: >-
+        Creates an open table at a venue and seats the creator as its
+        designated host. Live presence at the venue is required, the name is
+        content-screened, and the creator's declared non-sensitive interests
+        are snapshotted into the table as card material (FR-67). Tables seat
+        at most six (SEC-33, enforced in the data layer).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [venueId, name]
+              additionalProperties: false
+              properties:
+                venueId: { type: string, format: uuid }
+                eventId: { type: string, format: uuid }
+                name: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        "201":
+          description: Table created; the creator is its host.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tableId, name, venueId, eventId, state, role, createdAt]
+                properties:
+                  tableId: { type: string, format: uuid }
+                  name: { type: string }
+                  venueId: { type: string, format: uuid }
+                  eventId: { type: [string, "null"], format: uuid }
+                  state: { type: string, enum: [open] }
+                  role: { type: string, enum: [host] }
+                  createdAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Live presence at the venue is required. }
+        "404": { description: Unknown venue. }
+        "422": { description: Name unusable, screened content, or event/venue mismatch. }
+    get:
+      summary: List my group tables (FR-75)
+      description: >-
+        Returns only tables the caller belongs to, optionally narrowed to a
+        venue. There is deliberately no venue-wide listing — group surfaces
+        are never enumerable (FR-75).
+      parameters:
+        - name: venueId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The caller's memberships.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tables]
+                properties:
+                  tables:
+                    type: array
+                    items:
+                      type: object
+                      required: [tableId, name, venueId, eventId, state, role, createdAt]
+                      properties:
+                        tableId: { type: string, format: uuid }
+                        name: { type: string }
+                        venueId: { type: string, format: uuid }
+                        eventId: { type: [string, "null"], format: uuid }
+                        state: { type: string, enum: [open] }
+                        role: { type: string, enum: [host, member] }
+                        createdAt: { type: string, format: date-time }
+  /v1/tables/{tableId}:
+    get:
+      summary: Table detail with the member directory (FR-66, FR-69)
+      description: >-
+        Member-only. Members carry display name and role from the scoped
+        directory (group_member_directory) — name+role is the FR-30
+        carve-out for the group surface and never leaves the table. Non-
+        members receive 404; existence is never leaked (FR-75).
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Table detail and member directory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tableId, name, venueId, eventId, state, createdAt, members]
+                properties:
+                  tableId: { type: string, format: uuid }
+                  name: { type: string }
+                  venueId: { type: string, format: uuid }
+                  eventId: { type: [string, "null"], format: uuid }
+                  state: { type: string, enum: [open, closed] }
+                  createdAt: { type: string, format: date-time }
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      required: [userId, handle, role, joinedAt]
+                      properties:
+                        userId: { type: string, format: uuid }
+                        handle: { type: [string, "null"] }
+                        role: { type: string, enum: [host, member] }
+                        joinedAt: { type: string, format: date-time }
+        "404": { description: Not found, or the caller is not a member (FR-75). }
+    delete:
+      summary: Close the table (FR-74)
+      description: >-
+        Host-only. Open slots are cancelled with the table and the closure
+        is written to the admin audit log (FR-60). Closing is idempotent.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200":
+          description: Table closed (idempotent).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tableId, state]
+                properties:
+                  tableId: { type: string, format: uuid }
+                  state: { type: string, enum: [closed] }
+        "403": { description: Only the host can close the table. }
+        "404": { description: Not found, or the caller is not a member (FR-75). }
+  /v1/tables/{tableId}/join:
+    post:
+      summary: Join an open table (FR-66, SEC-33)
+      description: >-
+        Self-serve join while live at the table's venue. Joining is the act
+        that shares: the member's declared non-sensitive interests are
+        snapshotted into the table for conversation cards (FR-67). The
+        seventh join is refused — the cap is enforced by a data-layer
+        trigger (SEC-33). Re-joining is idempotent and refreshes the
+        snapshot.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201":
+          description: Joined.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tableId, role, alreadyMember]
+                properties:
+                  tableId: { type: string, format: uuid }
+                  role: { type: string, enum: [member] }
+                  alreadyMember: { type: boolean }
+        "200":
+          description: Already a member; the snapshot was refreshed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tableId, role, alreadyMember]
+                properties:
+                  tableId: { type: string, format: uuid }
+                  role: { type: string, enum: [member] }
+                  alreadyMember: { type: boolean }
+        "403": { description: Live presence at the venue is required. }
+        "404": { description: Not found or closed — indistinguishable (FR-75). }
+        "409": { description: Table is full (six seats, SEC-33). }
+  /v1/tables/{tableId}/members/{userId}:
+    delete:
+      summary: Leave, or the host removes a member (FR-66, FR-74)
+      description: >-
+        A member removes themselves; the host removes anyone. The departing
+        member's open slots are cancelled and their interest snapshot is
+        erased. Host removals are audit-logged (FR-74). A host with members
+        remaining cannot leave — close the table instead. The last member
+        out closes the table.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "204": { description: Membership removed. }
+        "403": { description: Only the host can remove other members. }
+        "404": { description: Not found, or the caller is not a member (FR-75). }
+        "409": { description: The host cannot leave while members remain. }
+  /v1/tables/{tableId}/cards:
+    get:
+      summary: Conversation cards from shared interests (FR-67)
+      description: >-
+        Member-only. Cards are derived from the join-time interest snapshot:
+        any node shared by at least two members becomes a card, ranked by
+        reach and capped at five. Every card is labelled generated — they
+        are machine-derived icebreakers, never member-authored content.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Generated conversation cards.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cards]
+                properties:
+                  cards:
+                    type: array
+                    items:
+                      type: object
+                      required: [nodeId, label, memberCount, members, generated]
+                      properties:
+                        nodeId: { type: string }
+                        label: { type: string }
+                        memberCount: { type: integer, minimum: 2 }
+                        members:
+                          type: array
+                          items: { type: string, format: uuid }
+                        generated:
+                          type: boolean
+                          description: Always true — FR-67 labelling.
+        "404": { description: Not found, or the caller is not a member (FR-75). }
+  /v1/tables/{tableId}/slots:
+    post:
+      summary: Offer a 1:1 slot (FR-68)
+      description: >-
+        Any member offers a bookable 1:1 slot at the table. The start must
+        be in the future; the duration is 5-60 minutes (default 15).
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startsAt]
+              additionalProperties: false
+              properties:
+                startsAt: { type: string, format: date-time }
+                durationMinutes: { type: integer, minimum: 5, maximum: 60 }
+      responses:
+        "201":
+          description: Slot offered.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slotId, tableId, offerer, startsAt, durationMinutes, state, createdAt]
+                properties:
+                  slotId: { type: string, format: uuid }
+                  tableId: { type: string, format: uuid }
+                  offerer: { type: string, format: uuid }
+                  startsAt: { type: string, format: date-time }
+                  durationMinutes: { type: integer }
+                  state: { type: string, enum: [open] }
+                  createdAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Not found, or the caller is not a member (FR-75). }
+        "409": { description: Table is closed. }
+        "422": { description: Start not in the future or duration out of range. }
+    get:
+      summary: Member-only slot list (FR-68, FR-75)
+      description: >-
+        Non-cancelled slots from the last day onward, with their booking
+        state. Bookings are visible inside the table only.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Slots and bookings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slots]
+                properties:
+                  slots:
+                    type: array
+                    items:
+                      type: object
+                      required: [slotId, offerer, startsAt, durationMinutes, state, booking]
+                      properties:
+                        slotId: { type: string, format: uuid }
+                        offerer: { type: string, format: uuid }
+                        startsAt: { type: string, format: date-time }
+                        durationMinutes: { type: integer }
+                        state: { type: string, enum: [open, booked] }
+                        booking:
+                          type: [object, "null"]
+                          required: [booker, bookedAt, cancelledAt]
+                          properties:
+                            booker: { type: string, format: uuid }
+                            bookedAt: { type: string, format: date-time }
+                            cancelledAt: { type: [string, "null"], format: date-time }
+        "404": { description: Not found, or the caller is not a member (FR-75). }
+  /v1/slots/{slotId}/book:
+    post:
+      summary: Book a slot — the booking is the consent act (FR-68)
+      description: >-
+        Booking a slot is itself the consent act for the 1:1; there is no
+        separate express step. A conditional state flip plus the booking
+        primary key make double-booking impossible (SEC-33). Members cannot
+        book their own offers.
+      parameters:
+        - name: slotId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201":
+          description: Booked; the booking row records the consent act.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slotId, booker, bookedAt]
+                properties:
+                  slotId: { type: string, format: uuid }
+                  booker: { type: string, format: uuid }
+                  bookedAt: { type: string, format: date-time }
+        "404": { description: Not found, or the caller is not a member (FR-75). }
+        "409": { description: Slot is no longer bookable. }
+        "410": { description: Slot has passed. }
+        "422": { description: You cannot book your own slot. }
+    delete:
+      summary: Cancel a booking (FR-68)
+      description: >-
+        The booker or the offerer cancels. A future slot re-opens for
+        someone else; a past one lapses. Cancellation is idempotent.
+      parameters:
+        - name: slotId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200":
+          description: Cancelled (idempotent).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slotId, state, cancelledAt]
+                properties:
+                  slotId: { type: string, format: uuid }
+                  state: { type: string, enum: [cancelled] }
+                  cancelledAt: { type: string, format: date-time }
+        "403": { description: Only the booker or the offerer can cancel. }
+        "404": { description: No booking found. }
+  /v1/pairs/{pairId}/link:
+    put:
+      summary: Share one allowlisted external link (FR-65, SEC-34)
+      description: >-
+        Post-OPEN only — the RLS policy on pair_links makes the consent gate
+        non-negotiable. Each member stores at most one link; replacing it
+        keeps the original shared_at. The URL must be https, carry no
+        credentials, stay under 300 characters, and sit on the governed
+        domain allowlist (SEC-34). The server stores and returns the string;
+        it never fetches it.
+      parameters:
+        - name: pairId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              additionalProperties: false
+              properties:
+                url: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        "200":
+          description: Link stored (created or replaced).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, domain, interstitial, sharedAt, updatedAt]
+                properties:
+                  url: { type: string }
+                  domain: { type: string }
+                  interstitial:
+                    type: boolean
+                    description: Always true — the client renders the warning sheet (SEC-34).
+                  sharedAt: { type: string, format: date-time }
+                  updatedAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Pair not found. }
+        "409": { description: Link sharing opens once the pair is OPEN. }
+        "422": { description: Not https, carries credentials, too long, or domain not allowlisted. }
+    get:
+      summary: Read the counterpart's link (FR-65, SEC-34)
+      description: >-
+        Returns the counterpart's link, never the caller's own. The payload
+        is plain text plus the interstitial flag; the client renders the
+        leaving-the-app warning sheet before opening (SEC-34). The URL is
+        never fetched server-side.
+      parameters:
+        - name: pairId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The counterpart's link.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, domain, interstitial, sharedAt, updatedAt]
+                properties:
+                  url: { type: string }
+                  domain: { type: [string, "null"] }
+                  interstitial:
+                    type: boolean
+                    description: Always true — the client renders the warning sheet (SEC-34).
+                  sharedAt: { type: string, format: date-time }
+                  updatedAt: { type: string, format: date-time }
+        "204": { description: The counterpart has not shared a link yet. }
+        "404": { description: Pair not found. }
+        "409": { description: Link sharing opens once the pair is OPEN. }
   /v1/reports:
     post:
       summary: File a report (BR-07, FR-40, FR-49, FR-98)

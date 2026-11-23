@@ -24,6 +24,7 @@ services:
       - ../db/migrations/0010_devices.sql:/docker-entrypoint-initdb.d/11_devices.sql:ro
       - ../db/migrations/0011_linking.sql:/docker-entrypoint-initdb.d/12_linking.sql:ro
       - ../db/seed/taxonomy_embeddings.sql:/docker-entrypoint-initdb.d/13_taxonomy_embeddings.sql:ro
+      - ../db/migrations/0012_taxonomy_cms.sql:/docker-entrypoint-initdb.d/14_taxonomy_cms.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 127,
+    "implemented": 129,
     "partial": 55,
-    "gap-p0": 15,
+    "gap-p0": 13,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -24,9 +24,9 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 64,
+      "implemented": 65,
       "partial": 18,
-      "gap-p0": 1,
+      "gap-p0": 0,
       "phase-gated": 1,
       "client": 15,
       "organisational": 1,
@@ -44,9 +44,9 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 23,
+      "implemented": 24,
       "partial": 5,
-      "gap-p0": 6,
+      "gap-p0": 5,
       "phase-gated": 4,
       "client": 6,
       "organisational": 0,
@@ -410,10 +410,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0011_linking.sql",
+        "db/migrations/0012_taxonomy_cms.sql",
         "db/seed/taxonomy_embeddings.sql",
         "deploy/docker-compose.yml",
-        "deploy/k8s/postgres.yaml",
-        "docs/api/openapi.yaml"
+        "deploy/k8s/postgres.yaml"
       ],
       "note": "POST /v1/profile/interests/link: free text (<=500 chars, screened SEC-26 idiom) is embedded with the deterministic ngram-hash-384.v1 embedder and matched over the pgvector taxonomy space (migration 0011 + generated seed); top-5 candidates above a 0.15 cosine floor, sensitive/redirected nodes excluded at seed and query time (TR-22), already-declared nodes excluded via the owner-GUC read (FR-13 discipline). Per-node confirmation: the route never writes (test-pinned) \u2014 confirmed nodes go through the governed FR-08 endpoint."
     },
@@ -454,10 +454,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0009_rooms.sql",
+        "db/migrations/0012_taxonomy_cms.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/routes/interests.ts",
-        "services/edge/src/routes/linking.ts",
-        "tests/test_linking.py"
+        "services/edge/src/routes/linking.ts"
       ],
       "note": "GET /v1/interests/:nodeId/popularity \u2014 live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22)."
     },
@@ -926,11 +926,15 @@
     },
     "FR-59": {
       "family": "FR",
-      "status": "gap-p0",
+      "status": "implemented",
       "evidence": [
-        "deploy/keycloak/realm-workforce.json"
+        "db/migrations/0012_taxonomy_cms.sql",
+        "deploy/keycloak/realm-workforce.json",
+        "docs/api/openapi.yaml",
+        "services/edge/src/auth.ts",
+        "services/edge/src/linking.ts"
       ],
-      "note": "Taxonomy CMS draft/review/publish + one-action rollback not built (seed export scripts only)."
+      "note": "Taxonomy CMS (migration 0012 + /v1/taxonomy/releases console): draft \u2192 submit \u2192 approve (second-person, author <> reviewer enforced in SQL) \u2192 publish \u2192 one-action rollback of the latest published release. Six governed ops (add_node/edit_label/set_sensitive/deprecate/add_link/remove_link; node deletion is not an operation \u2014 history is deprecated, never destroyed). Publish snapshots, applies re-validated ops, rebuilds the closure and re-syncs embeddings in one transaction; rollback restores the snapshot as a delta and never touches rows user data references (SECURITY DEFINER reference count, FR-13 discipline). Write-guard triggers keep live taxonomy SELECT-only to the app role outside the CMS; every route gated by requireTaxonomist + app.taxonomist GUC; publish/rollback audited (FR-60)."
     },
     "FR-60": {
       "family": "FR",
@@ -1572,10 +1576,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0001_init.sql",
+        "db/migrations/0012_taxonomy_cms.sql",
         "db/seed/taxonomy.sql",
         "presence/graph.py",
-        "presence/matching.py",
-        "scripts/export_taxonomy_sql.py"
+        "presence/matching.py"
       ],
       "note": "0.55/hop, depth <=4, max-combine \u2014 pinned against the answer key (653/653)."
     },
@@ -1711,9 +1715,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0001_init.sql",
+        "db/migrations/0012_taxonomy_cms.sql",
         "presence/graph.py",
-        "services/match/src/engine.ts",
-        "tests/test_matching.py"
+        "services/edge/src/taxonomy.ts",
+        "services/edge/test/taxonomy.test.ts"
       ],
       "note": "Graph enforces an acyclic hierarchy <=5 levels + typed non-hierarchical edges."
     },
@@ -1722,10 +1727,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0001_init.sql",
+        "db/migrations/0012_taxonomy_cms.sql",
         "db/seed/taxonomy.sql",
-        "presence/graph.py",
-        "scripts/export_taxonomy_sql.py",
-        "services/match/src/engine.ts"
+        "docs/api/openapi.yaml",
+        "presence/graph.py"
       ],
       "note": "taxonomy_closure materialised, rebuilt by the seed/export pipeline."
     },
@@ -1739,9 +1744,15 @@
     },
     "TR-20": {
       "family": "TR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "Monotonic version + provenance + diff summary per taxonomy release \u2014 no release tooling."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0012_taxonomy_cms.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/taxonomy.ts",
+        "services/edge/src/taxonomy.ts",
+        "services/edge/test/taxonomy.test.ts"
+      ],
+      "note": "taxonomy_releases carries a monotonic version from the taxonomy_release_version sequence (assigned at publish only, UNIQUE), full provenance (author, reviewer, published_by, rolled_back_by + per-transition timestamps) and a diff summary jsonb counted per operation class; the pre-publish snapshot is stored on the release as the rollback basis. Exposed on the release list/detail console endpoints."
     },
     "TR-21": {
       "family": "TR",
@@ -1756,8 +1767,8 @@
         "db/migrations/0001_init.sql",
         "db/migrations/0009_rooms.sql",
         "db/migrations/0011_linking.sql",
-        "docs/api/openapi.yaml",
-        "presence/matching.py"
+        "db/migrations/0012_taxonomy_cms.sql",
+        "docs/api/openapi.yaml"
       ],
       "note": "Sensitive nodes skipped at vector construction (write time), not query time."
     },
@@ -2460,10 +2471,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0011_linking.sql",
+        "db/migrations/0012_taxonomy_cms.sql",
         "db/seed/taxonomy_embeddings.sql",
         "deploy/docker-compose.yml",
-        "deploy/k8s/postgres.yaml",
-        "docs/api/openapi.yaml"
+        "deploy/k8s/postgres.yaml"
       ],
       "note": "pgvector lives only in the linking stack: extension + taxonomy_node_embeddings vector(384) with HNSW cosine index (migration 0011), link_taxonomy_nodes() excludes sensitive/redirected nodes, app role is SELECT-only; the deterministic ngram-hash-384.v1 embedder is implemented bit-identically in Python (seed generation) and TypeScript (query time), pinned against shared golden vectors. The never-in-match-path boundary is test-pinned: match service, scan route and presence model reference nothing from the linking stack. Deploy postgres image builds pgvector v0.8.0 (deploy/postgres/Dockerfile); migration + seed mounted in compose and k8s."
     },

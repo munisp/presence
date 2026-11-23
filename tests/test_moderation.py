@@ -167,7 +167,10 @@ def test_fr54_every_console_route_requires_the_moderator_role() -> None:
 
 def test_fr54_console_queries_run_under_the_moderator_guc() -> None:
     assert "withModerator" in MOD_ROUTE
-    assert "set_config('app.moderator', 'on', true)" in AUTH
+    assert 'withGuc(pool, "app.moderator", fn)' in AUTH, (
+        "withModerator must run its transaction with the app.moderator GUC set"
+    )
+    assert "set_config('${guc}', 'on', true)" in AUTH
     assert "CREATE OR REPLACE FUNCTION app_moderator()" in MIGRATION
 
 

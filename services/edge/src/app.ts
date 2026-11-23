@@ -24,6 +24,7 @@ import { registerProfileRoutes } from "./routes/profile.js";
 import { registerRoomRoutes } from "./routes/rooms.js";
 import { registerScanRoutes } from "./routes/scan.js";
 import { registerTableRoutes } from "./routes/tables.js";
+import { registerTaxonomyRoutes } from "./routes/taxonomy.js";
 import { registerVenueRoutes } from "./routes/venue.js";
 
 export async function buildApp(ctx: EdgeContext) {
@@ -74,6 +75,7 @@ export async function buildApp(ctx: EdgeContext) {
     registerIntentRoutes(authed, ctx);
     registerDeviceRoutes(authed, ctx);
     registerLinkingRoutes(authed, ctx);
+    registerTaxonomyRoutes(authed, ctx);
   });
 
   return app;

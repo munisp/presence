@@ -271,6 +271,115 @@ paths:
                         similarity: { type: number }
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "422": { description: Text fails validation or screening. }
+  /v1/taxonomy/releases:
+    post:
+      summary: Create a draft taxonomy release (FR-59)
+      description: >-
+        Workforce taxonomists only. The release carries an ordered list of
+        governed operations (add_node, edit_label, set_sensitive, deprecate,
+        add_link, remove_link); node deletion is not an operation. Nothing
+        touches the live taxonomy until publish.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, ops]
+              additionalProperties: false
+              properties:
+                message: { type: string }
+                ops:
+                  type: array
+                  items: { type: object }
+      responses:
+        "201": { description: Draft release created. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Taxonomist role required. }
+        "422": { description: Message or an operation fails validation. }
+    get:
+      summary: List taxonomy releases (FR-59)
+      responses:
+        "200": { description: Newest first, at most 100. }
+        "403": { description: Taxonomist role required. }
+  /v1/taxonomy/releases/{releaseId}:
+    get:
+      summary: Release detail with operations (FR-59, TR-20)
+      parameters:
+        - name: releaseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Release with its ordered operations and diff summary. }
+        "403": { description: Taxonomist role required. }
+        "404": { description: Release not found. }
+  /v1/taxonomy/releases/{releaseId}/submit:
+    post:
+      summary: Submit a draft for review (FR-59)
+      parameters:
+        - name: releaseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Release is in review. }
+        "403": { description: Taxonomist role required. }
+        "409": { description: Release not found or not a draft. }
+  /v1/taxonomy/releases/{releaseId}/approve:
+    post:
+      summary: Approve a release — second person only (FR-59)
+      description: The author can never approve their own release.
+      parameters:
+        - name: releaseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Release approved. }
+        "403": { description: Taxonomist role required. }
+        "409": { description: Not in review, or review requires a second person. }
+  /v1/taxonomy/releases/{releaseId}/publish:
+    post:
+      summary: Publish an approved release (FR-59, TR-20)
+      description: >-
+        One transaction: snapshot the pre-publish state, apply the
+        operations (re-validated against live state), assign the monotonic
+        version, record the diff summary, rebuild the closure (TR-18) and
+        re-sync the embedding search space (TR-22). Audited (FR-60).
+      parameters:
+        - name: releaseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Published; carries the monotonic version. }
+        "403": { description: Taxonomist role required. }
+        "404": { description: Release not found. }
+        "409": { description: Release must be approved before publish. }
+        "422": { description: An operation no longer validates against live state. }
+  /v1/taxonomy/releases/{releaseId}/rollback:
+    post:
+      summary: One-action rollback of the latest published release (FR-59)
+      description: >-
+        Restores the snapshot as a delta — rows referenced by user data are
+        never touched. Refused while live data references nodes the release
+        added; deprecate them in a new release instead. Audited (FR-60).
+      parameters:
+        - name: releaseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Rolled back to the pre-publish state. }
+        "403": { description: Taxonomist role required. }
+        "404": { description: Release not found. }
+        "409": { description: Not the latest published release, or rollback blocked by live references. }
   /v1/venues/{venueId}/checkin-tokens:
     post:
       summary: Mint a per-floor check-in token (FR-99, FR-100)

@@ -91,6 +91,15 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply): Pr
  * the `moderator` realm role. Consumer tokens — even valid ones — stop here.
  */
 export async function requireModerator(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  await requireWorkforceRole(req, reply, "moderator");
+}
+
+/** FR-59: taxonomy console gate — workforce realm + the taxonomist role. */
+export async function requireTaxonomist(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  await requireWorkforceRole(req, reply, "taxonomist");
+}
+
+async function requireWorkforceRole(req: FastifyRequest, reply: FastifyReply, role: string): Promise<void> {
   const payload = ((req as AuthedRequest).tokenPayload ?? {}) as {
     iss?: string;
     realm_access?: { roles?: unknown };
@@ -104,8 +113,8 @@ export async function requireModerator(req: FastifyRequest, reply: FastifyReply)
     payload.iss !== undefined
       ? payload.iss.includes("/realms/workforce")
       : !process.env.KEYCLOAK_ISSUER;
-  if (!workforceRealm || !roles.includes("moderator")) {
-    await reply.code(403).send({ error: "moderator role required" });
+  if (!workforceRealm || !roles.includes(role)) {
+    await reply.code(403).send({ error: `${role} role required` });
   }
 }
 
@@ -157,10 +166,30 @@ export async function withModerator<T>(
   pool: Postgres.Pool,
   fn: (client: Postgres.PoolClient) => Promise<T>,
 ): Promise<T> {
+  return withGuc(pool, "app.moderator", fn);
+}
+
+/**
+ * FR-59: run `fn` inside a transaction with `app.taxonomist` set. The GUC
+ * unlocks the release tables and the taxonomy write-guard triggers; it is
+ * set server-side only, on routes already gated by requireTaxonomist.
+ */
+export async function withTaxonomist<T>(
+  pool: Postgres.Pool,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
+  return withGuc(pool, "app.taxonomist", fn);
+}
+
+async function withGuc<T>(
+  pool: Postgres.Pool,
+  guc: string,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT set_config('app.moderator', 'on', true)");
+    await client.query(`SELECT set_config('${guc}', 'on', true)`);
     const out = await fn(client);
     await client.query("COMMIT");
     return out;

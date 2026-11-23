@@ -67,6 +67,13 @@ export function toVectorLiteral(vec: readonly number[]): string {
   return `[${vec.join(",")}]`;
 }
 
+/** Seed-side input, mirroring scripts/taxonomy_embedder.py node_text: the
+ * label plus the dotted path as words, so a node inherits its ancestors'
+ * context. Used by the taxonomy CMS (FR-59) when re-syncing embeddings. */
+export function nodeText(nodeId: string, label: string): string {
+  return `${label} ${nodeId.replaceAll(".", " ")}`;
+}
+
 export type LinkBodyParse = { ok: true; text: string } | { ok: false; error: string };
 
 export function parseLinkBody(

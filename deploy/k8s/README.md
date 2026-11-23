@@ -14,6 +14,7 @@ kubectl -n presence create configmap postgres-initdb \
   --from-file=00_keycloak.sql=deploy/keycloak/init.sql \
   --from-file=01_init.sql=db/migrations/0001_init.sql \
   --from-file=02_taxonomy.sql=db/seed/taxonomy.sql \
+  --from-file=03_lifecycle.sql=db/migrations/0002_offer_lifecycle.sql \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n presence create configmap keycloak-realms \
   --from-file=deploy/keycloak/realm-consumer.json \

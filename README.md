@@ -27,7 +27,11 @@ services/edge/          Fastify edge API
   src/routes/           presence, scan, consent, content, messages
 db/                     Postgres 17 schema + taxonomy seed
 deploy/keycloak/        realm imports (consumer/workforce/partners) + KC db init
-deploy/docker-compose.yml   the P0 stack
+deploy/apisix/          gateway standalone config for the dev compose stack
+deploy/k8s/             K8s manifests: workloads, APISIX gateway, HPA (INF-10),
+                        NetworkPolicy (INF-12/14), Flagger canary (INF-16)
+deploy/docker-compose.yml   the P0 stack (APISIX fronts :9080)
+scripts/validate_deploy.py  asserts the deployment invariants (TR-26, INF-10..16)
 docs/                   presence model, traceability, ADRs
 tests/                  Python regression suite (TR-10, 60 key-pinned pairs)
 eval/                   generated ACC-10 artifacts (key, pack, results)
@@ -55,6 +59,11 @@ docker compose -f deploy/docker-compose.yml up --build
 # edge on :4000, match on :4100, centrifugo on :8000, keycloak on :8080
 # (admin / p0-dev-admin — dev only). The edge verifies consumer-realm RS256
 # tokens via JWKS (KEYCLOAK_ISSUER); unset it to fall back to the HS256 dev secret.
+# APISIX (sole public ingress, TECH-21) fronts the API on :9080 — prefer
+# http://localhost:9080/v1/... over hitting the edge directly.
+
+# Kubernetes (integration/staging/production): see deploy/k8s/README.md
+kubectl apply -k deploy/k8s/
 ```
 
 ## Development

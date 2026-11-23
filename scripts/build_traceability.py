@@ -143,7 +143,7 @@ CLASSIFICATION: dict[str, tuple[str, str]] = {
     "FR-44": ("gap-p0", "Crowd-mode transition to interest rooms — room surface not built."),
     "FR-45": ("gap-p0", "Interest-room content rules (topic, suppressed count, opted-in notes) — with FR-44."),
     "FR-46": ("gap-p0", "Room posting 1 note/5 min + first-message content filters — with FR-44/SEC-21."),
-    "FR-47": ("implemented", "Resolution ladder 9>10 (2 000) > 11 (10 000) on live venue density; tested."),
+    "FR-47": ("implemented", "Resolution ladder 9>10 (2 000) >11 (10 000) on live venue density; tested."),
     "FR-48": ("gap-p0", "Venue check-in codes — signed-token path (FR-100) not built."),
     "FR-49": ("partial", "reports accepts free-text reason; the fixed category enum is missing."),
     "FR-50": ("organisational", "24/7 4-h high-severity triage — staffing/rota (BR-16) plus the moderation console (FR-54)."),

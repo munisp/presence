@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 85 | working in the repo with tests or structural evidence |
-| partial | 50 | meaningful part implemented; named gap remains |
-| gap-p0 | 62 | ARC-P0 product scope, code not yet built |
+| implemented | 94 | working in the repo with tests or structural evidence |
+| partial | 51 | meaningful part implemented; named gap remains |
+| gap-p0 | 52 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -22,12 +22,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 6 | 4 | 1 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 34 | 13 | 36 | 1 | 15 | 1 | 0 | 0 | 100 |
+| FR | 37 | 15 | 31 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 4 | 5 | 3 | 1 | 11 | 0 | 13 | 0 | 37 |
-| TR | 20 | 5 | 9 | 4 | 6 | 0 | 0 | 0 | 44 |
-| SEC | 8 | 11 | 9 | 1 | 1 | 5 | 3 | 0 | 38 |
+| TR | 23 | 5 | 6 | 4 | 6 | 0 | 0 | 0 | 44 |
+| SEC | 10 | 10 | 8 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 5 | 4 | 1 | 0 | 0 | 1 | 8 | 1 | 20 |
-| TECH | 8 | 7 | 3 | 1 | 3 | 1 | 0 | 1 | 24 |
+| TECH | 9 | 7 | 2 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
 ## BR — Business requirements (§3)
@@ -45,7 +45,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR-09 | organisational | — | Per-market local-currency pricing via store billing — monetisation phase. |
 | BR-10 | organisational | — | Pilot unit-economics targets (CAC <= EUR6, payback <=4 mo, conversion >=3%). |
 | BR-11 | organisational | — | Venue agreement: data-processing roles, signage, escalation, 30-day termination. |
-| BR-12 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`deploy/keycloak/realm-partners.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/aggregate.ts`<br>`services/edge/src/routes/scan.ts` | GET /v1/venues/:venueId/dashboard serves live presence, hourly scans, active offers and live announcements to venue_ids-claim tokens; match-funnel attribution arrives with FR-43. |
+| BR-12 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`deploy/keycloak/realm-partners.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/aggregate.ts`<br>`services/edge/src/routes/checkin.ts` | GET /v1/venues/:venueId/dashboard serves live presence, hourly scans, active offers and live announcements to venue_ids-claim tokens; match-funnel attribution arrives with FR-43. |
 | BR-13 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/aggregate.ts`<br>`services/edge/src/routes/venue.ts`<br>`services/edge/test/aggregate.test.ts` | kSuppressed (aggregate.ts, k=11) withholds every dashboard figure below k; routes/venue.ts applies it to all metrics. |
 | BR-14 | partial | `deploy/keycloak/realm-workforce.json` | venues.active is checked on scan (immediate effect); suspension fully propagates within the 15-min TTL; venue self-serve suspend endpoint missing. |
 | BR-15 | organisational | — | Resourcing: 4 FTE + fractional design/DPO/T&S, 16 weeks to pilot. |
@@ -119,7 +119,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-45 | gap-p0 | — | Interest-room content rules (topic, suppressed count, opted-in notes) — with FR-44. |
 | FR-46 | gap-p0 | `services/edge/src/screening.ts` | Room posting 1 note/5 min + first-message content filters — with FR-44/SEC-21. |
 | FR-47 | implemented | — | Resolution ladder 9>10 (2 000) >11 (10 000) on live venue density; tested. |
-| FR-48 | gap-p0 | — | Venue check-in codes — signed-token path (FR-100) not built. |
+| FR-48 | partial | — | Venue check-in codes live via FR-99/FR-100 signed per-floor tokens; venue-side code printing/distribution ops remain with the client workstream. |
 | FR-49 | partial | `docs/api/openapi.yaml` | reports accepts free-text reason; the fixed category enum is missing. |
 | FR-50 | organisational | — | 24/7 4-h high-severity triage — staffing/rota (BR-16) plus the moderation console (FR-54). |
 | FR-51 | partial | `docs/api/openapi.yaml`<br>`services/edge/src/auth.ts` | Attestation assertion header required on presence write; cryptographic verification + discovery gating pending. |
@@ -160,9 +160,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-86 | client | — | Ambient surfaces individually opt-in, off by default, one-action disable. |
 | FR-87 | client | — | Prohibited engagement mechanics — none exist server-side; enforcement is client review. |
 | FR-88 | client | — | Location-accuracy authorization read before publish; refuse on approximate-only. |
-| FR-89 | gap-p0 | — | Venue check-in as the primary indoor presence path — signed codes (FR-100). |
+| FR-89 | partial | — | Check-in basis exists (signed tokens + floor attribution, FR-99/FR-100); making check-in the PRIMARY indoor presence path is client/UX work, outstanding. |
 | FR-90 | partial | — | venues.geofence holds the canonical polygon; attribution, versioning and precedence logic not implemented. |
-| FR-91 | gap-p0 | — | 7-day no-re-offer rotation + per-user tie-break counter — only 10-min suppression exists. |
+| FR-91 | implemented | `services/edge/src/context.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts` | rotate:{lo}:{hi} keys (EX 604800) set on consent express and excluded from scans; per-user tbreak counter feeds the match service's seeded sha256 tie-break. |
 | FR-92 | client | — | 5-min modal-cell stabilisation on device (SHOULD). |
 | FR-93 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | POST /v1/announcements: 24-h account trust floor (isTrustedPublisher), effectiveTtlMinutes clamps to the 4-h cap, category on insert. |
 | FR-94 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | announcement_responses + accept route; publicResponse masks the responder id until accepted_at is set. |
@@ -170,8 +170,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-96 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | Fixed category enum (schema + CHECK); bodies and responses screened with screenText, category-coded 422 (SEC-37). |
 | FR-97 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/announcements.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/test/announcements.test.ts` | canPublishCategory refuses the work category unless the token carries verified_org (BR-33). |
 | FR-98 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/src/routes/content.ts` | reports.announcement_id + maybe_remove_announcement (2 reports/10 min, removed_at retained); publisher notified via Centrifugo; reads filter removed rows. |
-| FR-99 | gap-p0 | — | Per-floor codes/polygons/attribution + connected-floor declaration — not implemented. |
-| FR-100 | gap-p0 | — | Signed check-in token, QR baseline, NFC optional, same token format — not implemented. |
+| FR-99 | implemented | `db/migrations/0005_floors_checkin.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/floors.ts`<br>`services/edge/src/routes/checkin.ts`<br>`services/edge/src/routes/presence.ts` | venue_floors (0005) with per-floor polygons + connected_to; presence floorId attribution validated against declarations; same-venue scans floor-scoped via floorsCompatible. |
+| FR-100 | implemented | `db/migrations/0005_floors_checkin.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/checkin.ts`<br>`services/edge/src/routes/checkin.ts`<br>`services/edge/test/checkin.test.ts` | HMAC-SHA256 pc1.<claims>.<sig> tokens, TTL<=300s, mint (partner) + verify (user) routes; NFC/QR printing is venue-side ops of the same token format. |
 
 ## NFR — Non-functional requirements (§5)
 
@@ -242,7 +242,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-21 | gap-p0 | — | 250k-node closure <10 min — scale test not run (current seed is a small synthetic graph). |
 | TR-22 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | Sensitive nodes skipped at vector construction (write time), not query time. |
 | TR-23 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/announcements.ts`<br>`services/edge/src/routes/content.ts` | docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode — unknown fields hard-400 before the handler runs. |
-| TR-24 | gap-p0 | — | Idempotency keys on every mutating endpoint — not implemented. |
+| TR-24 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/app.ts`<br>`services/edge/src/idempotency.ts`<br>`services/edge/test/idempotency.test.ts`<br>`tests/test_openapi_contract.py` | Optional Idempotency-Key honoured on all mutating endpoints: idem:{uid}:{key} pending-lease/24h record in Valkey, replay + 409-in-flight semantics, 5xx clears. |
 | TR-25 | partial | — | Errors carry a message only; stable machine codes + retry hints missing; no internal leaks observed. |
 | TR-26 | implemented | `deploy/apisix/config.yaml`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml` | APISIX listener configured TLSv1.3-only with HTTP/2 (deploy/k8s/apisix.yaml); downgrade impossible at the listener; asserted by scripts/validate_deploy.py. Dev compose stays plaintext by design. |
 | TR-27 | client | — | Unsupported-version detection + update prompt. |
@@ -254,13 +254,13 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-33 | client | — | Certificate pinning removable by configuration (MAY). |
 | TR-34 | gap-p0 | — | Stable metric keys + versioned CSV telemetry export contract — not implemented. |
 | TR-35 | partial | — | Reason payload is render-complete (TR-08); the versioned diagram spec is a client artifact. |
-| TR-36 | gap-p0 | — | idf prior smoothing (<=2% shift at N>=30) — not implemented; current idf has no global-taxonomy prior. |
+| TR-36 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/src/store.ts`<br>`services/match/test/prior.test.ts`<br>`tests/test_idf_prior.py` | Optional global prior (all-profile link-free df, 10-min rebuild) blended with fade w(N)=(30-N)/30 — 0% shift at N>=30, exact-formula tests in TS+Python. |
 | TR-37 | gap-p0 | — | Per-market resolution calibration held in configuration — the ladder is code constants today (SHOULD). |
 | TR-38 | phase-gated | — | Polygon attribution as a lakehouse spatial join published to the operational store (P1 lakehouse). |
 | TR-39 | phase-gated | — | Gold-table owner/grain/SLO/retention + catalogue registration (P1 lakehouse). |
 | TR-40 | implemented | — | Phase-gate admission documented; 8 ADRs recorded (Valkey, Keycloak, Kafka, Dapr, OpenSearch, payments, GeoLibre, sequencing). |
 | TR-41 | gap-p0 | — | GeoLibre authoring + second-person review + density verification workflow — not built. |
-| TR-42 | gap-p0 | — | Floor id + connected floors on geometry records — schema extension pending (FR-99). |
+| TR-42 | implemented | `db/migrations/0005_floors_checkin.sql`<br>`services/edge/src/floors.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/test/floors.test.ts` | venue_floors.venue_id/floor_id + geography(Polygon,4326) geofence + connected_to on the venue geometry records (0005, PostGIS canonical). |
 | TR-43 | phase-gated | — | GeoParquet analytical outputs (P1 lakehouse). |
 | TR-44 | phase-gated | — | Static-tile serving when map surfaces arrive; no runtime tile server exists (compliant by absence). |
 
@@ -289,14 +289,14 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-19 | partial | `docs/api/openapi.yaml`<br>`services/edge/src/auth.ts` | Assertion header required on presence write; cryptographic verification + documented fallback pending. |
 | SEC-20 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/src/velocity.ts` | rl:scan:h 200/h (429) and rl:wave:d 20/day (429) Valkey counters; isImpossibleTravel rejects fixes implying >500 km/h with a 422. |
 | SEC-21 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/screening.ts`<br>`services/edge/test/screening.test.ts` | screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested. |
-| SEC-22 | partial | — | No list endpoints; results capped at 3; tie-break is deterministic userId — randomised/rotating tie-break (FR-91) pending. |
+| SEC-22 | implemented | `services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/rotation.test.ts` | No list endpoints; results capped at 3; tie-break rotates per scan via edge-supplied seed (sha256(seed:userId)); unseeded legacy order retained only for tooling/tests. |
 | SEC-23 | external-evidence | — | OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch. |
 | SEC-24 | partial | — | Dependencies pinned (exact versions + lockfile); SBOM + signed provenance per release not yet produced. |
 | SEC-25 | gap-p0 | — | Dependency licence policy check in CI. |
 | SEC-26 | gap-p0 | — | SAST + dependency + secret scanning on every PR — CI not built. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
 | SEC-28 | partial | `deploy/k8s/README.md`<br>`deploy/keycloak/README.md` | Only clearly-marked dev secrets in compose; managed secret store arrives with K8s. |
-| SEC-29 | gap-p0 | — | Log scrubber (no coords / cell+user pairs / content / tokens) + tests — not implemented. |
+| SEC-29 | implemented | `services/edge/src/app.ts`<br>`services/edge/src/logscrub.ts`<br>`services/edge/test/logscrub.test.ts` | pino hooks.logMethod scrubber: coordinate/content/credential keys redacted, Bearer/apikey/JWT strings scrubbed, cell+user pairings redacted; 10 unit tests. |
 | SEC-30 | partial | — | Append-only consent ledger exists; general security-event audit store + 12-month retention missing. |
 | SEC-31 | organisational | — | Incident response plan, severity levels, on-call, 72-h regulator path, twice-yearly rehearsal. |
 | SEC-32 | organisational | — | Law-enforcement request procedure + annual transparency report. |
@@ -349,7 +349,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TECH-11 | partial | — | Fastify structured logs; OpenTelemetry traces + Grafana stack not wired (AGPL internal-only constraint noted). |
 | TECH-12 | partial | — | Health endpoints + structured logs done; OpenTelemetry traces missing. |
 | TECH-13 | implemented | — | Golden-file suite (120 pairs) fails on any score change; 81-test Python regression suite. |
-| TECH-14 | gap-p0 | `docs/api/openapi.yaml` | Client<->server contract tests generated from docs/api/openapi.yaml — schema exists (TR-23), tests not yet written. |
+| TECH-14 | implemented | `docs/api/openapi.yaml`<br>`tests/test_openapi_contract.py` | tests/test_openapi_contract.py generates assertions from openapi.yaml: strict-body structural + behavioural checks, doc<->route coverage both ways, TR-24 header docs, schema well-formedness. |
 | TECH-15 | partial | — | Python engine is pure/deterministic; TS services read the wall clock directly — clock/id injection not formalised. |
 | TECH-16 | client | — | Dependency maintenance/licence/size budget; 45 MB bundle cap. |
 | TECH-17 | organisational | — | Team skills: TypeScript, React Native, Postgres, one systems language. |

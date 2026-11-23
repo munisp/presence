@@ -3,8 +3,9 @@
 # This document is the machine-readable schema for the edge API. The same
 # constraints are enforced at runtime: every body/query/params schema on the
 # Fastify routes sets additionalProperties: false, and unknown fields fail
-# with a 400 before the handler runs. TECH-14 contract tests generate from
-# this file when the client workstream starts.
+# with a 400 before the handler runs. TECH-14: the contract suite
+# (tests/test_openapi_contract.py) generates its assertions from this file —
+# strictness of every body schema, doc↔route coverage in both directions.
 
 openapi: 3.0.3
 info:
@@ -15,7 +16,11 @@ info:
     token (RS256 via JWKS; HS256 dev fallback per ADR-0003). Responses never
     carry coordinates, metres, bearings, or pre-OPEN identity (TR-13/FR-25/
     FR-30). Schema violations answer 400; semantic violations answer 422;
-    consent/offer conflicts answer 409.
+    consent/offer conflicts answer 409. Every mutating endpoint accepts an
+    optional Idempotency-Key header (TR-24): while the key is remembered
+    (24 h), a replayed request returns the recorded response with
+    Idempotency-Replayed: true instead of executing twice; a replay still in
+    flight answers 409.
 servers:
   - url: http://localhost:9080
     description: local compose, via the APISIX gateway (TECH-21)
@@ -51,6 +56,7 @@ paths:
           required: true
           schema: { type: string }
           description: App Attest / Play Integrity assertion (FR-51/SEC-19).
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       requestBody:
         required: true
         content:
@@ -62,6 +68,12 @@ paths:
               properties:
                 cell: { type: string, description: H3 cell id, resolution 11 }
                 venueId: { type: string }
+                floorId:
+                  type: string
+                  pattern: "^[A-Za-z0-9_-]{1,32}$"
+                  description: >-
+                    FR-99 floor attribution from a verified check-in
+                    (FR-100); requires venueId and a floor the venue declared
                 sessionId:
                   type: string
                   pattern: "^[0-9a-f]{32}$"
@@ -83,9 +95,10 @@ paths:
         "401": { description: Missing token or app-attestation assertion. }
         "403": { description: Discovery unavailable (neutral — FR-02/FR-04) or account invisible (FR-18). }
         "409": { description: Presented session id is not the live one; start a new session (FR-16). }
-        "422": { description: Invalid H3 cell, coordinate-shaped payload (TR-15), or impossible travel (SEC-20). }
+        "422": { description: Invalid H3 cell, coordinate-shaped payload (TR-15), impossible travel (SEC-20), or an undeclared floorId (FR-99). }
     delete:
       summary: Leave; presence and cell membership are removed
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       responses:
         "200":
           description: Presence removed.
@@ -96,6 +109,80 @@ paths:
                 required: [ok]
                 properties:
                   ok: { type: boolean }
+  /v1/presence/checkin:
+    post:
+      summary: Redeem a check-in token (FR-100)
+      description: >-
+        The client scans the venue's per-floor code (QR/NFC) and posts the
+        token here; the edge verifies the HMAC signature against the venue's
+        server-side secret and answers with the (venueId, floorId) pair to
+        attribute the next presence publish to. Tokens are short-lived
+        (≤ 300 s) and single-purpose; an invalid, tampered or expired token
+        answers the same 401 — no oracle on which part failed.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              additionalProperties: false
+              properties:
+                token: { type: string, maxLength: 512, description: pc1.<claims>.<signature> }
+      responses:
+        "200":
+          description: Token verified; floor attribution for the next presence publish.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venueId, floorId, expiresAt]
+                properties:
+                  venueId: { type: string, format: uuid }
+                  floorId: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "401": { description: Invalid or expired check-in token (FR-100). }
+  /v1/venues/{venueId}/checkin-tokens:
+    post:
+      summary: Mint a per-floor check-in token (FR-99, FR-100)
+      description: >-
+        Venue partner tokens only, and only for venues named in the token's
+        venue_ids claim (BR-12). The floor must be declared on the venue
+        (FR-99). The minted token is what the venue prints as that floor's
+        QR/NFC code; the signing secret never leaves the server.
+      parameters:
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [floorId]
+              additionalProperties: false
+              properties:
+                floorId: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+                ttlSeconds: { type: integer, minimum: 1, maximum: 300 }
+      responses:
+        "200":
+          description: Token minted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expiresAt]
+                properties:
+                  token: { type: string, description: pc1.<claims>.<signature> }
+                  expiresAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Venue partner token required (BR-12). }
+        "404": { description: Floor not declared for this venue (FR-99). }
   /v1/scan:
     post:
       summary: Rate-limited discovery scan (FR-20…FR-27, SEC-20)
@@ -106,6 +193,7 @@ paths:
         pair id and the candidate's FR-16 presence session id; account ids
         never leave the edge before OPEN. Age-blocked or deleted accounts
         receive the neutral 403.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       responses:
         "200":
           description: Scan results (possibly the explanatory empty state, FR-26).
@@ -166,7 +254,9 @@ paths:
   /v1/consent/{pairId}/express:
     post:
       summary: Express interest (FR-29, FR-31, FR-33)
-      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "200":
           description: New state (EXPRESSED or MUTUAL).
@@ -184,7 +274,9 @@ paths:
   /v1/consent/{pairId}/open:
     post:
       summary: Open the channel from MUTUAL (FR-30, FR-37)
-      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "200":
           description: Channel open; the 24-h conversation clock starts.
@@ -203,14 +295,18 @@ paths:
     post:
       summary: Silent decline (FR-32)
       description: Always 204; the counterpart's realtime channel hears 'expired'.
-      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "204": { description: Closed (or already closed — indistinguishable). }
         "400": { $ref: "#/components/responses/SchemaViolation" }
   /v1/consent/{pairId}/keep:
     post:
       summary: Keep vote on an OPEN conversation (FR-37)
-      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "200":
           description: Keep state after this vote.
@@ -231,6 +327,7 @@ paths:
       description: >-
         Immediate, silent, permanent mutual discovery removal; any existing
         pair closes invisibly. No realtime event is published.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
         content:
@@ -280,7 +377,9 @@ paths:
         sender's first message to a pair is screened before storage; a
         violation answers 422 with category-level explanation and nothing is
         stored (FR-38/SEC-21).
-      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       requestBody:
         required: true
         content:
@@ -380,6 +479,7 @@ paths:
         (FR-95). The TTL is capped at four hours. Bodies are screened before
         storage (FR-96/SEC-37). The work category requires a
         verified-organisation token (FR-97, BR-33).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
         content:
@@ -423,6 +523,7 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       requestBody:
         required: true
         content:
@@ -496,6 +597,7 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "200":
           description: Response accepted.
@@ -575,6 +677,7 @@ paths:
         for an announcement the edge resolves the publisher server-side. Two
         reports against one announcement inside ten minutes remove it; the
         evidence is retained (FR-98).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
         content:
@@ -610,6 +713,7 @@ paths:
       description: >-
         Year-only precision. The response shape is identical whether or not
         the account is discovery-blocked — the reason is never disclosed.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
         content:
@@ -652,6 +756,7 @@ paths:
         Persistent across sessions and devices. Flipping invisible on purges
         live presence immediately; while set, presence publishes are refused
         with a 403.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
         content:
@@ -693,6 +798,7 @@ paths:
         One call erases presence, envelopes, profile, identity and blocks;
         pairs close with neutral reasons; ledger attribution is anonymised
         after the 90-day hold (NFR-21).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       responses:
         "204": { description: Account erased. }
 components:
@@ -702,6 +808,16 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,128}$" }
+      description: >-
+        TR-24: dedupe key for this mutating request. Replays within 24 h
+        return the recorded response with Idempotency-Replayed: true; a
+        replay arriving while the first attempt is still in flight answers
+        409. Keys are scoped per user; an invalid key answers 400.
   responses:
     SchemaViolation:
       description: >-

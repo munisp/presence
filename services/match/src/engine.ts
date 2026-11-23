@@ -150,6 +150,9 @@ export class InterestGraph {
 
 /** Document frequency over link-free closures (TR-05), with idf (TR-06). */
 export class Corpus {
+  private priorDf: Map<string, number> | null = null;
+  private priorSize = 0;
+
   constructor(
     public readonly size: number,
     public readonly df: Map<string, number>,
@@ -163,12 +166,44 @@ export class Corpus {
     return new Corpus(vectors.length, df);
   }
 
-  /** Square-root-compressed, log-smoothed idf (TR-06). */
+  /**
+   * TR-36: optional global prior computed over ALL profiles (not just live
+   * presence). While the live corpus is small the prior gently stabilises
+   * idf; its influence fades linearly with the live population and reaches
+   * exactly zero at N = PRIOR_FADE_N, so a live corpus of 30+ scores
+   * bit-identically to the legacy formula (well under the 2% shift bound).
+   */
+  setPrior(priorDf: Map<string, number>, priorSize: number): void {
+    this.priorDf = priorDf;
+    this.priorSize = priorSize;
+  }
+
+  clearPrior(): void {
+    this.priorDf = null;
+    this.priorSize = 0;
+  }
+
+  /** Square-root-compressed, log-smoothed idf (TR-06; TR-36 prior blended). */
   idf(nid: string): number {
     const n = this.df.get(nid) ?? 0;
-    return Math.sqrt(Math.log(1.0 + this.size / (1.0 + n)));
+    if (this.priorDf === null || this.priorSize <= 0) {
+      return Math.sqrt(Math.log(1.0 + this.size / (1.0 + n)));
+    }
+    const w = Math.max(0, (PRIOR_FADE_N - this.size) / PRIOR_FADE_N);
+    if (w === 0) {
+      return Math.sqrt(Math.log(1.0 + this.size / (1.0 + n)));
+    }
+    // Pseudo-count blend: the live df is extended with w*PRIOR_FADE_N
+    // pseudo-documents distributed as the global prior. At N = 0 the result
+    // is exactly the prior's own idf at size PRIOR_FADE_N.
+    const s = w * PRIOR_FADE_N;
+    const p0 = (this.priorDf.get(nid) ?? 0) / this.priorSize;
+    return Math.sqrt(Math.log(1.0 + (this.size + s) / (1.0 + n + s * p0)));
   }
 }
+
+/** TR-36: the prior's influence is gone once the live corpus reaches this size. */
+export const PRIOR_FADE_N = 30;
 
 export type ReasonKind = "same" | "related" | "sibling" | "ancestor";
 

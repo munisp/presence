@@ -70,12 +70,18 @@ class Match:
     reasons: list[Reason] = field(default_factory=list)
 
 
+# TR-36: the prior's influence is gone once the live corpus reaches this size.
+PRIOR_FADE_N = 30
+
+
 class Corpus:
     """Document frequency over link-free closures (TR-05), with idf (TR-06)."""
 
     def __init__(self, size: int, df: dict[str, int]):
         self.size = size
         self.df = df
+        self.prior_df: dict[str, int] | None = None
+        self.prior_size = 0
 
     @classmethod
     def from_vectors(cls, vectors: list[dict[str, float]]) -> "Corpus":
@@ -85,10 +91,33 @@ class Corpus:
                 df[nid] = df.get(nid, 0) + 1
         return cls(len(vectors), df)
 
+    def set_prior(self, prior_df: dict[str, int], prior_size: int) -> None:
+        """TR-36: optional global prior over ALL profiles (not just live
+        presence). While the live corpus is small the prior gently stabilises
+        idf; its influence fades linearly and reaches exactly zero at
+        N = PRIOR_FADE_N, so a live corpus of 30+ scores bit-identically to
+        the legacy formula (well under the 2% shift bound)."""
+        self.prior_df = prior_df
+        self.prior_size = prior_size
+
+    def clear_prior(self) -> None:
+        self.prior_df = None
+        self.prior_size = 0
+
     def idf(self, nid: str) -> float:
-        """Square-root-compressed, log-smoothed idf (TR-06)."""
+        """Square-root-compressed, log-smoothed idf (TR-06; TR-36 blended)."""
         n = self.df.get(nid, 0)
-        return math.sqrt(math.log(1.0 + self.size / (1.0 + n)))
+        if self.prior_df is None or self.prior_size <= 0:
+            return math.sqrt(math.log(1.0 + self.size / (1.0 + n)))
+        w = max(0.0, (PRIOR_FADE_N - self.size) / PRIOR_FADE_N)
+        if w == 0.0:
+            return math.sqrt(math.log(1.0 + self.size / (1.0 + n)))
+        # Pseudo-count blend: the live df is extended with w*PRIOR_FADE_N
+        # pseudo-documents distributed as the global prior. At N = 0 the
+        # result is exactly the prior's own idf at size PRIOR_FADE_N.
+        s = w * PRIOR_FADE_N
+        p0 = self.prior_df.get(nid, 0) / self.prior_size
+        return math.sqrt(math.log(1.0 + (self.size + s) / (1.0 + n + s * p0)))
 
 
 class Matcher:

@@ -43,11 +43,13 @@ export function isOfferLive(state: string, closedAt: unknown, expiresAt: unknown
   return state !== "OPEN" && closedAt == null && (expiresAt == null || new Date(expiresAt as string) > new Date());
 }
 
-/** Run one lifecycle tick (expiry → lapse → purge). Returns the row counts. */
+/** Run one lifecycle tick (expiry → lapse → purge → retention). Returns the row counts. */
 export async function lifecycleTick(pg: Postgres.Pool): Promise<{
   offersExpired: number;
   conversationsLapsed: number;
   envelopesPurged: number;
+  offersPurged: number;
+  ledgersAnonymised: number;
 }> {
   const r = await pg.query("SELECT * FROM lifecycle_tick()");
   const row = r.rows[0];
@@ -55,6 +57,8 @@ export async function lifecycleTick(pg: Postgres.Pool): Promise<{
     offersExpired: row.offers_expired,
     conversationsLapsed: row.conversations_lapsed,
     envelopesPurged: row.envelopes_purged,
+    offersPurged: row.offers_purged,
+    ledgersAnonymised: row.ledgers_anonymised,
   };
 }
 

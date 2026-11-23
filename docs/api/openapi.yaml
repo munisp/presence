@@ -1,0 +1,492 @@
+# Presence public API contract (TR-23)
+#
+# This document is the machine-readable schema for the edge API. The same
+# constraints are enforced at runtime: every body/query/params schema on the
+# Fastify routes sets additionalProperties: false, and unknown fields fail
+# with a 400 before the handler runs. TECH-14 contract tests generate from
+# this file when the client workstream starts.
+
+openapi: 3.0.3
+info:
+  title: Presence edge API
+  version: 1.0.0
+  description: >-
+    PRS-SRS-001 §5. All /v1 endpoints require a Keycloak consumer-realm bearer
+    token (RS256 via JWKS; HS256 dev fallback per ADR-0003). Responses never
+    carry coordinates, metres, bearings, or pre-OPEN identity (TR-13/FR-25/
+    FR-30). Schema violations answer 400; semantic violations answer 422;
+    consent/offer conflicts answer 409.
+servers:
+  - url: http://localhost:9080
+    description: local compose, via the APISIX gateway (TECH-21)
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe (unauthenticated)
+      security: []
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+  /v1/presence:
+    post:
+      summary: Enter or heartbeat presence (FR-14, TR-12/14/15)
+      description: >-
+        Body carries a client-computed H3 cell only — coordinate-shaped fields
+        are rejected (TR-15). Age-blocked or deleted accounts receive the
+        neutral 403 (FR-02/FR-04).
+      parameters:
+        - name: x-app-attest-assertion
+          in: header
+          required: true
+          schema: { type: string }
+          description: App Attest / Play Integrity assertion (FR-51/SEC-19).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cell]
+              additionalProperties: false
+              properties:
+                cell: { type: string, description: H3 cell id, resolution 11 }
+                venueId: { type: string }
+      responses:
+        "200":
+          description: Presence stored with the 900 s TTL.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, cell, ttl]
+                properties:
+                  ok: { type: boolean }
+                  cell: { type: string, description: cell as stored, coarsened to the venue resolution }
+                  ttl: { type: integer, example: 900 }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "401": { description: Missing token or app-attestation assertion. }
+        "403": { description: Discovery unavailable on this account (neutral — FR-02/FR-04). }
+        "422": { description: Invalid H3 cell or coordinate-shaped payload (TR-15). }
+    delete:
+      summary: Leave; presence and cell membership are removed
+      responses:
+        "200":
+          description: Presence removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+  /v1/scan:
+    post:
+      summary: Rate-limited discovery scan (FR-20…FR-27)
+      description: >-
+        Six scans per minute per user (FR-24). Results carry score, band,
+        ordered reasons and an icebreaker — never coordinates or identity
+        (FR-25/FR-30). Age-blocked or deleted accounts receive the neutral 403.
+      responses:
+        "200":
+          description: Scan results (possibly the explanatory empty state, FR-26).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [state, results]
+                properties:
+                  state: { type: string, enum: [ok, quiet] }
+                  results:
+                    type: array
+                    maxItems: 3
+                    items:
+                      type: object
+                      required: [userId, score, band, reasons, icebreaker]
+                      properties:
+                        userId: { type: string, description: pseudonymous until OPEN (FR-30) }
+                        score: { type: number, minimum: 0, maximum: 1 }
+                        band: { type: string, description: H3 grid-distance band, never metres }
+                        reasons:
+                          type: array
+                          description: ordered by contribution (TR-08)
+                          items: { type: object }
+                        icebreaker: { type: string }
+        "403": { description: Discovery unavailable on this account (neutral — FR-02/FR-04). }
+        "409": { description: No live presence; enter a venue first. }
+        "429": { description: Scan rate limit exceeded (FR-24). }
+  /v1/consent:
+    get:
+      summary: My pairs and their states (FR-29…FR-37)
+      description: >-
+        Blocked pairs are invisible (FR-34); declined reads as expired (FR-32);
+        pairs closed for more than 24 h are omitted (NFR-19).
+      responses:
+        "200":
+          description: Pair list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pairs]
+                properties:
+                  pairs:
+                    type: array
+                    items:
+                      type: object
+                      required: [pairId, state, counterpart, opened, closed, offerExpiresAt, conversationClosesAt]
+                      properties:
+                        pairId: { type: string, format: uuid }
+                        state: { type: string, enum: [DETECTED, NUDGED, EXPRESSED, MUTUAL, OPEN] }
+                        counterpart: { type: [string, "null"], description: revealed only while OPEN (FR-30) }
+                        opened: { type: [string, "null"], format: date-time }
+                        closed: { type: [string, "null"], description: masked close reason }
+                        offerExpiresAt: { type: [string, "null"], format: date-time }
+                        conversationClosesAt: { type: [string, "null"], format: date-time }
+  /v1/consent/{pairId}/express:
+    post:
+      summary: Express interest (FR-29, FR-31, FR-33)
+      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      responses:
+        "200":
+          description: New state (EXPRESSED or MUTUAL).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pairId, state]
+                properties:
+                  pairId: { type: string, format: uuid }
+                  state: { type: string, enum: [EXPRESSED, MUTUAL] }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Pair not found. }
+        "409": { description: Illegal transition (FR-29) or expired offer (FR-33). }
+  /v1/consent/{pairId}/open:
+    post:
+      summary: Open the channel from MUTUAL (FR-30, FR-37)
+      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      responses:
+        "200":
+          description: Channel open; the 24-h conversation clock starts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pairId, state]
+                properties:
+                  pairId: { type: string, format: uuid }
+                  state: { type: string, enum: [OPEN] }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Pair not found. }
+        "409": { description: Illegal transition (FR-29) or expired offer (FR-33). }
+  /v1/consent/{pairId}/decline:
+    post:
+      summary: Silent decline (FR-32)
+      description: Always 204; the counterpart's realtime channel hears 'expired'.
+      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      responses:
+        "204": { description: Closed (or already closed — indistinguishable). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+  /v1/consent/{pairId}/keep:
+    post:
+      summary: Keep vote on an OPEN conversation (FR-37)
+      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      responses:
+        "200":
+          description: Keep state after this vote.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pairId, kept, closesAt]
+                properties:
+                  pairId: { type: string, format: uuid }
+                  kept: { type: boolean, description: true once both sides kept }
+                  closesAt: { type: [string, "null"], format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: No open conversation for this pair. }
+  /v1/blocks:
+    post:
+      summary: Block a user (FR-34)
+      description: >-
+        Immediate, silent, permanent mutual discovery removal; any existing
+        pair closes invisibly. No realtime event is published.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              additionalProperties: false
+              properties:
+                userId: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Blocked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [blocked]
+                properties:
+                  blocked: { type: boolean }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Missing/self target. }
+    get:
+      summary: My own block list (blocker side only)
+      responses:
+        "200":
+          description: Blocks filed by the caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [blocks]
+                properties:
+                  blocks:
+                    type: array
+                    items:
+                      type: object
+                      required: [userId, at]
+                      properties:
+                        userId: { type: string, format: uuid }
+                        at: { type: string, format: date-time }
+  /v1/pairs/{pairId}/messages:
+    post:
+      summary: Relay an opaque MLS envelope (FR-36)
+      description: >-
+        OPEN pairs only, enforced by row-level security (FR-30/FR-36). The
+        sender's first message to a pair is screened before storage; a
+        violation answers 422 with category-level explanation and nothing is
+        stored (FR-38/SEC-21).
+      parameters: [{ $ref: "#/components/parameters/pairId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [envelope]
+              additionalProperties: false
+              properties:
+                envelope: { type: string, description: base64 MLS ciphertext }
+      responses:
+        "201":
+          description: Stored and relayed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messageId, sentAt]
+                properties:
+                  messageId: { type: string, format: uuid }
+                  sentAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Pair is not OPEN (FR-30/FR-36). }
+        "422":
+          description: Invalid base64, or first message failed screening.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+                  categories:
+                    type: array
+                    items: { type: string, enum: [link, phone, email, bypass, scam] }
+    get:
+      summary: Read envelopes for an OPEN pair (RLS-gated)
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - name: after
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Envelopes ascending by send time (max 200).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages]
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      required: [message_id, sender, envelope, sent_at]
+                      properties:
+                        message_id: { type: string, format: uuid }
+                        sender: { type: string, format: uuid }
+                        envelope: { type: string, description: base64 MLS ciphertext }
+                        sent_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+  /v1/announcements:
+    get:
+      summary: Live announcements (venue + global)
+      parameters:
+        - name: venueId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Announcements inside their publish window.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [announcements]
+                properties:
+                  announcements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        announcement_id: { type: string, format: uuid }
+                        venue_id: { type: [string, "null"] }
+                        body: { type: string }
+                        publish_at: { type: string, format: date-time }
+                        expire_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+  /v1/offers:
+    get:
+      summary: Venue offers inside their validity window
+      parameters:
+        - name: venueId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Active offers, soonest expiry first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [offers]
+                properties:
+                  offers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        offer_id: { type: string, format: uuid }
+                        title: { type: string }
+                        terms: { type: string }
+                        starts_at: { type: string, format: date-time }
+                        ends_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+  /v1/reports:
+    post:
+      summary: File a report (BR-07, FR-40, FR-49)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reported, reason]
+              additionalProperties: false
+              properties:
+                reported: { type: string, format: uuid }
+                venueId: { type: string }
+                reason: { type: string, minLength: 1 }
+                details: { type: string }
+      responses:
+        "201":
+          description: Report filed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reportId, status]
+                properties:
+                  reportId: { type: string, format: uuid }
+                  status: { type: string, enum: [open] }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Missing fields or self-report. }
+  /v1/account/age-declaration:
+    post:
+      summary: Declare birth year (FR-02)
+      description: >-
+        Year-only precision. The response shape is identical whether or not
+        the account is discovery-blocked — the reason is never disclosed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [birthYear]
+              additionalProperties: false
+              properties:
+                birthYear: { type: integer, minimum: 1900 }
+      responses:
+        "200":
+          description: Declaration recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, discovery]
+                properties:
+                  ok: { type: boolean }
+                  discovery: { type: boolean }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Invalid year. }
+  /v1/account/export:
+    get:
+      summary: DSAR export (FR-62, SEC-14)
+      description: >-
+        Everything held on the requester as one JSON document, with FR-32/34
+        masking applied (declined reads as expired; blocked pairs excluded).
+      responses:
+        "200":
+          description: The subject record.
+          content:
+            application/json:
+              schema: { type: object }
+  /v1/account:
+    delete:
+      summary: Erase the account (FR-03, FR-04)
+      description: >-
+        One call erases presence, envelopes, profile, identity and blocks;
+        pairs close with neutral reasons; ledger attribution is anonymised
+        after the 90-day hold (NFR-21).
+      responses:
+        "204": { description: Account erased. }
+components:
+  parameters:
+    pairId:
+      name: pairId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    SchemaViolation:
+      description: >-
+        TR-23 strict-schema rejection — a required field is missing or an
+        unknown field was supplied (additionalProperties: false).
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              statusCode: { type: integer, example: 400 }
+              error: { type: string, example: Bad Request }
+              message: { type: string }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []

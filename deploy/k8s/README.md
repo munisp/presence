@@ -18,6 +18,7 @@ kubectl -n presence create configmap postgres-initdb \
   --from-file=04_account.sql=db/migrations/0003_account_deletion.sql \
   --from-file=05_safety.sql=db/migrations/0004_discovery_safety.sql \
   --from-file=06_floors.sql=db/migrations/0005_floors_checkin.sql \
+  --from-file=07_profile_safety.sql=db/migrations/0006_profile_safety.sql \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n presence create configmap keycloak-realms \
   --from-file=deploy/keycloak/realm-consumer.json \
@@ -34,6 +35,9 @@ kubectl -n presence create secret generic presence-secrets \
 
 # 4. progressive delivery (after Flagger + Prometheus are installed)
 kubectl apply -f deploy/k8s/canary.yaml
+
+# 5. alert set (NFR-33/34; needs the Prometheus Operator CRDs)
+kubectl apply -f deploy/k8s/prometheusrules.yaml
 ```
 
 ## Requirement coverage
@@ -48,6 +52,8 @@ kubectl apply -f deploy/k8s/canary.yaml
 | INF-16 canary 5%/10 min + auto rollback | `canary.yaml` (Flagger on the APISIX provider) |
 | TECH-21 APISIX sole public ingress | `apisix.yaml` LoadBalancer Service; everything else ClusterIP/headless |
 | NFR-31 request ids | APISIX `request-id` plugin (generate + echo); service logs key on it |
+| NFR-33 alert set | `prometheusrules.yaml` — SLO burn, error spike, presence-publish failure, match-rate collapse, moderation queue age |
+| NFR-34 runbook per alert | `docs/runbook.md` — every alert names an owner and first actions |
 | TECH-07 Keycloak | `keycloak.yaml` + realm ConfigMap |
 | SEC-06 TLS everywhere | Termination at APISIX done; east-west encryption awaits the mesh decision (still partial) |
 

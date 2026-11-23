@@ -220,9 +220,18 @@ paths:
                           description: ordered by contribution (TR-08)
                           items: { type: object }
                         icebreaker: { type: string }
+                        prompts:
+                          type: array
+                          description: FR-64 structured prompts, screened at write time
+                          items:
+                            type: object
+                            required: [slot, body]
+                            properties:
+                              slot: { type: integer, minimum: 1, maximum: 3 }
+                              body: { type: string, maxLength: 120 }
         "403": { description: Discovery unavailable on this account (neutral — FR-02/FR-04). }
         "409": { description: No live presence; enter a venue first. }
-        "429": { description: Scan rate limit exceeded (FR-24 per-minute or SEC-20 hourly). }
+        "429": { description: Scan rate limit exceeded (FR-24 per-minute, SEC-20 hourly, or FR-28 density budget). }
   /v1/consent:
     get:
       summary: My pairs and their states (FR-29…FR-37)
@@ -435,13 +444,36 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [message_id, sender, envelope, sent_at]
+                      required: [message_id, sender, envelope, sent_at, revoked]
                       properties:
                         message_id: { type: string, format: uuid }
                         sender: { type: string, format: uuid }
-                        envelope: { type: string, description: base64 MLS ciphertext }
+                        envelope: { type: [string, "null"], description: base64 MLS ciphertext; null once revoked (FR-41) }
                         sent_at: { type: string, format: date-time }
+                        revoked: { type: boolean, description: FR-41 tombstone }
         "400": { $ref: "#/components/responses/SchemaViolation" }
+
+  /v1/pairs/{pairId}/messages/{messageId}:
+    delete:
+      summary: Revoke an own message within 24 hours (FR-41)
+      description: >-
+        Sender-only (RESTRICTIVE RLS policy + column-limited grant). Within
+        24 hours of sending, the envelope is blanked and the row tombstoned;
+        after the window the message is permanent and the call answers 410.
+        Repeating a revocation is idempotent.
+      parameters:
+        - { $ref: "#/components/parameters/pairId" }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Message revoked (or already revoked). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Message not found, or not the requester's. }
+        "410": { description: The 24-hour revocation window has closed (FR-41). }
+
   /v1/announcements:
     get:
       summary: Live announcements (venue + global)
@@ -791,6 +823,187 @@ paths:
                 required: [invisible]
                 properties:
                   invisible: { type: boolean }
+  /v1/profile/interests:
+    put:
+      summary: Replace the declared interest set (FR-08)
+      description: >-
+        3-20 unique taxonomy nodes with weights in (0, 1]. Unknown nodes are
+        rejected with 422; sensitive nodes are rejected at write time
+        (TR-22/FR-10) and never stored. The searchable picker is client work.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [interests]
+              additionalProperties: false
+              properties:
+                interests:
+                  type: array
+                  items:
+                    type: object
+                    required: [nodeId]
+                    additionalProperties: false
+                    properties:
+                      nodeId: { type: string, minLength: 1, maxLength: 200 }
+                      weight: { type: number, exclusiveMinimum: 0, maximum: 1 }
+      responses:
+        "200": { description: Interest set replaced. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Set size outside 3-20, duplicates, or unknown/sensitive node (FR-08/TR-22). }
+    get:
+      summary: Read the declared interest set (FR-08)
+      responses:
+        "200":
+          description: The requester's declared interests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [interests]
+                properties:
+                  interests:
+                    type: array
+                    items:
+                      type: object
+                      required: [nodeId, weight]
+                      properties:
+                        nodeId: { type: string }
+                        weight: { type: number }
+
+  /v1/profile/prompts:
+    put:
+      summary: Set structured prompts (FR-64)
+      description: >-
+        At most three prompts of 120 characters, in unique slots 1-3. Prompts
+        are screened like announcement bodies and surface as reason material
+        on scan results; they are never searchable and never indexed.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompts]
+              additionalProperties: false
+              properties:
+                prompts:
+                  type: array
+                  maxItems: 3
+                  items:
+                    type: object
+                    required: [slot, body]
+                    additionalProperties: false
+                    properties:
+                      slot: { type: integer, minimum: 1, maximum: 3 }
+                      body: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        "200": { description: Prompts stored. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Duplicate slots or failed screening (FR-64/SEC-37). }
+    get:
+      summary: Read own structured prompts (FR-64)
+      responses:
+        "200":
+          description: The requester's prompts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prompts]
+                properties:
+                  prompts:
+                    type: array
+                    items:
+                      type: object
+                      required: [slot, body]
+                      properties:
+                        slot: { type: integer }
+                        body: { type: string }
+
+  /v1/interests/{nodeId}/popularity:
+    get:
+      summary: k-suppressed local popularity of an interest (FR-13)
+      description: >-
+        How many people in the requester's live cell carry this interest
+        (declarations of the node or its taxonomy descendants). Below k = 11
+        the figure is withheld (BR-13). Sensitive nodes are indistinguishable
+        from unknown ones (TR-22).
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "200":
+          description: Popularity figure, or null when suppressed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nodeId, count, suppressed, k]
+                properties:
+                  nodeId: { type: string }
+                  count: { type: [integer, "null"] }
+                  suppressed: { type: boolean }
+                  k: { type: integer }
+        "404": { description: Unknown or sensitive interest (TR-22). }
+        "409": { description: No live presence; enter a venue first. }
+
+  /v1/account/notifications:
+    get:
+      summary: Read notification switches (FR-58)
+      responses:
+        "200":
+          description: Per-category switches; safety is always on.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prefs]
+                properties:
+                  prefs:
+                    type: object
+                    properties:
+                      matches: { type: boolean }
+                      messages: { type: boolean }
+                      announcements: { type: boolean }
+                      offers: { type: boolean }
+                      nudges: { type: boolean }
+                      safety: { type: boolean }
+    put:
+      summary: Set notification switches (FR-58)
+      description: >-
+        Partial patch per category. The safety category is exempt: setting it
+        false is rejected with 422, and it is always stored as on.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prefs]
+              additionalProperties: false
+              properties:
+                prefs:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    matches: { type: boolean }
+                    messages: { type: boolean }
+                    announcements: { type: boolean }
+                    offers: { type: boolean }
+                    nudges: { type: boolean }
+                    safety: { type: boolean }
+      responses:
+        "200": { description: Switches stored. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "422": { description: Attempt to switch off safety notices (FR-58). }
+
   /v1/account:
     delete:
       summary: Erase the account (FR-03, FR-04)

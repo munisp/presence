@@ -11,9 +11,11 @@ import { registerConsentRoutes } from "./routes/consent.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerAnnouncementRoutes } from "./routes/announcements.js";
 import { registerContentRoutes } from "./routes/content.js";
+import { registerInterestRoutes } from "./routes/interests.js";
 import { registerLifecycleRoutes } from "./routes/lifecycle.js";
 import { registerMessageRoutes } from "./routes/messages.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
+import { registerProfileRoutes } from "./routes/profile.js";
 import { registerScanRoutes } from "./routes/scan.js";
 import { registerVenueRoutes } from "./routes/venue.js";
 
@@ -56,6 +58,8 @@ export async function buildApp(ctx: EdgeContext) {
     registerVenueRoutes(authed, ctx);
     registerCheckinRoutes(authed, ctx);
     registerMessageRoutes(authed, ctx);
+    registerProfileRoutes(authed, ctx);
+    registerInterestRoutes(authed, ctx);
   });
 
   return app;

@@ -17,6 +17,7 @@
 
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
+import { matchBudget } from "../budget.js";
 import { EdgeContext, SUPPRESSION_TTL_S, suppressionKey } from "../context.js";
 import { FloorDeclaration, floorsCompatible } from "../floors.js";
 import { SCAN_HOURLY_MAX } from "../velocity.js";
@@ -64,6 +65,20 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         venueId?: string | null;
         floorId?: string | null;
       };
+
+      // FR-28: density-scaled match budget — the denser the cell, the fewer
+      // scans per window (3/hr sparse down to 1/day crowd). Separate from
+      // the SEC-20 anti-abuse ceiling above, which still applies.
+      const cellPopulation = await ctx.valkey.scard(`presence:cell:${cell}`);
+      const budget = matchBudget(cellPopulation);
+      const budgetUsed = await ctx.valkey.incr(`budget:scan:${userId}`);
+      if (budgetUsed === 1) await ctx.valkey.expire(`budget:scan:${userId}`, budget.windowSeconds);
+      if (budgetUsed > budget.limit) {
+        return reply.code(429).send({
+          error: "match budget reached for this window (FR-28)",
+          band: budget.band,
+        });
+      }
 
       // BR-12: venue scan counter behind the dashboard's scansLastHour.
       if (venueId) {
@@ -217,6 +232,20 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       // presence lapsed between the match call and this response are dropped.
       // FR-99: at the same venue, a candidate on a different floor is dropped
       // unless the venue declared the two floors connected.
+      // FR-64: each surfaced candidate's structured prompts ride along as
+      // reason material (screened at write time; never searchable).
+      const promptRows = detected.length > 0
+        ? await ctx.pg.query(
+            "SELECT user_id, slot, body FROM profile_prompts WHERE user_id = ANY($1::uuid[]) ORDER BY slot",
+            [detected.map((d) => d.candidateId)],
+          )
+        : { rows: [] as Array<{ user_id: string; slot: number; body: string }> };
+      const promptsByUser = new Map<string, Array<{ slot: number; body: string }>>();
+      for (const row of promptRows.rows) {
+        const list = promptsByUser.get(row.user_id) ?? [];
+        list.push({ slot: row.slot, body: row.body });
+        promptsByUser.set(row.user_id, list);
+      }
       const requesterFloor = typeof floorId === "string" ? floorId : null;
       const results: Array<Record<string, unknown>> = [];
       for (const r of detected) {
@@ -235,6 +264,7 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
           band: r.band,
           reasons: r.reasons,
           icebreaker: r.icebreaker,
+          prompts: promptsByUser.get(r.candidateId) ?? [],
         });
       }
 

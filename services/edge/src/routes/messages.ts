@@ -111,7 +111,9 @@ export function registerMessageRoutes(app: FastifyInstance, ctx: EdgeContext): v
       const { after } = req.query as { after?: string };
       const rows = await withRls(ctx.pg, req.userId, async (c) =>
         c.query(
-          `SELECT message_id, sender, encode(envelope, 'base64') AS envelope, sent_at
+          `SELECT message_id, sender,
+                  CASE WHEN revoked_at IS NULL THEN encode(envelope, 'base64') ELSE NULL END AS envelope,
+                  sent_at, revoked_at IS NOT NULL AS revoked
              FROM messages
             WHERE pair_id = $1 AND ($2::timestamptz IS NULL OR sent_at > $2)
             ORDER BY sent_at ASC LIMIT 200`,
@@ -119,6 +121,52 @@ export function registerMessageRoutes(app: FastifyInstance, ctx: EdgeContext): v
         ),
       );
       return reply.send({ messages: rows.rows });
+    },
+  );
+
+  // FR-41: a sender may revoke their own message within 24 hours — the
+  // envelope is blanked and the row tombstoned (revoked_at). After the
+  // window the message is permanent. The DELETE grant is column-limited and
+  // the RESTRICTIVE policy makes revocation sender-only (migration 0006).
+  app.delete(
+    "/v1/pairs/:pairId/messages/:messageId",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["pairId", "messageId"],
+          additionalProperties: false,
+          properties: {
+            pairId: { type: "string", format: "uuid" },
+            messageId: { type: "string", format: "uuid" },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { pairId, messageId } = req.params as { pairId: string; messageId: string };
+      const outcome = await withRls(ctx.pg, req.userId, async (c) => {
+        const r = await c.query(
+          `UPDATE messages
+              SET revoked_at = now(), envelope = ''::bytea
+            WHERE message_id = $1 AND pair_id = $2 AND sender = $3
+              AND revoked_at IS NULL
+              AND sent_at > now() - interval '24 hours'
+            RETURNING message_id`,
+          [messageId, pairId, req.userId],
+        );
+        if (r.rows.length > 0) return "revoked" as const;
+        const probe = await c.query(
+          "SELECT sender, revoked_at FROM messages WHERE message_id = $1 AND pair_id = $2",
+          [messageId, pairId],
+        );
+        if (probe.rows.length === 0 || probe.rows[0].sender !== req.userId) return "missing" as const;
+        if (probe.rows[0].revoked_at) return "revoked" as const; // idempotent replay
+        return "expired" as const;
+      });
+      if (outcome === "revoked") return reply.send({ ok: true });
+      if (outcome === "missing") return reply.code(404).send({ error: "message not found" });
+      return reply.code(410).send({ error: "the 24-hour revocation window has closed (FR-41)" });
     },
   );
 }

@@ -29,6 +29,7 @@ import {
   RESPONSES_SHOWN_MAX,
 } from "../announcements.js";
 import { EdgeContext } from "../context.js";
+import { venueFeatureEnabled } from "../features.js";
 import { SCREENING_EXPLANATION, screenText } from "../screening.js";
 
 export function registerAnnouncementRoutes(app: FastifyInstance, ctx: EdgeContext): void {
@@ -58,6 +59,11 @@ export function registerAnnouncementRoutes(app: FastifyInstance, ctx: EdgeContex
       ttlMinutes?: number;
     };
     const userId = req.userId;
+
+    // FR-63: venues can switch the announcement surface off.
+    if (venueId && !(await venueFeatureEnabled(ctx.pg, venueId, "announcements"))) {
+      return reply.code(403).send({ error: "announcements are disabled at this venue (FR-63)" });
+    }
 
     // FR-93 trust floor: declared, unblocked, at least 24 h old.
     const account = await ctx.pg.query(

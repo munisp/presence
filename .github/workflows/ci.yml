@@ -1,0 +1,79 @@
+# CI (SEC-26): tests, deploy invariants, secret scanning, dependency audit
+# and licence policy on every pull request and push to main.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q pytest pyyaml jsonschema
+      - run: python -m pytest tests/ -q
+
+  edge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # edge has no committed lockfile yet; match does (npm ci).
+      - run: npm install --prefix services/edge
+      - run: npm test --prefix services/edge
+
+  match:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix services/match
+      - run: npm test --prefix services/match
+
+  deploy-invariants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q pyyaml
+      - run: python3 scripts/validate_deploy.py
+
+  # SEC-26: secret scanning on every PR.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+
+  # SEC-26: dependency vulnerability audit; SEC-25: licence policy.
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Vulnerability audit (match service)
+        run: npm audit --prefix services/match --audit-level=high
+      - name: Licence policy (SEC-25)
+        run: |
+          ALLOWED="MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;0BSD;CC0-1.0;Python-2.0;Unlicense"
+          npm install --prefix services/edge --no-audit --no-fund
+          npx --yes license-checker --production --onlyAllow "$ALLOWED" --summary --start services/edge
+          npx --yes license-checker --production --onlyAllow "$ALLOWED" --summary --start services/match

@@ -1,0 +1,16 @@
+# SEC-26: dependency update scanning — Dependabot opens update PRs weekly,
+# which the CI workflow then gates (tests + audit + licence policy).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /services/edge
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /services/match
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

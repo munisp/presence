@@ -22,6 +22,7 @@
 
 import { FastifyInstance } from "fastify";
 import { EdgeContext, purgePresence } from "../context.js";
+import { applyPrefsPatch, mergePrefs, NOTIFICATION_CATEGORIES } from "../notifications.js";
 
 export const AGE_LIMIT = 18; // FR-02
 
@@ -129,6 +130,47 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): v
     const r = await ctx.pg.query("SELECT invisible FROM users WHERE user_id = $1", [req.userId]);
     return reply.send({ invisible: r.rows.length > 0 && r.rows[0].invisible === true });
   });
+
+  // FR-58: per-category notification switches. Everything defaults on; the
+  // safety category is exempt and can never be switched off.
+  app.get("/v1/account/notifications", async (req, reply) => {
+    const r = await ctx.pg.query("SELECT notification_prefs FROM users WHERE user_id = $1", [req.userId]);
+    return reply.send({ prefs: mergePrefs(r.rows[0]?.notification_prefs) });
+  });
+
+  app.put(
+    "/v1/account/notifications",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["prefs"],
+          additionalProperties: false,
+          properties: {
+            prefs: {
+              type: "object",
+              additionalProperties: false,
+              properties: Object.fromEntries(
+                NOTIFICATION_CATEGORIES.map((c) => [c, { type: "boolean" }]),
+              ),
+            },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { prefs: patch } = req.body as { prefs: unknown };
+      const r = await ctx.pg.query("SELECT notification_prefs FROM users WHERE user_id = $1", [req.userId]);
+      const out = applyPrefsPatch(r.rows[0]?.notification_prefs, patch);
+      if (!out.ok) return reply.code(422).send({ error: out.error });
+      await ctx.pg.query(
+        `INSERT INTO users (user_id, notification_prefs) VALUES ($1, $2::jsonb)
+         ON CONFLICT (user_id) DO UPDATE SET notification_prefs = $2::jsonb`,
+        [req.userId, JSON.stringify(out.prefs)],
+      );
+      return reply.send({ ok: true, prefs: out.prefs });
+    },
+  );
 
   app.delete("/v1/account", async (req, reply) => {
     const userId = req.userId;

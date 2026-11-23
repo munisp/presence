@@ -12,4 +12,5 @@ resources:
   - apisix.yaml
   - networkpolicy.yaml
 # canary.yaml requires the Flagger CRDs; apply it separately after Flagger is
-# installed (see README.md).
+# installed (see README.md). prometheusrules.yaml likewise requires the
+# Prometheus Operator CRDs; apply it with the monitoring stack.

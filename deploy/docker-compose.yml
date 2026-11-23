@@ -16,6 +16,7 @@ services:
       - ../db/migrations/0003_account_deletion.sql:/docker-entrypoint-initdb.d/04_account.sql:ro
       - ../db/migrations/0004_discovery_safety.sql:/docker-entrypoint-initdb.d/05_safety.sql:ro
       - ../db/migrations/0005_floors_checkin.sql:/docker-entrypoint-initdb.d/06_floors.sql:ro
+      - ../db/migrations/0006_profile_safety.sql:/docker-entrypoint-initdb.d/07_profile_safety.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

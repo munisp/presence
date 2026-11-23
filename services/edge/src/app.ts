@@ -10,6 +10,7 @@ import { registerCheckinRoutes } from "./routes/checkin.js";
 import { registerConsentRoutes } from "./routes/consent.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
+import { registerGeofenceRoutes } from "./routes/geofence.js";
 import { registerAnnouncementRoutes } from "./routes/announcements.js";
 import { registerContentRoutes } from "./routes/content.js";
 import { registerDeviceRoutes } from "./routes/devices.js";
@@ -80,6 +81,7 @@ export async function buildApp(ctx: EdgeContext) {
     registerLinkingRoutes(authed, ctx);
     registerTaxonomyRoutes(authed, ctx);
     registerTelemetryRoutes(authed, ctx);
+    registerGeofenceRoutes(authed, ctx);
   });
 
   return app;

@@ -114,3 +114,15 @@ jobs:
       - run: python3 scripts/scale_taxonomy_closure.py
         env:
           DATABASE_URL: postgres://postgres:scale@localhost:5432/scale
+
+  # TECH-18: the Rust match core — cargo test pins it to the same golden
+  # corpus as the TS engine and the Python reference (1e-9, 120 pairs).
+  match-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/match-core
+      - run: cargo test --locked --manifest-path services/match-core/Cargo.toml

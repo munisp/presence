@@ -104,6 +104,11 @@ export async function requireAnalyst(req: FastifyRequest, reply: FastifyReply): 
   await requireWorkforceRole(req, reply, "analyst");
 }
 
+/** TR-41: geofence authoring gate — workforce realm + the venue-ops role. */
+export async function requireVenueOps(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  await requireWorkforceRole(req, reply, "venue-ops");
+}
+
 async function requireWorkforceRole(req: FastifyRequest, reply: FastifyReply, role: string): Promise<void> {
   const payload = ((req as AuthedRequest).tokenPayload ?? {}) as {
     iss?: string;
@@ -192,6 +197,14 @@ export async function withAnalyst<T>(
   fn: (client: Postgres.PoolClient) => Promise<T>,
 ): Promise<T> {
   return withGuc(pool, "app.analyst", fn);
+}
+
+/** TR-41: run fn in one transaction with the venue-ops GUC set. */
+export async function withVenueOps<T>(
+  pool: Postgres.Pool,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
+  return withGuc(pool, "app.venue_ops", fn);
 }
 
 async function withGuc<T>(

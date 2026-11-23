@@ -8,9 +8,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 141 | working in the repo with tests or structural evidence |
-| partial | 54 | meaningful part implemented; named gap remains |
-| gap-p0 | 2 | ARC-P0 product scope, code not yet built |
+| implemented | 142 | working in the repo with tests or structural evidence |
+| partial | 55 | meaningful part implemented; named gap remains |
+| gap-p0 | 0 | ARC-P0 product scope, code not yet built |
 | phase-gated | 8 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
@@ -24,10 +24,10 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | BR | 7 | 4 | 0 | 0 | 0 | 22 | 0 | 0 | 33 |
 | FR | 65 | 18 | 0 | 1 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 7 | 5 | 0 | 1 | 11 | 0 | 13 | 0 | 37 |
-| TR | 28 | 5 | 1 | 4 | 6 | 0 | 0 | 0 | 44 |
+| TR | 29 | 5 | 0 | 4 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 18 | 10 | 0 | 1 | 1 | 5 | 3 | 0 | 38 |
 | INF | 6 | 4 | 0 | 0 | 0 | 1 | 8 | 1 | 20 |
-| TECH | 10 | 7 | 1 | 1 | 3 | 1 | 0 | 1 | 24 |
+| TECH | 10 | 8 | 0 | 1 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
 ## BR — Business requirements (§3)
@@ -81,7 +81,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-07 | implemented | `db/migrations/0010_devices.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/routes/devices.ts`<br>`services/edge/src/routes/moderation.ts` | register_attestation_key() SECURITY DEFINER enrols/refreshes/detects atomically: a cross-account collision keeps the key with its original account, inserts attestation_duplicates and writes admin_audit_log('moderation.duplicate.detected','impersonation'); the enrolment route returns the same neutral 201 regardless — the console-only registry (RLS app_moderator) surfaces collisions on the moderation account card as keyHashPrefix + both accounts + detected_at. P0 uses the assertion SHA-256 as the key stand-in until cryptographic App Attest verification lands (FR-51 idiom). |
 | FR-08 | partial | `db/migrations/0006_profile_safety.sql`<br>`db/migrations/0011_linking.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/linking.ts`<br>`services/edge/src/profile.ts` | PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Gap: the searchable <=3-level picker UI is client work (RN milestone). |
 | FR-09 | implemented | `db/migrations/0011_linking.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`db/seed/taxonomy_embeddings.sql`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/postgres.yaml` | POST /v1/profile/interests/link: free text (<=500 chars, screened SEC-26 idiom) is embedded with the deterministic ngram-hash-384.v1 embedder and matched over the pgvector taxonomy space (migration 0011 + generated seed); top-5 candidates above a 0.15 cosine floor, sensitive/redirected nodes excluded at seed and query time (TR-22), already-declared nodes excluded via the owner-GUC read (FR-13 discipline). Per-node confirmation: the route never writes (test-pinned) — confirmed nodes go through the governed FR-08 endpoint. |
-| FR-10 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/edge/src/routes/profile.ts`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | Sensitive nodes excluded from vectors, reasons, idf and bonus at build time; covered by engine tests. |
+| FR-10 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/edge/src/routes/profile.ts`<br>`services/match-core/README.md`<br>`services/match/src/engine.ts` | Sensitive nodes excluded from vectors, reasons, idf and bonus at build time; covered by engine tests. |
 | FR-11 | partial | `presence/matching.py`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/src/store.ts` | Candidates need >=2 interests to be scored; publish-side >=3 enforcement + client explanation missing. |
 | FR-12 | implemented | `deploy/k8s/prometheusrules.yaml`<br>`docs/runbook.md` | Profile and corpus caches refresh on a 60 s loop (TR-05). |
 | FR-13 | implemented | `db/migrations/0009_rooms.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/interests.ts`<br>`services/edge/src/routes/linking.ts` | GET /v1/interests/:nodeId/popularity — live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22). |
@@ -224,11 +224,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-03 | partial | — | K8s NetworkPolicies isolate east-west traffic (only declared flows allowed); mTLS between services awaits the mesh decision. |
 | TR-04 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`db/seed/taxonomy.sql`<br>`presence/graph.py`<br>`presence/matching.py` | 0.55/hop, depth <=4, max-combine — pinned against the answer key (653/653). |
 | TR-05 | implemented | `docs/presence-model.md`<br>`docs/runbook.md`<br>`presence/graph.py`<br>`presence/matching.py`<br>`scripts/export_golden.py` | df over live presence, link-free closures, 60 s refresh loop. |
-| TR-06 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | sqrt(ln(1+N/(1+df))) with cap — pinned. |
+| TR-06 | implemented | `presence/matching.py`<br>`services/match-core/README.md`<br>`services/match/src/engine.ts`<br>`tests/test_matching.py` | sqrt(ln(1+N/(1+df))) with cap — pinned. |
 | TR-07 | implemented | `db/migrations/0001_init.sql`<br>`db/seed/taxonomy.sql`<br>`presence/graph.py`<br>`presence/matching.py`<br>`scripts/export_taxonomy_sql.py` | Links contribute one hop at authored weight <=0.5, excluded from df — pinned. |
-| TR-08 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/test/engine.test.ts`<br>`tests/test_matching.py` | Ordered reasons with node ids, labels, contributions in every response. |
+| TR-08 | implemented | `docs/api/openapi.yaml`<br>`presence/matching.py`<br>`services/match-core/README.md`<br>`services/match/src/engine.ts`<br>`services/match/test/engine.test.ts` | Ordered reasons with node ids, labels, contributions in every response. |
 | TR-09 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`scripts/export_golden.py`<br>`services/edge/src/screening.ts`<br>`services/match/src/engine.ts` | Deterministic template rendering; no LLM anywhere in reason generation. |
-| TR-10 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/test/engine.test.ts`<br>`tests/test_matching.py` | 81 Python tests incl. 60 key-pinned pairs; 120-pair TS golden parity at 1e-9. |
+| TR-10 | implemented | `presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/test/engine.test.ts`<br>`tests/test_match_core.py`<br>`tests/test_matching.py` | 81 Python tests incl. 60 key-pinned pairs; 120-pair TS golden parity at 1e-9. |
 | TR-11 | implemented | `db/migrations/0001_init.sql`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/test/scan.test.ts` | venues.base_threshold / max_scan_results configurable per venue row without deployment. |
 | TR-12 | implemented | `db/migrations/0001_init.sql`<br>`db/migrations/0014_markets.sql`<br>`docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`services/edge/src/markets.ts` | H3 res 9 default; k=1 ring; tested. |
 | TR-13 | implemented | `docs/api/openapi.yaml` | Responses carry bands only — no neighbour cell or ring distance. |
@@ -254,13 +254,13 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-33 | client | — | Certificate pinning removable by configuration (MAY). |
 | TR-34 | implemented | `db/migrations/0013_telemetry.sql`<br>`deploy/keycloak/realm-workforce.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts` | Stable governed event keys (scan.completed, consent.transitioned, pair.first_message — enforced identically by the DB CHECK and the edge constant, cross-pinned) and stable metric keys. GET /v1/telemetry/export.csv emits the presence-telemetry/v1 contract: a version marker line, then the stable column order metric_key,window_start,window_end,value,numerator,denominator; zero denominators export as empty fields, never a fake zero. Analyst console gated by the workforce analyst role + app.analyst GUC + RLS. |
 | TR-35 | partial | — | Reason payload is render-complete (TR-08); the versioned diagram spec is a client artifact. |
-| TR-36 | implemented | `docs/runbook.md`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/src/store.ts`<br>`services/match/test/prior.test.ts` | Optional global prior (all-profile link-free df, 10-min rebuild) blended with fade w(N)=(30-N)/30 — 0% shift at N>=30, exact-formula tests in TS+Python. |
+| TR-36 | implemented | `docs/runbook.md`<br>`presence/matching.py`<br>`services/match-core/README.md`<br>`services/match/src/engine.ts`<br>`services/match/src/store.ts` | Optional global prior (all-profile link-free df, 10-min rebuild) blended with fade w(N)=(30-N)/30 — 0% shift at N>=30, exact-formula tests in TS+Python. |
 | TR-37 | implemented | `db/migrations/0014_markets.sql`<br>`services/edge/src/markets.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/test/edge.test.ts`<br>`tests/test_markets.py` | The TR-12/14 storage-resolution ladder is per-market configuration: market_config (migration 0014) carries res_default/res_busy/res_crowd + busy/crowd presence thresholds with ordering CHECKs and a single-active-market index (BR-01). The presence route resolves the ladder via ladderForCell — native market_for_cell lookup, 60-second Valkey cache, governed fallback equal to the seeded Lagos row so day-one behaviour is unchanged (cross-pinned). Calibration changes propagate within a minute, no deploy. |
 | TR-38 | phase-gated | — | Polygon attribution as a lakehouse spatial join published to the operational store (P1 lakehouse). |
 | TR-39 | phase-gated | — | Gold-table owner/grain/SLO/retention + catalogue registration (P1 lakehouse). |
 | TR-40 | implemented | — | Phase-gate admission documented; 8 ADRs recorded (Valkey, Keycloak, Kafka, Dapr, OpenSearch, payments, GeoLibre, sequencing). |
-| TR-41 | gap-p0 | — | GeoLibre authoring + second-person review + density verification workflow — not built. |
-| TR-42 | implemented | `db/migrations/0005_floors_checkin.sql`<br>`services/edge/src/floors.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/edge/test/floors.test.ts` | venue_floors.venue_id/floor_id + geography(Polygon,4326) geofence + connected_to on the venue geometry records (0005, PostGIS canonical). |
+| TR-41 | implemented | `db/migrations/0017_geofence_review.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/geofence.ts`<br>`services/edge/src/routes/geofence.ts` | GeoLibre authoring workflow built end to end: geofence_drafts (0017) carries draft -> in_review -> approved -> published/rejected with venue/floor targeting on the canonical PostGIS records; the venue-ops console routes (6, all GUC-gated) run the state machine; approval records a reviewer who must not be the author (four-eyes); publish_geofence_draft() is the only write path to venues.geofence/venue_floors.geofence and re-verifies the second person plus the density gate (valid, >=4 vertices, 10 m²..1 km², no edge > 25 m via the ST_Segmentize identity) in one transaction before auditing. The edge mirrors the gate in TypeScript for live editor feedback (cross-pinned constants). |
+| TR-42 | implemented | `db/migrations/0005_floors_checkin.sql`<br>`db/migrations/0017_geofence_review.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/floors.ts`<br>`services/edge/src/routes/scan.ts` | venue_floors.venue_id/floor_id + geography(Polygon,4326) geofence + connected_to on the venue geometry records (0005, PostGIS canonical). |
 | TR-43 | phase-gated | — | GeoParquet analytical outputs (P1 lakehouse). |
 | TR-44 | phase-gated | — | Static-tile serving when map surfaces arrive; no runtime tile server exists (compliant by absence). |
 
@@ -291,7 +291,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-21 | implemented | `db/migrations/0009_rooms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/routes/rooms.ts`<br>`services/edge/src/screening.ts` | screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested. |
 | SEC-22 | implemented | `services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/rotation.test.ts` | No list endpoints; results capped at 3; tie-break rotates per scan via edge-supplied seed (sha256(seed:userId)); unseeded legacy order retained only for tooling/tests. |
 | SEC-23 | external-evidence | — | OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch. |
-| SEC-24 | implemented | `tests/test_deploy_pipeline.py` | Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) — signed provenance is a per-merge artefact, verified in the same job. |
+| SEC-24 | implemented | `services/match-core/README.md`<br>`tests/test_deploy_pipeline.py`<br>`tests/test_match_core.py` | Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) — signed provenance is a per-merge artefact, verified in the same job. |
 | SEC-25 | implemented | — | .github/workflows/ci.yml dependencies job — license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR. |
 | SEC-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts`<br>`services/edge/test/devices.test.ts` | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
@@ -353,7 +353,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TECH-15 | partial | — | Python engine is pure/deterministic; TS services read the wall clock directly — clock/id injection not formalised. |
 | TECH-16 | client | — | Dependency maintenance/licence/size budget; 45 MB bundle cap. |
 | TECH-17 | organisational | — | Team skills: TypeScript, React Native, Postgres, one systems language. |
-| TECH-18 | gap-p0 | `deploy/k8s/match.yaml` | ARC language allocation: Rust match core + Go presence/venue/consent services outstanding; TS services are the documented P0 stand-in. |
+| TECH-18 | partial | `deploy/k8s/match.yaml`<br>`services/match-core/README.md`<br>`tests/test_match_core.py` | Rust match core delivered (services/match-core): the full engine — graph validation, TR-04 closure, TR-06 idf, TR-36 prior, scoring, TR-08/09 reasons, icebreaker — pinned to 1e-9 against the shared 120-pair golden corpus alongside the TS engine and Python reference, bit-deterministic by sorted-order accumulation, committed Cargo.lock, cargo test wired into CI. The Go presence/venue/consent services remain outstanding; TS stays the documented P0 serving stand-in. |
 | TECH-19 | implemented | — | Kafka designated event backbone (ADR-0004); no Fluvio deployed; Kafka rollout itself is ARC P1. |
 | TECH-20 | implemented | — | No Temporal calls on the scan path (none exist anywhere); Temporal rollout is ARC P1. |
 | TECH-21 | implemented | `deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml`<br>`deploy/k8s/networkpolicy.yaml` | No ClickHouse / second warehouse; APISIX is the sole public ingress — the only LoadBalancer Service, enforced by NetworkPolicy (validated); OpenSearch is P1. |
@@ -374,4 +374,4 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | ACC-07 | organisational | — | Three anchor venues contracted + dashboards verified. |
 | ACC-08 | external-evidence | — | Store review acceptance on both platforms — needs the client. |
 | ACC-09 | external-evidence | — | 10-user first-time usability test (>=8 describe the product correctly) — needs the client. |
-| ACC-10 | partial | `presence/eval_harness.py`<br>`presence/eval_score.py`<br>`scripts/export_golden.py`<br>`services/match/src/engine.ts`<br>`services/match/test/engine.test.ts` | Eval pipeline complete (653-pair key, rating pack, scoring; self-test alpha 0.832, p@3 0.389); the real >=3-independent-rater study is outstanding. |
+| ACC-10 | partial | `presence/eval_harness.py`<br>`presence/eval_score.py`<br>`scripts/export_golden.py`<br>`services/match-core/README.md`<br>`services/match/src/engine.ts` | Eval pipeline complete (653-pair key, rating pack, scoring; self-test alpha 0.832, p@3 0.389); the real >=3-independent-rater study is outstanding. |

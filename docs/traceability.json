@@ -3,9 +3,9 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 141,
-    "partial": 54,
-    "gap-p0": 2,
+    "implemented": 142,
+    "partial": 55,
+    "gap-p0": 0,
     "phase-gated": 8,
     "client": 36,
     "organisational": 34,
@@ -44,9 +44,9 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 28,
+      "implemented": 29,
       "partial": 5,
-      "gap-p0": 1,
+      "gap-p0": 0,
       "phase-gated": 4,
       "client": 6,
       "organisational": 0,
@@ -75,8 +75,8 @@
     },
     "TECH": {
       "implemented": 10,
-      "partial": 7,
-      "gap-p0": 1,
+      "partial": 8,
+      "gap-p0": 0,
       "phase-gated": 1,
       "client": 3,
       "organisational": 1,
@@ -434,8 +434,8 @@
         "docs/api/openapi.yaml",
         "presence/matching.py",
         "services/edge/src/routes/profile.ts",
-        "services/match/src/engine.ts",
-        "tests/test_matching.py"
+        "services/match-core/README.md",
+        "services/match/src/engine.ts"
       ],
       "note": "Sensitive nodes excluded from vectors, reasons, idf and bonus at build time; covered by engine tests."
     },
@@ -1616,6 +1616,7 @@
       "status": "implemented",
       "evidence": [
         "presence/matching.py",
+        "services/match-core/README.md",
         "services/match/src/engine.ts",
         "tests/test_matching.py"
       ],
@@ -1639,9 +1640,9 @@
       "evidence": [
         "docs/api/openapi.yaml",
         "presence/matching.py",
+        "services/match-core/README.md",
         "services/match/src/engine.ts",
-        "services/match/test/engine.test.ts",
-        "tests/test_matching.py"
+        "services/match/test/engine.test.ts"
       ],
       "note": "Ordered reasons with node ids, labels, contributions in every response."
     },
@@ -1664,6 +1665,7 @@
         "presence/matching.py",
         "services/match/src/engine.ts",
         "services/match/test/engine.test.ts",
+        "tests/test_match_core.py",
         "tests/test_matching.py"
       ],
       "note": "81 Python tests incl. 60 key-pinned pairs; 120-pair TS golden parity at 1e-9."
@@ -1903,9 +1905,9 @@
       "evidence": [
         "docs/runbook.md",
         "presence/matching.py",
+        "services/match-core/README.md",
         "services/match/src/engine.ts",
-        "services/match/src/store.ts",
-        "services/match/test/prior.test.ts"
+        "services/match/src/store.ts"
       ],
       "note": "Optional global prior (all-profile link-free df, 10-min rebuild) blended with fade w(N)=(30-N)/30 \u2014 0% shift at N>=30, exact-formula tests in TS+Python."
     },
@@ -1941,18 +1943,25 @@
     },
     "TR-41": {
       "family": "TR",
-      "status": "gap-p0",
-      "evidence": [],
-      "note": "GeoLibre authoring + second-person review + density verification workflow \u2014 not built."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0017_geofence_review.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/auth.ts",
+        "services/edge/src/geofence.ts",
+        "services/edge/src/routes/geofence.ts"
+      ],
+      "note": "GeoLibre authoring workflow built end to end: geofence_drafts (0017) carries draft -> in_review -> approved -> published/rejected with venue/floor targeting on the canonical PostGIS records; the venue-ops console routes (6, all GUC-gated) run the state machine; approval records a reviewer who must not be the author (four-eyes); publish_geofence_draft() is the only write path to venues.geofence/venue_floors.geofence and re-verifies the second person plus the density gate (valid, >=4 vertices, 10 m\u00b2..1 km\u00b2, no edge > 25 m via the ST_Segmentize identity) in one transaction before auditing. The edge mirrors the gate in TypeScript for live editor feedback (cross-pinned constants)."
     },
     "TR-42": {
       "family": "TR",
       "status": "implemented",
       "evidence": [
         "db/migrations/0005_floors_checkin.sql",
+        "db/migrations/0017_geofence_review.sql",
+        "docs/api/openapi.yaml",
         "services/edge/src/floors.ts",
-        "services/edge/src/routes/scan.ts",
-        "services/edge/test/floors.test.ts"
+        "services/edge/src/routes/scan.ts"
       ],
       "note": "venue_floors.venue_id/floor_id + geography(Polygon,4326) geofence + connected_to on the venue geometry records (0005, PostGIS canonical)."
     },
@@ -2170,7 +2179,9 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
-        "tests/test_deploy_pipeline.py"
+        "services/match-core/README.md",
+        "tests/test_deploy_pipeline.py",
+        "tests/test_match_core.py"
       ],
       "note": "Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) \u2014 signed provenance is a per-merge artefact, verified in the same job."
     },
@@ -2593,11 +2604,13 @@
     },
     "TECH-18": {
       "family": "TECH",
-      "status": "gap-p0",
+      "status": "partial",
       "evidence": [
-        "deploy/k8s/match.yaml"
+        "deploy/k8s/match.yaml",
+        "services/match-core/README.md",
+        "tests/test_match_core.py"
       ],
-      "note": "ARC language allocation: Rust match core + Go presence/venue/consent services outstanding; TS services are the documented P0 stand-in."
+      "note": "Rust match core delivered (services/match-core): the full engine \u2014 graph validation, TR-04 closure, TR-06 idf, TR-36 prior, scoring, TR-08/09 reasons, icebreaker \u2014 pinned to 1e-9 against the shared 120-pair golden corpus alongside the TS engine and Python reference, bit-deterministic by sorted-order accumulation, committed Cargo.lock, cargo test wired into CI. The Go presence/venue/consent services remain outstanding; TS stays the documented P0 serving stand-in."
     },
     "TECH-19": {
       "family": "TECH",
@@ -2702,8 +2715,8 @@
         "presence/eval_harness.py",
         "presence/eval_score.py",
         "scripts/export_golden.py",
-        "services/match/src/engine.ts",
-        "services/match/test/engine.test.ts"
+        "services/match-core/README.md",
+        "services/match/src/engine.ts"
       ],
       "note": "Eval pipeline complete (653-pair key, rating pack, scoring; self-test alpha 0.832, p@3 0.389); the real >=3-independent-rater study is outstanding."
     }

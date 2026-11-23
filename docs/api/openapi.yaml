@@ -2304,6 +2304,118 @@ paths:
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       responses:
         "204": { description: Account erased. }
+  /v1/ops/geofences:
+    post:
+      summary: Author a geofence draft (TR-41)
+      description: >-
+        Venue-ops console (workforce realm, venue-ops role). The polygon is
+        GeoJSON with a single closed ring — what the GeoLibre editor draws
+        (ADR-0008). The density gate runs at authoring time for editor
+        feedback and again, as the final authority, inside publish.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetType, venueId, polygon]
+              additionalProperties: false
+              properties:
+                targetType: { type: string, enum: [venue, floor] }
+                venueId: { type: string, format: uuid }
+                floorId: { type: string, maxLength: 32 }
+                polygon: { type: object, description: GeoJSON Polygon, one closed ring }
+      responses:
+        "200": { description: Draft created (status draft). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Venue-ops role required. }
+        "422": { description: Polygon invalid or fails the density gate. }
+    get:
+      summary: Geofence draft queue (TR-41)
+      description: >-
+        Venue-ops console. Optional status filter; each entry carries the
+        workflow state plus its vertex count and area for review triage.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [draft, in_review, approved, published, rejected] }
+      responses:
+        "200": { description: Draft list (newest first, capped at 200). }
+        "403": { description: Venue-ops role required. }
+  /v1/ops/geofences/{draftId}/submit:
+    post:
+      summary: Submit a draft for review (TR-41)
+      description: Only the author submits their own draft (draft -> in_review).
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Draft submitted. }
+        "403": { description: Venue-ops role required. }
+        "409": { description: Draft cannot be submitted (wrong state or not the author). }
+  /v1/ops/geofences/{draftId}/approve:
+    post:
+      summary: Approve a geofence draft — second person (TR-41)
+      description: >-
+        The reviewer is recorded and must not be the author (four-eyes, the
+        taxonomy-release discipline). in_review -> approved.
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Draft approved; reviewer recorded. }
+        "403": { description: Venue-ops role required. }
+        "409": { description: Cannot be approved by this reviewer. }
+  /v1/ops/geofences/{draftId}/reject:
+    post:
+      summary: Reject a geofence draft (TR-41)
+      description: in_review -> rejected with a review note for the author.
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              additionalProperties: false
+              properties:
+                message: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200": { description: Draft rejected. }
+        "403": { description: Venue-ops role required. }
+        "409": { description: Cannot be rejected by this reviewer. }
+  /v1/ops/geofences/{draftId}/publish:
+    post:
+      summary: Publish a geofence draft (TR-41, TR-42)
+      description: >-
+        The only path to live geometry. The database verifies in one
+        transaction that the draft is approved, the caller is the recorded
+        second person (never the author), and the polygon passes the density
+        gate; then the canonical PostGIS record (venues.geofence or
+        venue_floors.geofence) is written and the action is audit-logged.
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Published to the canonical geometry record. }
+        "403": { description: Venue-ops role required. }
+        "409": { description: Not approved, not the second person, or density verification failed. }
 components:
   parameters:
     pairId:

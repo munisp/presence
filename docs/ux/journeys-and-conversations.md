@@ -21,9 +21,10 @@ prohibition registry before a pixel exists.
 
 ## What is deliberately NOT here
 
-The remaining client-gated requirements (14 in the traceability
-matrix: FR-70, the NFR client set, TECH-08, TECH-16) need the React
-Native runtime itself — native modules, platform APIs, real devices —
-not framework-free contracts. The journey and conversation contracts
-above close every requirement whose client half is expressible and
-testable without that runtime.
+The journey and conversation contracts above close every surface-level
+requirement expressible and testable without the React Native runtime.
+The client budget contracts (NFR-04/05/29/30/35/36, TECH-16) landed in
+their own doc — `docs/ux/client-budgets.md` — leaving seven
+client-gated requirements in the traceability matrix (FR-70, NFR-25/26/
+27/28/37, TECH-08), which need the runtime itself or land next as
+framework-free contracts.

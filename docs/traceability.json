@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 223,
-    "partial": 3,
+    "implemented": 225,
+    "partial": 8,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 14,
+    "client": 7,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -34,11 +34,11 @@
       "superseded": 0
     },
     "NFR": {
-      "implemented": 13,
-      "partial": 0,
+      "implemented": 14,
+      "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 11,
+      "client": 5,
       "organisational": 0,
       "external-evidence": 13,
       "superseded": 0
@@ -74,11 +74,11 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 20,
+      "implemented": 21,
       "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 2,
+      "client": 1,
       "organisational": 1,
       "external-evidence": 0,
       "superseded": 1
@@ -198,9 +198,9 @@
       "evidence": [
         "docs/analytics/catalogue.yaml",
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "services/edge/src/aggregate.ts",
-        "services/edge/src/routes/interests.ts",
-        "services/edge/src/routes/venue.ts"
+        "services/edge/src/routes/interests.ts"
       ],
       "note": "kSuppressed (aggregate.ts, k=11) withholds every dashboard figure below k; routes/venue.ts applies it to all metrics."
     },
@@ -375,7 +375,7 @@
         "db/migrations/0019_reporting_compliance.sql",
         "docs/api/openapi.yaml",
         "docs/ux/interaction-surfaces.md",
-        "services/edge/src/routes/account.ts"
+        "docs/ux/journeys-and-conversations.md"
       ],
       "note": "DELETE /v1/account erases in one authenticated call; the client journey is pinned in journeyContracts.ts \u2014 three steps (settings -> account -> confirm) inside the three-tap budget ending in that call, with no support-contact step (budget and no-support proofs test-pinned, App-shell guard)."
     },
@@ -434,7 +434,7 @@
         "db/migrations/0011_linking.sql",
         "docs/api/openapi.yaml",
         "docs/ux/interaction-surfaces.md",
-        "services/edge/src/linking.ts"
+        "docs/ux/journeys-and-conversations.md"
       ],
       "note": "PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Client journeyContracts.ts mirrors the 3..20 bounds (cross-pinned to profile.ts INTEREST_MIN/MAX), pins the <=3-level first interaction, and makes the FR-08/FR-11 acceptance executable: below three declarations the publish is blocked with the pinned explanation and the picker offer (constellationPicker.ts reaches three inside its interaction budget); garbage counts fail closed to blocked."
     },
@@ -467,10 +467,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "presence/matching.py",
         "services/edge/src/routes/profile.ts",
-        "services/match/src/engine.ts",
-        "services/match/src/scan.ts"
+        "services/match/src/engine.ts"
       ],
       "note": "The discoverability floor counts NON-sensitive interests via nonSensitiveCount() (engine.ts) at all three match gates \u2014 scan candidates, corpus rebuild, global prior; a node flipped sensitive by FR-59 governance after declaration stops counting, a node the taxonomy no longer knows is skipped rather than throwing. GET /v1/profile/interests returns discoverable + discoverabilityNote explaining the floor so the editor can show the reason before the user leaves the screen."
     },
@@ -775,6 +775,7 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "services/edge/src/routes/messages.ts",
         "services/edge/src/screening.ts",
         "services/edge/test/screening.test.ts"
@@ -805,6 +806,7 @@
         "db/migrations/0006_profile_safety.sql",
         "docs/api/openapi.yaml",
         "docs/ux/interaction-surfaces.md",
+        "docs/ux/journeys-and-conversations.md",
         "services/edge/src/routes/messages.ts"
       ],
       "note": "DELETE /v1/pairs/:pairId/messages/:messageId \u2014 sender-only (RESTRICTIVE policy + column-limited grant), 24-h window blanks the envelope and tombstones; 410 after. Client journeyContracts.ts mirrors the window and the pinned 410 sentence (revocation offered only for the user's own messages inside the window; garbage and future timestamps fail closed) and pins the local-delete honesty note; conversationThread.ts wires the per-message revoke plan, renders the 410 notice past the window, and plans local deletion."
@@ -853,7 +855,7 @@
         "docs/api/openapi.yaml",
         "docs/ux/discovery-surfaces.md",
         "docs/ux/interaction-surfaces.md",
-        "services/edge/src/rooms.ts"
+        "docs/ux/journeys-and-conversations.md"
       ],
       "note": "Room content rules: opaque roomKey (sha256 venue:node), topic, kSuppressed member count, member-only GET with uniform 404, opt-in join/leave; notes carry no author field \u2014 opting in is what publishes; everything lives in Valkey with presence-aligned TTL (900s), no room table in Postgres (test-pinned)."
     },
@@ -863,9 +865,9 @@
       "evidence": [
         "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "services/edge/src/rooms.ts",
-        "services/edge/src/routes/rooms.ts",
-        "services/edge/src/screening.ts"
+        "services/edge/src/routes/rooms.ts"
       ],
       "note": "Posting discipline: SET NX EX 300 gate \u2192 one note per member per room per five minutes (429); first note per member per room screened via screenText (SEC-21 idiom, room:screened marker), later notes not re-screened; notes ring-buffered at 50 with TTL refresh on activity."
     },
@@ -879,7 +881,9 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
-        "docs/ux/interaction-surfaces.md"
+        "docs/ux/interaction-surfaces.md",
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch41.py"
       ],
       "note": "Venue check-in codes live via FR-99/FR-100 signed per-floor tokens: the venue mints at POST /v1/venues/:venueId/checkin-tokens (printed as the per-floor QR/NFC code \u2014 the displayable artefact) and the user presents at POST /v1/presence/checkin for (venueId, floorId) attribution. Client journeyContracts.ts pins the higher-than-cell confidence ordering (FR-89: indoors the cell is the fallback, never the default), the fail-closed code journey, and the tie to the FR-88 refusal's pinned alternative (publishGate.ts)."
     },
@@ -1085,7 +1089,7 @@
         "docs/api/openapi.yaml",
         "docs/ux/discovery-surfaces.md",
         "docs/ux/interaction-surfaces.md",
-        "services/edge/src/groups.ts"
+        "docs/ux/journeys-and-conversations.md"
       ],
       "note": "group_tables + group_table_members with member-only RLS; create/join require live venue presence; the six-seat cap is a data-layer trigger (SEC-33), re-join idempotent; self-serve leave, host remove, last-member-out closes."
     },
@@ -1095,9 +1099,9 @@
       "evidence": [
         "db/migrations/0007_group_surface.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "services/edge/src/groups.ts",
-        "services/edge/src/routes/tables.ts",
-        "services/edge/test/groups.test.ts"
+        "services/edge/src/routes/tables.ts"
       ],
       "note": "GET /v1/tables/:id/cards \u2014 join-time snapshot (group_table_interests, joining is the act that shares) aggregated over nodes shared by >=2 members, sensitive excluded, ranked by reach, top 5; every card labelled generated:true (buildCards, unit-tested)."
     },
@@ -1127,7 +1131,9 @@
     "FR-70": {
       "family": "FR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/journeys-and-conversations.md"
+      ],
       "note": "Verification status at identity reveal \u2014 client rendering (+ data from FR-51/52)."
     },
     "FR-71": {
@@ -1175,8 +1181,9 @@
       "evidence": [
         "db/migrations/0007_group_surface.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "services/edge/src/routes/tables.ts",
-        "tests/test_group_surface.py"
+        "tests/test_batch41.py"
       ],
       "note": "GET /v1/tables returns only the caller's memberships (no venue-wide listing exists); every table/slot-scoped route answers a uniform 404 to non-members; group_join_info reveals only venue+headcount of open tables, closed indistinguishable from nonexistent."
     },
@@ -1224,6 +1231,7 @@
       "status": "implemented",
       "evidence": [
         "docs/ux/discovery-surfaces.md",
+        "docs/ux/journeys-and-conversations.md",
         "tests/test_batch34.py",
         "tests/test_batch37.py",
         "tests/test_batch39.py"
@@ -1267,7 +1275,9 @@
       "evidence": [
         "docs/ux/discovery-surfaces.md",
         "docs/ux/interaction-surfaces.md",
-        "tests/test_batch40.py"
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch40.py",
+        "tests/test_batch41.py"
       ],
       "note": "client/src/presence/closeOffer.ts \u2014 COLOCATION_CLOSE_OFFER_MIN_MS 15 min, open conversation required, broken clocks fail closed; the offer carries the pinned CLOSE_OFFER_BASIS ('if you've met\u2026'); accepting closes thread + notifications, declining returns the conversation snapshot byte-identical (declineLeavesIntact) and is never re-asked (due \u2192 shown \u2192 declined|accepted, no return). Pinned by client tests + tests/test_batch40.py."
     },
@@ -1277,7 +1287,8 @@
       "evidence": [
         "docs/api/openapi.yaml",
         "tests/test_batch34.py",
-        "tests/test_batch37.py"
+        "tests/test_batch37.py",
+        "tests/test_batch42.py"
       ],
       "note": "client/src/presence/powerMode.ts \u2014 standard 300 s / reduced 600 s publish intervals, both strictly below the FR-14 900 s session TTL; the pinned REDUCED_POWER_NOTICE states matches arrive less timely; the selection persists under presence.powerMode (TR-30 allowlist, wiped on logout). Pinned by client tests + tests/test_batch37.py."
     },
@@ -1299,7 +1310,9 @@
       "evidence": [
         "docs/ux/discovery-surfaces.md",
         "docs/ux/interaction-surfaces.md",
-        "tests/test_batch39.py"
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch39.py",
+        "tests/test_batch41.py"
       ],
       "note": "client/src/presence/surfaceIntegrity.ts \u2014 the single PROHIBITED_ENGAGEMENT_PATTERNS registry (infinite/auto-loading scroll, typing indicators, read receipts, streaks, daily-login rewards, like/view counts, photo-at-match) every surface descriptor is audited against via descriptorViolations; the discovery surfaces (matchSurface, presenceHalo, offerWindow, discoverySkeleton) pass the guard by construction with pinned affordance lists, and the conversation surfaces inherit the same registry. Server-side the patterns remain structural (no endpoint serves the data). Pinned by client tests + tests/test_batch39.py."
     },
@@ -1308,15 +1321,20 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "tests/test_batch34.py",
-        "tests/test_batch37.py"
+        "tests/test_batch37.py",
+        "tests/test_batch41.py"
       ],
       "note": "client/src/presence/publishGate.ts \u2014 the platform accuracy grant is read before any publish; only an explicit precise grant publishes, approximate/garbage fails closed with the pinned one-sentence refusal and the venue check-in offer (POST /v1/presence/checkin, FR-99/100). The fix-accuracy half stays in cell.ts (MAX_FIX_ACCURACY_M). Pinned by client tests + tests/test_batch37.py."
     },
     "FR-89": {
       "family": "FR",
       "status": "partial",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch41.py"
+      ],
       "note": "Check-in basis exists (signed tokens + floor attribution, FR-99/FR-100); making check-in the PRIMARY indoor presence path is client/UX work, outstanding."
     },
     "FR-90": {
@@ -1467,15 +1485,19 @@
     },
     "NFR-04": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [],
-      "note": "Cold start to interactive <=1.8 s mid-tier."
+      "status": "partial",
+      "evidence": [
+        "tests/test_batch42.py"
+      ],
+      "note": "client/src/presence/startupBudget.ts \u2014 pinned phase ledger (native-init/js-bundle/secure-store/config-cache/first-render/handoff summing to exactly 1800 ms), deferred work (BLE start, prefetch, flush) banned from the critical path by audit; on-device profiling on the reference mid-tier remains."
     },
     "NFR-05": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [],
-      "note": "Warm start <=600 ms."
+      "status": "partial",
+      "evidence": [
+        "tests/test_batch42.py"
+      ],
+      "note": "client/src/presence/startupBudget.ts \u2014 the same ledger's warm column: resume pays nothing for the resident native runtime or JS bundle, sums to exactly 600 ms, no warm phase dearer than its cold twin; on-device profiling remains."
     },
     "NFR-06": {
       "family": "NFR",
@@ -1658,17 +1680,20 @@
     },
     "NFR-29": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [],
-      "note": "Foreground battery <=2%/h on reference mid-tier."
+      "status": "partial",
+      "evidence": [
+        "tests/test_batch42.py"
+      ],
+      "note": "client/src/presence/powerBudget.ts \u2014 duty-cycle ledger: fixed consumers (BLE advertise/scan, UI render) plus publish+cell activations computed from the FR-85 cadence (12/h standard, 6/h reduced), both modes inside the 2 %/h ceiling; on-device battery profiling remains."
     },
     "NFR-30": {
       "family": "NFR",
-      "status": "client",
+      "status": "partial",
       "evidence": [
-        "tests/test_batch34.py"
+        "tests/test_batch34.py",
+        "tests/test_batch42.py"
       ],
-      "note": "Background battery parity with a no-op app when background presence is off."
+      "note": "client/src/presence/powerBudget.ts \u2014 structural half landed: the background work registry is EMPTY when background presence is off (parity by doing nothing), exactly ble-central-wake when on, cross-pinned to app.json UIBackgroundModes and blocked ACCESS_BACKGROUND_LOCATION; the no-op-parity measurement remains device-side."
     },
     "NFR-31": {
       "family": "NFR",
@@ -1719,17 +1744,20 @@
     },
     "NFR-35": {
       "family": "NFR",
-      "status": "client",
+      "status": "partial",
       "evidence": [
-        "docs/ux/discovery-surfaces.md"
+        "docs/ux/discovery-surfaces.md",
+        "tests/test_batch42.py"
       ],
-      "note": "60 fps match surface (>=30 fps floor on weakest supported device)."
+      "note": "client/src/presence/frameBudget.ts \u2014 pinned render ledger (layout/path-geometry/label-measure/paint-commit = 16 ms) fits the 60 fps frame budget AND the 30 ms floor, audited fail-closed; on-device fps profiling remains."
     },
     "NFR-36": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [],
-      "note": "Ambient refresh <=1/min, no idle radio wake."
+      "status": "implemented",
+      "evidence": [
+        "tests/test_batch42.py"
+      ],
+      "note": "client/src/presence/frameBudget.ts \u2014 ambient refresh gated to at most one per minute (garbage clocks refuse, fail closed); refresh sources pinned to push/app-active only \u2014 poll is absent by construction, so an idle device never wakes the radio; AMBIENT_NETWORK_FETCHES_PER_REFRESH = 0 and an approved refresh carries the SEC-35 contentless payload built locally. Pinned by client tests + tests/test_batch42.py."
     },
     "NFR-37": {
       "family": "NFR",
@@ -2420,9 +2448,9 @@
       "evidence": [
         "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/journeys-and-conversations.md",
         "services/edge/src/routes/messages.ts",
-        "services/edge/src/routes/rooms.ts",
-        "services/edge/src/screening.ts"
+        "services/edge/src/routes/rooms.ts"
       ],
       "note": "screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested."
     },
@@ -2458,7 +2486,9 @@
     "SEC-25": {
       "family": "SEC",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "tests/test_batch42.py"
+      ],
       "note": ".github/workflows/ci.yml dependencies job \u2014 license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR."
     },
     "SEC-26": {
@@ -2534,8 +2564,8 @@
         "db/migrations/0007_group_surface.sql",
         "db/migrations/0010_devices.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/groups.ts",
-        "services/edge/src/routes/tables.ts"
+        "docs/ux/journeys-and-conversations.md",
+        "services/edge/src/groups.ts"
       ],
       "note": "group_table_member_cap() trigger locks the table row FOR UPDATE and rejects the seventh member; slot_bookings PK caps one booking per slot; rooms (FR-44) inherit the same pattern when built."
     },
@@ -2851,7 +2881,9 @@
       "family": "TECH",
       "status": "client",
       "evidence": [
-        "services/edge/src/screening.ts"
+        "docs/ux/journeys-and-conversations.md",
+        "services/edge/src/screening.ts",
+        "tests/test_batch42.py"
       ],
       "note": "OpenMLS/vodozemac client crypto; libsignal prohibited (AGPL-3.0 vs closed client)."
     },
@@ -2926,9 +2958,12 @@
     },
     "TECH-16": {
       "family": "TECH",
-      "status": "client",
-      "evidence": [],
-      "note": "Dependency maintenance/licence/size budget; 45 MB bundle cap."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch42.py"
+      ],
+      "note": "client/src/presence/dependencyBudget.ts \u2014 45 MB bundle cap with one size allocation per runtime dependency (31 MB allocated, cross-pinned to package.json); the licence allowlist mirrors the SEC-25 CI set with a prohibited-marker screen in front (GPL/AGPL/LGPL/SSPL/Commons Clause refuse \u2014 the TECH-08 libsignal discipline); the admission gate refuses in pinned order (size, SEC-18 membership, deprecated, licence, cap); the SEC-18 sdk-allowlist CI gate enforces membership. Pinned by client tests + tests/test_batch42.py."
     },
     "TECH-17": {
       "family": "TECH",

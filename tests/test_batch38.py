@@ -256,6 +256,8 @@ def test_traceability_reclassifies_fr01() -> None:
     # (FR-81/82/83/84/86/SEC-35) reclassified client → implemented.
     # Batch 41 closed the four journey partials
     # (FR-03/08/41/48) partial → implemented: 219 → 223, 7 → 3.
-    assert counts["implemented"] == 223
-    assert counts["partial"] == 3
-    assert counts["client"] == 14
+    # Batch 42 moved them again: NFR-36 + TECH-16 client → implemented,
+    # NFR-04/05/29/30/35 client → partial: 223 → 225, 3 → 8, 14 → 7.
+    assert counts["implemented"] == 225
+    assert counts["partial"] == 8
+    assert counts["client"] == 7

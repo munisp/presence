@@ -39,7 +39,14 @@
  * thread has no typing indicator or read receipt by construction
  * (FR-87), the RoomBoard renders k-suppressed notes with no authors
  * (FR-45/46), and the TableCard shows time, place, head count and one
- * generated prompt behind a six-seat join (FR-66/67, SEC-33).
+ * generated prompt behind a six-seat join (FR-66/67, SEC-33). The
+ * budget contracts bound the device behaviour: cold and warm starts
+ * follow the pinned phase ledger (NFR-04/05), the foreground duty
+ * cycle fits 2 %/h in both power modes and background presence off
+ * means no background work (NFR-29/30), the match surface renders
+ * inside one 60 fps frame and ambient widgets refresh at most once a
+ * minute without waking the radio (NFR-35/36), and dependencies pass
+ * the 45 MB / licence / maintenance budget (TECH-16).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -77,6 +84,10 @@ import {
 import { threadHonoursFr87 } from "./src/presence/conversationThread.js";
 import { renderCrowd, roomBoardHonoursFr87 } from "./src/presence/roomBoard.js";
 import { planJoin, tableCardHonoursFr87 } from "./src/presence/tableCard.js";
+import { startupBudgetHonoursNfr04Nfr05 } from "./src/presence/startupBudget.js";
+import { powerBudgetHonoursNfr29, backgroundParityHonoursNfr30 } from "./src/presence/powerBudget.js";
+import { frameBudgetHonoursNfr35, ambientRefreshHonoursNfr36 } from "./src/presence/frameBudget.js";
+import { dependencyBudgetHonoursTech16, BUNDLE_CAP_BYTES } from "./src/presence/dependencyBudget.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 const SURFACE_CHECKS = [
@@ -128,6 +139,14 @@ const SURFACE_CHECKS = [
       headCount: 0,
       prompt: { nodeId: "n", label: "", memberCount: 2, members: ["a", "b"], generated: true },
     }),
+  // NFR-04/05: the startup ledger fits both budgets with deferred work off the critical path.
+  startupBudgetHonoursNfr04Nfr05(),
+  // NFR-29/30: both power modes fit 2 %/h; background presence off means no background work.
+  powerBudgetHonoursNfr29() && backgroundParityHonoursNfr30(),
+  // NFR-35/36: the render ledger fits the frame; ambient refresh is minute-gated, never polls.
+  frameBudgetHonoursNfr35() && ambientRefreshHonoursNfr36(),
+  // TECH-16: the dependency ledger fits the 45 MB bundle cap.
+  dependencyBudgetHonoursTech16(),
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
@@ -153,6 +172,8 @@ export default function App() {
         venue check-in &gt; cell indoors
         {"\n"}thread: no typing indicator, no read receipts · room notes k-suppressed, authorless ·
         tables seat six
+        {"\n"}budgets: cold start 1.8 s · warm 600 ms · battery &le;2 %/h · background off = no work ·
+        bundle &le;{Math.round(BUNDLE_CAP_BYTES / 1024 / 1024)} MB
       </Text>
     </View>
   );

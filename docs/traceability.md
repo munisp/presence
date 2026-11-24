@@ -8,11 +8,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 193 | working in the repo with tests or structural evidence |
-| partial | 11 | meaningful part implemented; named gap remains |
+| implemented | 197 | working in the repo with tests or structural evidence |
+| partial | 10 | meaningful part implemented; named gap remains |
 | gap-p0 | 0 | ARC-P0 product scope, code not yet built |
 | phase-gated | 1 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
-| client | 36 | requires the React Native client workstream |
+| client | 33 | requires the React Native client workstream |
 | organisational | 34 | legal / process / staffing — not expressible as code |
 | external-evidence | 29 | needs production infrastructure or third-party evidence |
 | superseded | 2 | superseded by a recorded ADR |
@@ -22,12 +22,12 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | Family | implemented | partial | gap-p0 | phase-gated | client | organisational | external-evidence | superseded | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | BR | 10 | 1 | 0 | 0 | 0 | 22 | 0 | 0 | 33 |
-| FR | 77 | 7 | 0 | 0 | 15 | 1 | 0 | 0 | 100 |
+| FR | 78 | 6 | 0 | 0 | 15 | 1 | 0 | 0 | 100 |
 | NFR | 13 | 0 | 0 | 0 | 11 | 0 | 13 | 0 | 37 |
-| TR | 36 | 1 | 0 | 1 | 6 | 0 | 0 | 0 | 44 |
+| TR | 38 | 1 | 0 | 1 | 4 | 0 | 0 | 0 | 44 |
 | SEC | 28 | 1 | 0 | 0 | 1 | 5 | 3 | 0 | 38 |
 | INF | 10 | 0 | 0 | 0 | 0 | 1 | 8 | 1 | 20 |
-| TECH | 19 | 0 | 0 | 0 | 3 | 1 | 0 | 1 | 24 |
+| TECH | 20 | 0 | 0 | 0 | 2 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
 ## BR — Business requirements (§3)
@@ -86,11 +86,11 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-12 | implemented | `deploy/k8s/prometheusrules.yaml`<br>`docs/runbook.md`<br>`services/edge/src/app.ts` | Profile and corpus caches refresh on a 60 s loop (TR-05). |
 | FR-13 | implemented | `db/migrations/0009_rooms.sql`<br>`db/migrations/0012_taxonomy_cms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/interests.ts`<br>`services/edge/src/routes/linking.ts` | GET /v1/interests/:nodeId/popularity — live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22). |
 | FR-14 | implemented | `docs/api/openapi.yaml`<br>`docs/presence-model.md`<br>`docs/runbook.md`<br>`services/edge/src/routes/presence.ts`<br>`services/match/src/store.ts` | 900 s Valkey TTL; stale cell members filtered at read; tested. |
-| FR-15 | partial | `services/edge/src/context.ts` | Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work. |
+| FR-15 | implemented | `services/edge/src/context.ts` | Both halves done: the server rejects coordinate-shaped fields with 422 (TR-15), and the client computes the H3 cell on device — client/src/presence/cell.ts builds a publish payload of exactly {cell}, with payloadDiscardsCoordinates pinned by unit tests and approximate-only fixes refused (FR-88). |
 | FR-16 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/clock.ts`<br>`services/edge/src/context.ts`<br>`services/edge/src/rooms.ts`<br>`services/edge/src/routes/account.ts` | newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId — account ids never leave the edge pre-OPEN. |
 | FR-17 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/intents.ts`<br>`services/edge/src/routes/intents.ts`<br>`services/edge/src/routes/scan.ts` | PUT/GET/DELETE /v1/presence/intent over Valkey only: governed 8-word vocabulary (coffee/food/chat/walk/dance/network/explore/quiet), EX 3600 hard cap, requires live presence, purgePresence deletes intent:{uid} so it dies with presence; scan annotates results with sharedIntent when both sides declared the same active intent — signal only, score contract untouched (test-pinned). |
 | FR-18 | implemented | `db/migrations/0004_discovery_safety.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/context.ts`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/presence.ts` | users.invisible flag (migration 0004); PUT/GET /v1/account/visibility; flipping on purges live presence at once; publishes refused 403 while set. |
-| FR-19 | client | — | Background-withdrawal <=60 s is client lifecycle behaviour. |
+| FR-19 | client | `tests/test_batch34.py` | Background-withdrawal <=60 s is client lifecycle behaviour. |
 | FR-20 | implemented | `db/migrations/0001_init.sql`<br>`docs/api/openapi.yaml`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/scan.test.ts` | <=3 candidates with ordered reasons; unit + golden tests. |
 | FR-21 | implemented | `db/migrations/0001_init.sql`<br>`presence/matching.py`<br>`services/match/src/engine.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts` | Adaptive threshold: (1-5/n)-quantile floored at venue base; tested. |
 | FR-22 | implemented | `services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/rotation.test.ts`<br>`services/match/test/tr19.test.ts`<br>`tests/test_error_contract.py` | Hard guarantee in the ranker: MMR (lambda 0.7) still orders the pool, but a candidate whose primary reason (top-contributing reason node) is already taken is skipped — no two of the at-most-three results share a primary reason; the list may come back short (FR-20 is an upper bound). Unit-pinned incl. the rotation tests. |
@@ -159,7 +159,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | FR-85 | client | — | Reduced-power 10-min cadence mode with visibility trade-off notice. |
 | FR-86 | client | — | Ambient surfaces individually opt-in, off by default, one-action disable. |
 | FR-87 | client | — | Prohibited engagement mechanics — none exist server-side; enforcement is client review. |
-| FR-88 | client | — | Location-accuracy authorization read before publish; refuse on approximate-only. |
+| FR-88 | client | `tests/test_batch34.py` | Location-accuracy authorization read before publish; refuse on approximate-only. |
 | FR-89 | partial | — | Check-in basis exists (signed tokens + floor attribution, FR-99/FR-100); making check-in the PRIMARY indoor presence path is client/UX work, outstanding. |
 | FR-90 | implemented | `db/migrations/0018_analytics_publication.sql`<br>`db/migrations/0023_geofence_qa.sql`<br>`docs/adr/0009-lakehouse-publication-via-governed-sql.md`<br>`docs/analytics/README.md`<br>`docs/analytics/catalogue.yaml` | Full loop: venues.geofence canonical polygon (TR-41 review workflow) → lakehouse spatial join publishes cell_attribution (TR-38) → presence publish applies version-checked polygon precedence via PK lookup (services/edge/src/attribution.ts). geofence_version triggers version the polygon with the venue record; a revision suspends attribution until republication, so a stale map never mis-scopes presence. |
 | FR-91 | implemented | `services/edge/src/context.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts` | rotate:{lo}:{hi} keys (EX 604800) set on consent express and excluded from scans; per-user tbreak counter feeds the match service's seeded sha256 tie-break. |
@@ -204,9 +204,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | NFR-25 | client | — | WCAG 2.2 AA (contrast, dynamic type, screen reader, focus, reduced motion). |
 | NFR-26 | client | — | 44x44 pt touch targets. |
 | NFR-27 | client | — | English at launch; localisable without code changes; +2 locales in 3 months. |
-| NFR-28 | client | — | iOS 16+ / Android 10+ with graceful BLE-floor degradation. |
+| NFR-28 | client | `tests/test_batch34.py` | iOS 16+ / Android 10+ with graceful BLE-floor degradation. |
 | NFR-29 | client | — | Foreground battery <=2%/h on reference mid-tier. |
-| NFR-30 | client | — | Background battery parity with a no-op app when background presence is off. |
+| NFR-30 | client | `tests/test_batch34.py` | Background battery parity with a no-op app when background presence is off. |
 | NFR-31 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`docs/runbook.md`<br>`scripts/validate_deploy.py`<br>`services/edge/src/app.ts` | End-to-end: APISIX request-id generates/echoes X-Request-Id; the edge's genReqId honors a charset-validated incoming id (resolveRequestId, visible ASCII <=128) else mints a uuid and echoes it on every response (onSend); the scan route forwards x-request-id to the match service, whose own genReqId honors/echoes it the same way — one trace id spans gateway -> edge -> match, and Fastify logs carry reqId at every hop. |
 | NFR-32 | implemented | `db/migrations/0013_telemetry.sql`<br>`deploy/keycloak/realm-workforce.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts` | The four §2.5 product metrics (scan.surfaced_rate, surfacing.express_rate, mutual.open_rate, open.first_message_rate) are computed by one pass over telemetry_events (migration 0013). Events are written synchronously by the causing request — scan completed/DETECTED in the scan route, EXPRESS/NUDGE/OPEN in the consent routes, pair-first message in the messages route — never queued or batched (test-pinned), so the five-minute computability budget is met by construction; GET /v1/telemetry/metrics reports the age of the newest underlying event as evidence. Aggregate dims only — no user ids, pair ids or cells (test-pinned). |
 | NFR-33 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/networkpolicy.yaml`<br>`deploy/k8s/observability.yaml`<br>`deploy/k8s/prometheusrules.yaml`<br>`deploy/k8s/servicemonitor.yaml` | deploy/k8s/prometheusrules.yaml — one PrometheusRule alert per required class, each with severity and owner; every alert-input series is emitted (edge services/edge/src/metrics.ts: http duration/requests, publish failures, realtime publish duration, moderation queue age refreshed on scrape; match services/match/src/metrics.ts: scan demand + served) and scraped via deploy/k8s/servicemonitor.yaml with the monitoring namespace admitted by the network policy. |
@@ -247,9 +247,9 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | TR-26 | implemented | `deploy/apisix/config.yaml`<br>`deploy/docker-compose.yml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml` | APISIX listener configured TLSv1.3-only with HTTP/2 (deploy/k8s/apisix.yaml); downgrade impossible at the listener; asserted by scripts/validate_deploy.py. Dev compose stays plaintext by design. |
 | TR-27 | client | — | Unsupported-version detection + update prompt. |
 | TR-28 | implemented | — | All expiry windows use server now(); no client-clock input anywhere. |
-| TR-29 | client | — | On-device cell computation; raw coordinates discarded before any network call. |
-| TR-30 | client | — | Minimum local state; cleared on logout/uninstall signal. |
-| TR-31 | client | — | BLE rotating derived codes <=15 min, never a stable identifier. |
+| TR-29 | implemented | `docs/security/sdk-allowlist.json`<br>`tests/test_batch34.py` | client/src/presence/cell.ts: computePresenceCell turns a fix into an H3 r9 cell on device (h3-js — the governed library the match service shares); toPublishPayload returns exactly {cell} and refuses approximate-only fixes (FR-88, MAX_FIX_ACCURACY_M=100); payloadDiscardsCoordinates pins the no-coordinates contract under node --test. |
+| TR-30 | implemented | `docs/security/sdk-allowlist.json`<br>`tests/test_batch34.py` | client/src/presence/localState.ts: LOCAL_STATE_ALLOWLIST of 4 namespaced keys (session refresh token, device id, notification prefs, taxonomy version); createLocalState is type-safe over allowlisted keys only; clearLocalState wipes every allowlisted key by construction (logout/uninstall); secrets backed by expo-secure-store via the platform adapter, not AsyncStorage. |
+| TR-31 | client | `docs/security/sdk-allowlist.json` | BLE rotating derived codes <=15 min, never a stable identifier. |
 | TR-32 | client | — | Graceful degradation on denied Bluetooth/location/push permissions. |
 | TR-33 | client | — | Certificate pinning removable by configuration (MAY). |
 | TR-34 | implemented | `db/migrations/0013_telemetry.sql`<br>`deploy/keycloak/realm-workforce.json`<br>`docs/api/openapi.yaml`<br>`services/edge/src/auth.ts`<br>`services/edge/src/routes/consent.ts` | Stable governed event keys (scan.completed, consent.transitioned, pair.first_message — enforced identically by the DB CHECK and the edge constant, cross-pinned) and stable metric keys. GET /v1/telemetry/export.csv emits the presence-telemetry/v1 contract: a version marker line, then the stable column order metric_key,window_start,window_end,value,numerator,denominator; zero denominators export as empty fields, never a fake zero. Analyst console gated by the workforce analyst role + app.analyst GUC + RLS. |
@@ -285,7 +285,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-15 | organisational | — | Record of processing activities per Appendix B. |
 | SEC-16 | implemented | `docs/analytics/README.md`<br>`docs/analytics/catalogue.yaml`<br>`tests/test_analytics_pseudonym.py`<br>`tests/test_lakehouse_layers.py` | analytics/pseudonym.py: HMAC-SHA256 pseudonyms keyed by a salt rotating every calendar month (uncorrelatable across months); the k floor (K_MIN=11, pinned to the edge aggregate.ts constant) removes any cell-level aggregate below the floor — rows simply do not exist in gold. Pinned repo-wide in tests/test_analytics_pseudonym.py. |
 | SEC-17 | implemented | `db/migrations/0003_account_deletion.sql`<br>`db/migrations/0016_age_assurance.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/account.ts`<br>`services/edge/src/routes/moderation.ts` | Privacy-preserving age assurance with no ID-document storage: self-declaration (FR-02 year-only) plus a moderation-triggered re-verification loop — underage/actioned resolution flags the account in the same txn, discovery closes with the neutral error, and re-verification requires an adult year consistent (±1) with the declaration on file. No passport/NIN/BVN/document storage exists anywhere in schema, edge or realm exports (pinned repo-wide). |
-| SEC-18 | implemented | `docs/security/sdk-allowlist.json`<br>`scripts/check_sdk_allowlist.py`<br>`tests/test_sdk_allowlist.py` | Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) — an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit. |
+| SEC-18 | implemented | `docs/security/sdk-allowlist.json`<br>`scripts/check_sdk_allowlist.py`<br>`tests/test_batch34.py`<br>`tests/test_sdk_allowlist.py` | Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) — an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit. |
 | SEC-19 | implemented | `db/migrations/0021_attestation_push.sql`<br>`docs/api/openapi.yaml`<br>`docs/security/attestation.md`<br>`services/edge/src/attestation.ts`<br>`services/edge/src/auth.ts` | Attestation before discovery with a documented fallback (docs/security/attestation.md): single-use 120 s challenges, signature verification, monotonic counter, verified_at registry; the corpus gates on attested_accounts (match profile read joins the view). Fallback: moderator-approved, audited, one-open-per-account, revocable waivers (attestation_fallbacks + approve/revoke definers under the moderator GUC; console routes POST/DELETE /v1/moderation/attestation-fallbacks/:userId). Legacy unverified enrolment stays accepted but discovery-ineligible until verified. Pins: test_batch29.py. |
 | SEC-20 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/budget.ts`<br>`services/edge/src/routes/consent.ts`<br>`services/edge/src/routes/presence.ts`<br>`services/edge/src/routes/scan.ts` | rl:scan:h 200/h (429) and rl:wave:d 20/day (429) Valkey counters; isImpossibleTravel rejects fixes implying >500 km/h with a 422. |
 | SEC-21 | implemented | `db/migrations/0009_rooms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/routes/rooms.ts`<br>`services/edge/src/screening.ts` | screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested. |
@@ -336,7 +336,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
-| TECH-01 | client | — | React Native + Expo custom dev client; Expo Go prohibited (BLE). |
+| TECH-01 | implemented | `docs/security/sdk-allowlist.json`<br>`tests/test_batch34.py` | client/: React Native 0.88 + Expo SDK 58 custom dev client — expo-dev-client in dependencies and plugins, `expo start --dev-client`; Expo Go prohibited (documented + pinned by tests; BLE needs native modules). Platform floors iOS 16.0 / Android minSdkVersion 29 with BLUETOOTH_SCAN/CONNECT and when-in-use location declared, ACCESS_BACKGROUND_LOCATION explicitly blocked. CI client job typechecks the RN surface and runs the framework-free unit suites. |
 | TECH-02 | implemented | — | h3-js 4.x in both TS services; the client uses the same library family so cell ids agree bit-for-bit. |
 | TECH-03 | implemented | `deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | Dockerfiles on node:22-alpine, engines >=22, @types/node 22.10.2; TypeScript strict, pinned toolchain; tests green. |
 | TECH-04 | implemented | `db/migrations/0014_markets.sql`<br>`deploy/k8s/postgres.yaml`<br>`tests/test_venue_registry.py` | deploy/postgres/Dockerfile builds on postgis/postgis:17-3.5-alpine with pgvector v0.8.0 and h3-pg v4.2.1 compiled from pinned tags (batch 19); native h3-pg powers the TR-16/37 ladder lookups. |

@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 193,
-    "partial": 11,
+    "implemented": 197,
+    "partial": 10,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 36,
+    "client": 33,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 77,
-      "partial": 7,
+      "implemented": 78,
+      "partial": 6,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 15,
@@ -44,11 +44,11 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 36,
+      "implemented": 38,
       "partial": 1,
       "gap-p0": 0,
       "phase-gated": 1,
-      "client": 6,
+      "client": 4,
       "organisational": 0,
       "external-evidence": 0,
       "superseded": 0
@@ -74,11 +74,11 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 19,
+      "implemented": 20,
       "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 3,
+      "client": 2,
       "organisational": 1,
       "external-evidence": 0,
       "superseded": 1
@@ -504,11 +504,11 @@
     },
     "FR-15": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "services/edge/src/context.ts"
       ],
-      "note": "Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work."
+      "note": "Both halves done: the server rejects coordinate-shaped fields with 422 (TR-15), and the client computes the H3 cell on device \u2014 client/src/presence/cell.ts builds a publish payload of exactly {cell}, with payloadDiscardsCoordinates pinned by unit tests and approximate-only fixes refused (FR-88)."
     },
     "FR-16": {
       "family": "FR",
@@ -549,7 +549,9 @@
     "FR-19": {
       "family": "FR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "tests/test_batch34.py"
+      ],
       "note": "Background-withdrawal <=60 s is client lifecycle behaviour."
     },
     "FR-20": {
@@ -1243,7 +1245,9 @@
     "FR-88": {
       "family": "FR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "tests/test_batch34.py"
+      ],
       "note": "Location-accuracy authorization read before publish; refuse on approximate-only."
     },
     "FR-89": {
@@ -1581,7 +1585,9 @@
     "NFR-28": {
       "family": "NFR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "tests/test_batch34.py"
+      ],
       "note": "iOS 16+ / Android 10+ with graceful BLE-floor degradation."
     },
     "NFR-29": {
@@ -1593,7 +1599,9 @@
     "NFR-30": {
       "family": "NFR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "tests/test_batch34.py"
+      ],
       "note": "Background battery parity with a no-op app when background presence is off."
     },
     "NFR-31": {
@@ -1968,20 +1976,28 @@
     },
     "TR-29": {
       "family": "TR",
-      "status": "client",
-      "evidence": [],
-      "note": "On-device cell computation; raw coordinates discarded before any network call."
+      "status": "implemented",
+      "evidence": [
+        "docs/security/sdk-allowlist.json",
+        "tests/test_batch34.py"
+      ],
+      "note": "client/src/presence/cell.ts: computePresenceCell turns a fix into an H3 r9 cell on device (h3-js \u2014 the governed library the match service shares); toPublishPayload returns exactly {cell} and refuses approximate-only fixes (FR-88, MAX_FIX_ACCURACY_M=100); payloadDiscardsCoordinates pins the no-coordinates contract under node --test."
     },
     "TR-30": {
       "family": "TR",
-      "status": "client",
-      "evidence": [],
-      "note": "Minimum local state; cleared on logout/uninstall signal."
+      "status": "implemented",
+      "evidence": [
+        "docs/security/sdk-allowlist.json",
+        "tests/test_batch34.py"
+      ],
+      "note": "client/src/presence/localState.ts: LOCAL_STATE_ALLOWLIST of 4 namespaced keys (session refresh token, device id, notification prefs, taxonomy version); createLocalState is type-safe over allowlisted keys only; clearLocalState wipes every allowlisted key by construction (logout/uninstall); secrets backed by expo-secure-store via the platform adapter, not AsyncStorage."
     },
     "TR-31": {
       "family": "TR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "docs/security/sdk-allowlist.json"
+      ],
       "note": "BLE rotating derived codes <=15 min, never a stable identifier."
     },
     "TR-32": {
@@ -2275,6 +2291,7 @@
       "evidence": [
         "docs/security/sdk-allowlist.json",
         "scripts/check_sdk_allowlist.py",
+        "tests/test_batch34.py",
         "tests/test_sdk_allowlist.py"
       ],
       "note": "Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) \u2014 an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit."
@@ -2666,9 +2683,12 @@
     },
     "TECH-01": {
       "family": "TECH",
-      "status": "client",
-      "evidence": [],
-      "note": "React Native + Expo custom dev client; Expo Go prohibited (BLE)."
+      "status": "implemented",
+      "evidence": [
+        "docs/security/sdk-allowlist.json",
+        "tests/test_batch34.py"
+      ],
+      "note": "client/: React Native 0.88 + Expo SDK 58 custom dev client \u2014 expo-dev-client in dependencies and plugins, `expo start --dev-client`; Expo Go prohibited (documented + pinned by tests; BLE needs native modules). Platform floors iOS 16.0 / Android minSdkVersion 29 with BLUETOOTH_SCAN/CONNECT and when-in-use location declared, ACCESS_BACKGROUND_LOCATION explicitly blocked. CI client job typechecks the RN surface and runs the framework-free unit suites."
     },
     "TECH-02": {
       "family": "TECH",

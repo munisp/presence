@@ -80,8 +80,8 @@ jobs:
           npx --yes license-checker --production --onlyAllow "$ALLOWED" --summary --start services/edge
           npx --yes license-checker --production --onlyAllow "$ALLOWED" --summary --start services/match
 
-  # SEC-18: third-party SDK allowlist — fail-closed over any client
-  # dependency manifest that appears in the repo (client/ lands later).
+  # SEC-18: third-party SDK allowlist — fail-closed over the client
+  # dependency manifests (client/).
   sdk-allowlist:
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +90,19 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 scripts/check_sdk_allowlist.py
+
+  # TECH-01: the consumer client — typecheck the RN surface and run the
+  # framework-free unit suites (TR-29/TR-30) on every push.
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix client --no-audit --no-fund
+      - run: npm run typecheck --prefix client
+      - run: npm test --prefix client
 
   # TR-39: every gold table must be registered in the data catalogue with
   # owner, grain, freshness SLO and retention before any product surface may

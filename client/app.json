@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Presence",
+    "slug": "presence",
+    "scheme": "presence",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0B0F14",
+    "splash": {
+      "backgroundColor": "#0B0F14"
+    },
+    "ios": {
+      "bundleIdentifier": "app.presence.client",
+      "deploymentTarget": "16.0",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Presence uses Bluetooth to notice people nearby — only after you turn presence on.",
+        "NSBluetoothPeripheralUsageDescription": "Presence uses Bluetooth to notice people nearby — only after you turn presence on.",
+        "NSLocationWhenInUseUsageDescription": "Presence computes your venue cell on this device; raw coordinates never leave it.",
+        "UIBackgroundModes": ["bluetooth-central"]
+      }
+    },
+    "android": {
+      "package": "app.presence.client",
+      "minSdkVersion": 29,
+      "permissions": [
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "blockedPermissions": [
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-dev-client",
+      "expo-secure-store"
+    ]
+  }
+}

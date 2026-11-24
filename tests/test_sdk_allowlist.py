@@ -177,8 +177,12 @@ def test_sec18_podfile_and_gradle_scanned(tmp_path: Path) -> None:
     }
 
 
-def test_sec18_gate_passes_without_client() -> None:
-    assert checker.scan_manifests(ROOT / "client") == []
+def test_sec18_gate_passes_with_the_landed_client() -> None:
+    # Batch 34 landed client/: every declared dependency is allowlisted
+    # and the gate passes over the real manifests.
+    deps = checker.scan_manifests(ROOT / "client")
+    assert len(deps) == 10
+    assert {d.ecosystem for d in deps} == {"npm"}
     assert checker.main() == 0
 
 

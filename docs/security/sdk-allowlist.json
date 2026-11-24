@@ -9,5 +9,86 @@
     "dataAccess": "what personal data the SDK can touch — drives the SEC-12 DPIA linkage",
     "approvedBy": "governance review reference (PR or ADR)"
   },
-  "sdks": []
+  "sdks": [
+    {
+      "name": "expo",
+      "ecosystem": "npm",
+      "versionConstraint": "~58.0.0",
+      "justification": "Expo SDK runtime — the managed workflow layer the custom dev client is built on (TECH-01).",
+      "dataAccess": "none beyond the platform APIs the app itself declares",
+      "approvedBy": "ADR-0001 sequencing; batch-34 client foundation PR"
+    },
+    {
+      "name": "react",
+      "ecosystem": "npm",
+      "versionConstraint": "19.3.0",
+      "justification": "UI runtime required by React Native 0.88 (TECH-01).",
+      "dataAccess": "none — renders local component state only",
+      "approvedBy": "ADR-0001 sequencing; batch-34 client foundation PR"
+    },
+    {
+      "name": "react-native",
+      "ecosystem": "npm",
+      "versionConstraint": "0.88.1",
+      "justification": "The client framework itself (TECH-01); pinned to the Expo SDK 58 pairing.",
+      "dataAccess": "platform device APIs as declared in app.json (BLE, location)",
+      "approvedBy": "ADR-0001 sequencing; batch-34 client foundation PR"
+    },
+    {
+      "name": "expo-dev-client",
+      "ecosystem": "npm",
+      "versionConstraint": "~58.0.0",
+      "justification": "The custom dev client itself — Expo Go is prohibited because BLE needs native modules (TECH-01/TR-31).",
+      "dataAccess": "none — development build wrapper",
+      "approvedBy": "batch-34 client foundation PR"
+    },
+    {
+      "name": "expo-secure-store",
+      "ecosystem": "npm",
+      "versionConstraint": "~58.0.0",
+      "justification": "TR-30: platform-keystore backing for the session refresh token; secrets must not sit in plain AsyncStorage.",
+      "dataAccess": "session credentials (stored, never transmitted by the SDK)",
+      "approvedBy": "batch-34 client foundation PR"
+    },
+    {
+      "name": "expo-status-bar",
+      "ecosystem": "npm",
+      "versionConstraint": "~58.0.0",
+      "justification": "Status bar styling from the root component.",
+      "dataAccess": "none",
+      "approvedBy": "batch-34 client foundation PR"
+    },
+    {
+      "name": "h3-js",
+      "ecosystem": "npm",
+      "versionConstraint": "^4.2.1",
+      "justification": "TR-29: on-device H3 cell computation — the same governed library and version family the match service uses, so cells agree bit-for-bit.",
+      "dataAccess": "location fix in memory, transformed to a coarse cell id on device; raw coordinates never leave",
+      "approvedBy": "batch-34 client foundation PR"
+    },
+    {
+      "name": "typescript",
+      "ecosystem": "npm",
+      "versionConstraint": "5.6.3",
+      "justification": "Build toolchain — pinned with the services for one compiler across the repo.",
+      "dataAccess": "none — build-time only",
+      "approvedBy": "batch-34 client foundation PR"
+    },
+    {
+      "name": "@types/node",
+      "ecosystem": "npm",
+      "versionConstraint": "22.10.2",
+      "justification": "Types for the node --test unit suites; pinned with the services.",
+      "dataAccess": "none — build-time only",
+      "approvedBy": "batch-34 client foundation PR"
+    },
+    {
+      "name": "@types/react",
+      "ecosystem": "npm",
+      "versionConstraint": "^19.1.1",
+      "justification": "React 19 type definitions for the RN surface typecheck.",
+      "dataAccess": "none — build-time only",
+      "approvedBy": "batch-34 client foundation PR"
+    }
+  ]
 }

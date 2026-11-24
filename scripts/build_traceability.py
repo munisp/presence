@@ -111,7 +111,7 @@ CLASSIFICATION: dict[str, tuple[str, str]] = {
     "FR-12": ("implemented", "Profile and corpus caches refresh on a 60 s loop (TR-05)."),
     "FR-13": ("implemented", "GET /v1/interests/:nodeId/popularity — live-cell count over declarations of the node and its descendants, kSuppressed at k=11 (BR-13); sensitive nodes indistinguishable from unknown (TR-22)."),
     "FR-14": ("implemented", "900 s Valkey TTL; stale cell members filtered at read; tested."),
-    "FR-15": ("partial", "Server rejects coordinate-shaped fields with 422 (TR-15); on-device cell computation is client work."),
+    "FR-15": ("implemented", "Both halves done: the server rejects coordinate-shaped fields with 422 (TR-15), and the client computes the H3 cell on device — client/src/presence/cell.ts builds a publish payload of exactly {cell}, with payloadDiscardsCoordinates pinned by unit tests and approximate-only fixes refused (FR-88)."),
     "FR-16": ("implemented", "newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId — account ids never leave the edge pre-OPEN."),
     "FR-17": ("implemented", "PUT/GET/DELETE /v1/presence/intent over Valkey only: governed 8-word vocabulary (coffee/food/chat/walk/dance/network/explore/quiet), EX 3600 hard cap, requires live presence, purgePresence deletes intent:{uid} so it dies with presence; scan annotates results with sharedIntent when both sides declared the same active intent — signal only, score contract untouched (test-pinned)."),
 
@@ -271,8 +271,8 @@ CLASSIFICATION.update({
     "TR-26": ("implemented", "APISIX listener configured TLSv1.3-only with HTTP/2 (deploy/k8s/apisix.yaml); downgrade impossible at the listener; asserted by scripts/validate_deploy.py. Dev compose stays plaintext by design."),
     "TR-27": ("client", "Unsupported-version detection + update prompt."),
     "TR-28": ("implemented", "All expiry windows use server now(); no client-clock input anywhere."),
-    "TR-29": ("client", "On-device cell computation; raw coordinates discarded before any network call."),
-    "TR-30": ("client", "Minimum local state; cleared on logout/uninstall signal."),
+    "TR-29": ("implemented", "client/src/presence/cell.ts: computePresenceCell turns a fix into an H3 r9 cell on device (h3-js — the governed library the match service shares); toPublishPayload returns exactly {cell} and refuses approximate-only fixes (FR-88, MAX_FIX_ACCURACY_M=100); payloadDiscardsCoordinates pins the no-coordinates contract under node --test."),
+    "TR-30": ("implemented", "client/src/presence/localState.ts: LOCAL_STATE_ALLOWLIST of 4 namespaced keys (session refresh token, device id, notification prefs, taxonomy version); createLocalState is type-safe over allowlisted keys only; clearLocalState wipes every allowlisted key by construction (logout/uninstall); secrets backed by expo-secure-store via the platform adapter, not AsyncStorage."),
     "TR-31": ("client", "BLE rotating derived codes <=15 min, never a stable identifier."),
     "TR-32": ("client", "Graceful degradation on denied Bluetooth/location/push permissions."),
     "TR-33": ("client", "Certificate pinning removable by configuration (MAY)."),
@@ -350,7 +350,7 @@ CLASSIFICATION.update({
     "INF-19": ("external-evidence", "<=EUR1 500/mo at 100k MAU — Kubecost (P1) + monthly review."),
     "INF-20": ("organisational", "On-call staffing, escalation ladder, 30-min Sev-1 acknowledgement."),
     # ---------------- TECH ----------------
-    "TECH-01": ("client", "React Native + Expo custom dev client; Expo Go prohibited (BLE)."),
+    "TECH-01": ("implemented", "client/: React Native 0.88 + Expo SDK 58 custom dev client — expo-dev-client in dependencies and plugins, `expo start --dev-client`; Expo Go prohibited (documented + pinned by tests; BLE needs native modules). Platform floors iOS 16.0 / Android minSdkVersion 29 with BLUETOOTH_SCAN/CONNECT and when-in-use location declared, ACCESS_BACKGROUND_LOCATION explicitly blocked. CI client job typechecks the RN surface and runs the framework-free unit suites."),
     "TECH-02": ("implemented", "h3-js 4.x in both TS services; the client uses the same library family so cell ids agree bit-for-bit."),
     "TECH-03": ("implemented", "Dockerfiles on node:22-alpine, engines >=22, @types/node 22.10.2; TypeScript strict, pinned toolchain; tests green."),
     "TECH-04": ("implemented", "deploy/postgres/Dockerfile builds on postgis/postgis:17-3.5-alpine with pgvector v0.8.0 and h3-pg v4.2.1 compiled from pinned tags (batch 19); native h3-pg powers the TR-16/37 ladder lookups."),

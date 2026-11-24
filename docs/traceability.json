@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 192,
-    "partial": 12,
+    "implemented": 193,
+    "partial": 11,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -74,8 +74,8 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 18,
-      "partial": 1,
+      "implemented": 19,
+      "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 3,
@@ -1257,10 +1257,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0018_analytics_publication.sql",
+        "db/migrations/0023_geofence_qa.sql",
         "docs/adr/0009-lakehouse-publication-via-governed-sql.md",
         "docs/analytics/README.md",
-        "docs/analytics/catalogue.yaml",
-        "services/edge/src/attribution.ts"
+        "docs/analytics/catalogue.yaml"
       ],
       "note": "Full loop: venues.geofence canonical polygon (TR-41 review workflow) \u2192 lakehouse spatial join publishes cell_attribution (TR-38) \u2192 presence publish applies version-checked polygon precedence via PK lookup (services/edge/src/attribution.ts). geofence_version triggers version the polygon with the venue record; a revision suspends attribution until republication, so a stale map never mis-scopes presence."
     },
@@ -2074,9 +2074,9 @@
       "evidence": [
         "db/migrations/0017_geofence_review.sql",
         "db/migrations/0018_analytics_publication.sql",
+        "db/migrations/0023_geofence_qa.sql",
         "docs/adr/0009-lakehouse-publication-via-governed-sql.md",
-        "docs/api/openapi.yaml",
-        "services/edge/src/auth.ts"
+        "docs/api/openapi.yaml"
       ],
       "note": "GeoLibre authoring workflow built end to end: geofence_drafts (0017) carries draft -> in_review -> approved -> published/rejected with venue/floor targeting on the canonical PostGIS records; the venue-ops console routes (6, all GUC-gated) run the state machine; approval records a reviewer who must not be the author (four-eyes); publish_geofence_draft() is the only write path to venues.geofence/venue_floors.geofence and re-verifies the second person plus the density gate (valid, >=4 vertices, 10 m\u00b2..1 km\u00b2, no edge > 25 m via the ST_Segmentize identity) in one transaction before auditing. The edge mirrors the gate in TypeScript for live editor feedback (cross-pinned constants)."
     },
@@ -2869,9 +2869,15 @@
     },
     "TECH-24": {
       "family": "TECH",
-      "status": "partial",
-      "evidence": [],
-      "note": "Canonical geometry in PostGIS (venues.geofence); GeoLibre authoring/QA workflow not built (TR-41)."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0023_geofence_qa.sql",
+        "docs/api/openapi.yaml",
+        "docs/ops/geofence-qa.md",
+        "scripts/validate_deploy.py",
+        "services/edge/src/routes/geofence.ts"
+      ],
+      "note": "MapLibre + GeoLibre + PostGIS stack (ADR-0008) complete end to end: canonical geometry in PostGIS (venues.geofence geography(Polygon,4326)); GeoLibre authoring workflow (TR-41, batch 22 \u2014 drafts, four-eyes, density gate, DB-final publish); and the QA workflow (batch 23 migration 0023) \u2014 geofence_overlap_check + a publish-time overlap gate that stops two venues claiming the same ground (attribution ambiguity, FR-90; 10 m\u00b2 tolerance, floors exempt), geofence_qa_report() GUC-gated estate audit (coverage, density re-verification, overlap conflicts, geometry version, drafts in flight), console routes POST /v1/ops/geofences/overlap-check + GET /v1/ops/geofences/qa, and the runbook docs/ops/geofence-qa.md."
     },
     "ACC-01": {
       "family": "ACC",

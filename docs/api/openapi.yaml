@@ -2972,8 +2972,10 @@ paths:
         The only path to live geometry. The database verifies in one
         transaction that the draft is approved, the caller is the recorded
         second person (never the author), and the polygon passes the density
-        gate; then the canonical PostGIS record (venues.geofence or
-        venue_floors.geofence) is written and the action is audit-logged.
+        gate; venue-target polygons must additionally clear the overlap gate
+        (TECH-24) — no publishing over another venue's ground; then the
+        canonical PostGIS record (venues.geofence or venue_floors.geofence)
+        is written and the action is audit-logged.
       parameters:
         - name: draftId
           in: path
@@ -2983,7 +2985,44 @@ paths:
       responses:
         "200": { description: Published to the canonical geometry record. }
         "403": { description: Venue-ops role required. }
-        "409": { description: Not approved, not the second person, or density verification failed. }
+        "409": { description: Not approved, not the second person, or density/overlap verification failed. }
+  /v1/ops/geofences/overlap-check:
+    post:
+      summary: Overlap feedback for the editor (TECH-24)
+      description: >-
+        Venue-ops console. Read-only QA probe for the GeoLibre editor: runs
+        the same geofence_overlap_check the publish gate enforces, so what
+        the editor shows is what publish will enforce. Returns the
+        conflicting venues with intersection areas; an empty list means the
+        polygon claims no ground another venue already owns.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [venueId, polygon]
+              additionalProperties: false
+              properties:
+                venueId: { type: string, format: uuid }
+                polygon: { type: object, description: GeoJSON Polygon, one closed ring }
+      responses:
+        "200": { description: Overlap verdict (ok plus any conflicts). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Venue-ops role required. }
+        "422": { description: Polygon could not be parsed. }
+  /v1/ops/geofences/qa:
+    get:
+      summary: Geofence estate QA audit (TECH-24)
+      description: >-
+        Venue-ops console. The post-publish audit behind the QA dashboard:
+        per venue — coverage (has a geofence), density re-verification of
+        the live polygon, overlap conflicts against other venues, the
+        geometry version attribution is bound to, and drafts in flight.
+      responses:
+        "200": { description: Per-venue QA rows for the whole estate. }
+        "403": { description: Venue-ops role required. }
 components:
   parameters:
     pairId:

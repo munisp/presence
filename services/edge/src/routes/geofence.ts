@@ -12,6 +12,13 @@
  *                                            SECURITY DEFINER function that
  *                                            re-verifies the second person
  *                                            and the density gate in one txn
+ *   POST /v1/ops/geofences/overlap-check   — TECH-24 QA: live editor
+ *                                            feedback — does this polygon
+ *                                            conflict with another venue's
+ *                                            published geofence?
+ *   GET  /v1/ops/geofences/qa              — TECH-24 QA: the estate audit
+ *                                            (coverage, density, overlaps,
+ *                                            versions, drafts in flight)
  *
  * Everything runs under the venue-ops workforce role and its GUC; the
  * publish path is DB-final so the four-eyes and density rules cannot be
@@ -211,6 +218,72 @@ export function registerGeofenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
         return reply.code(409).send({ error: msg });
       }
       return reply.send({ draftId, status: "published" });
+    },
+  );
+
+  // TECH-24 QA: live overlap feedback for the GeoLibre editor — the same
+  // DB authority the publish gate uses, so what the editor shows is what
+  // publish will enforce. Read-only; returns the conflicting venues.
+  app.post(
+    "/v1/ops/geofences/overlap-check",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["venueId", "polygon"],
+          additionalProperties: false,
+          properties: {
+            venueId: { type: "string", format: "uuid" },
+            polygon: { type: "object" },
+          },
+        },
+      },
+      preHandler: requireVenueOps,
+    },
+    async (req, reply) => {
+      const body = req.body as { venueId: string; polygon: unknown };
+      const parsed = parseGeofencePolygon(body.polygon);
+      if (!parsed.ok) return reply.code(422).send({ error: parsed.error });
+      const r = await withVenueOps(ctx.pg, (c) =>
+        c.query(
+          `SELECT venue_id, intersection_m2
+             FROM geofence_overlap_check(ST_GeomFromGeoJSON($1)::geography, $2)`,
+          [JSON.stringify(body.polygon), body.venueId],
+        ),
+      );
+      return reply.send({
+        ok: r.rows.length === 0,
+        conflicts: r.rows.map((row) => ({
+          venueId: row.venue_id,
+          intersectionM2: Math.round(Number(row.intersection_m2) * 10) / 10,
+        })),
+      });
+    },
+  );
+
+  // TECH-24 QA: the estate audit — every venue's coverage, density
+  // re-verification, overlap conflicts, geometry version and open drafts.
+  app.get(
+    "/v1/ops/geofences/qa",
+    { preHandler: requireVenueOps },
+    async (req, reply) => {
+      const r = await withVenueOps(ctx.pg, (c) =>
+        c.query(
+          `SELECT venue_id, has_geofence, density_error, overlap_conflicts,
+                  geofence_version, open_drafts
+             FROM geofence_qa_report()`,
+        ),
+      );
+      return reply.send({
+        venues: r.rows.map((row) => ({
+          venueId: row.venue_id,
+          hasGeofence: row.has_geofence,
+          densityError: row.density_error,
+          overlapConflicts: Number(row.overlap_conflicts),
+          geofenceVersion: Number(row.geofence_version),
+          openDrafts: Number(row.open_drafts),
+        })),
+      });
     },
   );
 }

@@ -226,8 +226,15 @@ def test_validate_deploy_covers_batch32() -> None:
         timeout=120,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    passed = [ln for ln in proc.stdout.splitlines() if ln.startswith("PASS")]
-    assert len(passed) == 70, f"expected 70 checks (66 + 4 batch-32), got {len(passed)}"
+    # Name-based pins: later batches keep adding checks, so assert this
+    # batch's checks run and pass rather than a global count.
+    for name in (
+        "INF-02 three environment overlays",
+        "INF-03 non-prod overlays are synthetic-only",
+        "INF-02 deploy lands in integration",
+        "INF-11 gateway staples OCSP",
+    ):
+        assert any(ln.startswith("PASS") and name in ln for ln in proc.stdout.splitlines()), name
 
 
 def test_k8s_readme_and_ci_cover_the_new_gates() -> None:

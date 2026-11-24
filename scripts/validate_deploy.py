@@ -36,6 +36,8 @@ Asserts (with requirement ids):
          DEPLOY_ENV; promotion moves artefacts, never data.
   INF-11 the gateway staples OCSP (stapling + verify + trusted chain +
          resolver) with the evidence collector and runbook.
+  TECH-24 the geofence QA migration is mounted and ships the overlap
+         gate (publish-time) plus the estate audit report.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -390,6 +392,22 @@ def main() -> int:
         and tls_check.exists()
         and "OCSP Response Status: successful" in tls_check.read_text()
         and (ROOT / "docs" / "ops" / "tls.md").exists(),
+    )
+
+    # ---------------- TECH-24 (batch 33) ----------------
+    geofence_qa = ROOT / "db" / "migrations" / "0023_geofence_qa.sql"
+    geofence_qa_src = geofence_qa.read_text() if geofence_qa.exists() else ""
+    check(
+        "TECH-24 geofence QA migration exists and is mounted in the k8s release",
+        geofence_qa.exists() and "25_geofence_qa.sql=db/migrations/0023_geofence_qa.sql" in k8s_readme,
+    )
+    check(
+        "TECH-24 overlap gate is DB-final in publish; the estate QA report is GUC-gated",
+        "CREATE OR REPLACE FUNCTION geofence_overlap_check(" in geofence_qa_src
+        and "geofence_overlap_check(d.polygon, d.venue_id)" in geofence_qa_src
+        and "geofence overlaps venue" in geofence_qa_src
+        and "CREATE OR REPLACE FUNCTION geofence_qa_report()" in geofence_qa_src
+        and "app_venue_ops()" in geofence_qa_src,
     )
 
     print()

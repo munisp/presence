@@ -148,7 +148,8 @@ def test_fr85_notice_says_matches_are_less_timely() -> None:
 def test_fr85_selection_persists_in_the_allowlist_and_wipes() -> None:
     assert '"presence.powerMode"' in LOCAL_STATE_TS
     keys = re.findall(r'"(presence\.[\w.]+)"', LOCAL_STATE_TS)
-    assert len(set(keys)) == 5
+    # Batch 39 added presence.ui.seenExplanations (FR-80): 5 → 6 keys.
+    assert len(set(keys)) == 6
     # The wipe iterates the allowlist itself, so the new key wipes too.
     assert "LOCAL_STATE_ALLOWLIST.map((key) => backend.deleteItem(key))" in LOCAL_STATE_TS
 

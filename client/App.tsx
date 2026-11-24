@@ -37,7 +37,26 @@ import { STABILISATION_WINDOW_MS } from "./src/presence/cellStabiliser.js";
 import { ACCURACY_REFUSAL_ALTERNATIVE } from "./src/presence/publishGate.js";
 import { PKCE_CHALLENGE_METHOD } from "./src/presence/authFlow.js";
 import { ACCESS_TOKEN_LIFESPAN_S, REFRESH_MARGIN_S } from "./src/presence/session.js";
+import { skeletonSharedAcrossModes, skeletonFor, DISCOVERY_MODES } from "./src/presence/discoverySkeleton.js";
+import { showsCommonalityNotIdentity, buildMatchSurface } from "./src/presence/matchSurface.js";
+import { DEFAULT_EXPIRY_PRESENTATION } from "./src/presence/offerWindow.js";
+import { haloHonoursFr77, haloFromCount } from "./src/presence/presenceHalo.js";
+import { honoursSurfaceProhibitions } from "./src/presence/surfaceIntegrity.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
+
+const SURFACE_CHECKS = [
+  // FR-80: pairs and rooms share the one discovery skeleton.
+  skeletonSharedAcrossModes(skeletonFor("pairs"), skeletonFor("rooms")),
+  // FR-76: the match surface shows commonality, never identity.
+  showsCommonalityNotIdentity(
+    buildMatchSurface({ specVersion: 1, anchors: ["you", "them"] as const, nodes: [], edges: [] }),
+  ),
+  // FR-77/FR-78: the halo is a density field with no positional component.
+  haloHonoursFr77(haloFromCount(0)),
+  // FR-87: the skeleton descriptor carries no banned affordance.
+  honoursSurfaceProhibitions({ kind: "discovery-skeleton", affordances: [], fields: {} }),
+] as const;
+const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
 export default function App() {
   return (
@@ -53,6 +72,8 @@ export default function App() {
         approximate location → {ACCURACY_REFUSAL_ALTERNATIVE}
         {"\n"}passkey-only sign-in · PKCE {PKCE_CHALLENGE_METHOD} · {ACCESS_TOKEN_LIFESPAN_S / 60} min tokens,
         refreshed {REFRESH_MARGIN_S}s early · logout withdraws presence first
+        {"\n"}{DISCOVERY_MODES.length} discovery modes, one shared skeleton · expiry closes as a{" "}
+        {DEFAULT_EXPIRY_PRESENTATION} · surface guards {SURFACES_OK ? "green" : "BROKEN"}
       </Text>
     </View>
   );

@@ -29,6 +29,8 @@ export const LOCAL_STATE_ALLOWLIST = [
   "presence.taxonomy.version",
   // Reduced-power selection (FR-85) — a user preference, wiped on logout.
   "presence.powerMode",
+  // Mode explanations already shown (FR-80) — one sentence, once per user.
+  "presence.ui.seenExplanations",
 ] as const;
 
 export type LocalStateKey = (typeof LOCAL_STATE_ALLOWLIST)[number];

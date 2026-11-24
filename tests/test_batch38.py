@@ -250,6 +250,8 @@ def test_traceability_reclassifies_fr01() -> None:
     assert "authFlow.ts" in entry["note"]
     assert "session.ts" in entry["note"]
     counts = TRACEABILITY["status_counts"]
-    assert counts["implemented"] == 208
+    # Batch 39 moved the counts again: five surface requirements
+    # (FR-76/78/79/80/87) reclassified client → implemented.
+    assert counts["implemented"] == 213
     assert counts["partial"] == 7
-    assert counts["client"] == 25
+    assert counts["client"] == 20

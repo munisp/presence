@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 208,
+    "implemented": 213,
     "partial": 7,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 25,
+    "client": 20,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -24,11 +24,11 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 83,
+      "implemented": 88,
       "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 11,
+      "client": 6,
       "organisational": 1,
       "external-evidence": 0,
       "superseded": 0
@@ -559,7 +559,8 @@
         "docs/api/openapi.yaml",
         "docs/security/client-auth.md",
         "tests/test_batch34.py",
-        "tests/test_batch37.py"
+        "tests/test_batch37.py",
+        "tests/test_batch38.py"
       ],
       "note": "client/src/presence/presenceLifecycle.ts \u2014 backgrounding without the background-presence opt-in yields a withdraw decision pinned to the 60 s deadline and the DELETE /v1/presence wire target; foreground return cancels a pending withdrawal; FR-85 reduced power never extends the deadline. Pinned by client tests + tests/test_batch37.py."
     },
@@ -1178,36 +1179,38 @@
     },
     "FR-76": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [],
-      "note": "Convergence rendering from the reason payload \u2014 payload complete server-side (TR-08)."
+      "note": "client/src/presence/matchSurface.ts \u2014 the match surface is built ONLY from the TR-35 MatchDiagram (itself derived from one scan result, no round trip): one ConvergingPath per shared node, a headline that names the commonality ('what you have in common'), a fixed {headline, paths} field set no photo/name/handle can occupy, and the matchSurfaceViolations guard scanning against the FR-87 registry + FORBIDDEN_MATCH_IDENTITY_FIELDS. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-77": {
       "family": "FR",
       "status": "implemented",
       "evidence": [],
-      "note": "Structural: no endpoint exposes maps, bearings, distances, radii, or proximity arrangements."
+      "note": "Structural: no endpoint exposes maps, bearings, distances, radii, or proximity arrangements. Client side, client/src/presence/surfaceIntegrity.ts pins the PROHIBITED_PROXIMITY_ELEMENTS registry every surface descriptor is audited against, and client/src/presence/presenceHalo.ts renders density with a fixed {intensity, level} field set \u2014 no positional or directional component exists in the type. Pinned by tests/test_batch39.py."
     },
     "FR-78": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [
         "docs/analytics/README.md",
         "docs/analytics/catalogue.yaml"
       ],
-      "note": "Density-as-texture rendering, no positional component."
+      "note": "client/src/presence/presenceHalo.ts \u2014 density as an undirected field: a 0..1 intensity rising monotonically with the k-anonymised aggregate count (HALO_FULL_SCALE 20, clamped), a qualitative level (calm/stirring/lively/buzzing) forbidden from carrying digits so the raw count cannot leak, and invalid counts failing closed to the calmest field. haloHonoursFr77 asserts the descriptor against the FR-77 registry. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-79": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [],
-      "note": "Closing-perimeter expiry affordance, no default countdown."
+      "note": "client/src/presence/offerWindow.ts \u2014 expiry as a closing perimeter: a 0..1 fraction monotonic non-increasing over OFFER_WINDOW_MS (mirror of edge OFFER_TTL_MS, pinned equal), DEFAULT_EXPIRY_PRESENTATION 'perimeter', and secondsRemaining physically null unless the user explicitly opted into the numeric form \u2014 the default render never computes a countdown. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-80": {
       "family": "FR",
-      "status": "client",
-      "evidence": [],
-      "note": "Shared screen skeleton across pairs/rooms/tables."
+      "status": "implemented",
+      "evidence": [
+        "tests/test_batch34.py"
+      ],
+      "note": "client/src/presence/discoverySkeleton.ts \u2014 pairs/rooms/tables share one pinned region list (header/modeSelector/resultRegion/statusTray); only resultContent differs (skeletonSharedAcrossModes guard). Each mode has a pinned one-sentence explanation shown once per user (seen-set under the allowlisted presence.ui.seenExplanations key, TR-30 wiped, parse fails toward explaining again); planModeChange defers any switch while a conversation is open. SKELETON_AFFORDANCES has no load-more \u2014 the result region renders one bounded payload. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-81": {
       "family": "FR",
@@ -1251,9 +1254,9 @@
     },
     "FR-87": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [],
-      "note": "Prohibited engagement mechanics \u2014 none exist server-side; enforcement is client review."
+      "note": "client/src/presence/surfaceIntegrity.ts \u2014 the single PROHIBITED_ENGAGEMENT_PATTERNS registry (infinite/auto-loading scroll, typing indicators, read receipts, streaks, daily-login rewards, like/view counts, photo-at-match) every surface descriptor is audited against via descriptorViolations; the discovery surfaces (matchSurface, presenceHalo, offerWindow, discoverySkeleton) pass the guard by construction with pinned affordance lists, and the conversation surfaces inherit the same registry. Server-side the patterns remain structural (no endpoint serves the data). Pinned by client tests + tests/test_batch39.py."
     },
     "FR-88": {
       "family": "FR",
@@ -2014,7 +2017,8 @@
       "evidence": [
         "docs/security/client-auth.md",
         "docs/security/sdk-allowlist.json",
-        "tests/test_batch34.py"
+        "tests/test_batch34.py",
+        "tests/test_batch38.py"
       ],
       "note": "client/src/presence/localState.ts: LOCAL_STATE_ALLOWLIST of 4 namespaced keys (session refresh token, device id, notification prefs, taxonomy version); createLocalState is type-safe over allowlisted keys only; clearLocalState wipes every allowlisted key by construction (logout/uninstall); secrets backed by expo-secure-store via the platform adapter, not AsyncStorage."
     },

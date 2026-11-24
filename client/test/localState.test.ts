@@ -11,8 +11,9 @@ import {
 } from "../src/presence/localState.js";
 
 test("the allowlist is small, namespaced and documented", () => {
-  assert.equal(LOCAL_STATE_ALLOWLIST.length, 5);
+  assert.equal(LOCAL_STATE_ALLOWLIST.length, 6);
   assert.ok(LOCAL_STATE_ALLOWLIST.includes("presence.powerMode"));
+  assert.ok(LOCAL_STATE_ALLOWLIST.includes("presence.ui.seenExplanations"));
   for (const key of LOCAL_STATE_ALLOWLIST) {
     assert.match(key, /^presence\./);
   }

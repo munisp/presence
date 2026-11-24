@@ -1,5 +1,7 @@
 # Presence platform namespace. All P0 workloads live here; NetworkPolicies
 # in networkpolicy.yaml isolate it (INF-12/INF-14).
+# TR-03: the Linkerd injector meshes every pod in the namespace — east-west
+# traffic is mTLS'd transparently (ADR-0010). Install Linkerd before apply.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,3 +9,5 @@ metadata:
   labels:
     app.kubernetes.io/part-of: presence
     pod-security.kubernetes.io/enforce: restricted
+  annotations:
+    linkerd.io/inject: enabled

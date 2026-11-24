@@ -14,6 +14,12 @@ Asserts (with requirement ids):
          namespace Prometheus is admitted to the scrape ports.
   NFR-34 every alert names an owner and its runbook anchor resolves.
   NFR-07 the realtime-delivery SLO alert carries the 500 ms p95 budget.
+  TECH-11/12 probes hit the real /healthz route; both services export OTLP
+         traces to the collector; the stack manifest ships collector, Tempo
+         and Grafana with both datasources.
+  TR-03 the presence namespace is annotated for Linkerd injection (ADR-0010).
+  SEC-28 no Secret manifests are committed; the ExternalSecret covers every
+         secretKeyRef key the workloads reference.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -171,6 +177,86 @@ def main() -> int:
     check(
         "NFR-07 realtime p95 <= 500 ms alert",
         rt is not None and "> 0.5" in rt["expr"] and rt["labels"]["owner"] == "realtime-oncall",
+    )
+
+    # TECH-12: probes hit the health route the services actually serve, and
+    # both workloads emit OTLP traces to the collector by default.
+    for svc, port in (("edge", 4000), ("match", 4100)):
+        deploy = next(d for d in docs(K8S / f"{svc}.yaml") if d["kind"] == "Deployment")
+        container = deploy["spec"]["template"]["spec"]["containers"][0]
+        for probe in ("readinessProbe", "livenessProbe"):
+            check(
+                f"TECH-12 {svc} {probe} hits /healthz",
+                container[probe]["httpGet"]["path"] == "/healthz",
+            )
+        env = {e["name"]: e.get("value") for e in container["env"]}
+        check(
+            f"TECH-12 {svc} OTLP endpoint wired",
+            env.get("OTEL_EXPORTER_OTLP_ENDPOINT") == "http://otel-collector.monitoring:4318",
+        )
+        # TECH-11/12: the egress allowlist admits OTLP to the monitoring
+        # namespace collector and nothing else outside the cluster flows.
+        egress = next(p for p in nps if p["metadata"]["name"] == f"{svc}-egress-allowlist")
+        otlp = [
+            f
+            for rule in egress["spec"]["egress"]
+            for f in rule.get("to", [])
+            if f.get("namespaceSelector", {}).get("matchLabels", {}).get("kubernetes.io/metadata.name") == "monitoring"
+            and f.get("podSelector", {}).get("matchLabels", {}).get("app.kubernetes.io/name") == "otel-collector"
+        ]
+        ports = [p["port"] for rule in egress["spec"]["egress"] for p in rule.get("ports", [])]
+        check(f"TECH-11 {svc} egress admits OTLP/4318 to collector", len(otlp) == 1 and 4318 in ports)
+
+    # TECH-11: the observability stack ships collector, Tempo and Grafana,
+    # with Grafana wired to both Prometheus and Tempo.
+    obs = docs(K8S / "observability.yaml")
+    kinds = {(d["metadata"]["name"], d["kind"]) for d in obs}
+    check(
+        "TECH-11 collector, tempo, grafana manifests",
+        {("otel-collector", "Deployment"), ("otel-collector", "Service"),
+         ("tempo", "Deployment"), ("tempo", "Service"),
+         ("grafana", "Deployment"), ("grafana", "Service")} <= kinds,
+    )
+    ds = next(d for d in obs if d["metadata"]["name"] == "grafana-datasources")
+    ds_yaml = yaml.safe_load(ds["data"]["datasources.yaml"])
+    ds_types = {d["type"] for d in ds_yaml["datasources"]}
+    check("TECH-11 grafana datasources: prometheus + tempo", ds_types == {"prometheus", "tempo"})
+
+    # TR-03: the namespace is annotated for mesh injection and the decision
+    # is recorded.
+    ns = docs(K8S / "namespace.yaml")[0]
+    check(
+        "TR-03 namespace carries linkerd injection",
+        ns["metadata"].get("annotations", {}).get("linkerd.io/inject") == "enabled",
+    )
+    adr = ROOT / "docs" / "adr" / "0010-east-west-mtls-linkerd.md"
+    check("TR-03 mesh decision recorded (ADR-0010)", adr.exists() and "Linkerd" in adr.read_text())
+
+    # SEC-28: no Secret manifests with data/stringData anywhere in deploy/k8s,
+    # and the ExternalSecret covers every key the workloads reference.
+    committed_secrets = [
+        d["metadata"]["name"]
+        for f in K8S.glob("*.yaml")
+        for d in docs(f)
+        if d["kind"] == "Secret" and (d.get("data") or d.get("stringData"))
+    ]
+    check("SEC-28 no committed Secret data", committed_secrets == [], str(committed_secrets))
+    # The flow-style secretKeyRef entries resist yaml-path traversal; scan text.
+    import re as _re
+    referenced = set()
+    for f in K8S.glob("*.yaml"):
+        referenced |= set(_re.findall(r"secretKeyRef: \{ name: presence-secrets, key: (\w+)", f.read_text()))
+    es = docs(K8S / "external-secrets.yaml")
+    ext = next(d for d in es if d["kind"] == "ExternalSecret")
+    covered = {d["secretKey"] for d in ext["spec"]["data"]}
+    check(
+        "SEC-28 ExternalSecret covers every referenced key",
+        referenced <= covered and bool(referenced),
+        f"missing: {sorted(referenced - covered)}",
+    )
+    check(
+        "SEC-28 ExternalSecret targets presence-secrets",
+        ext["spec"]["target"]["name"] == "presence-secrets",
     )
 
     print()

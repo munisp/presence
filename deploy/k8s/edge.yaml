@@ -39,8 +39,12 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: RECOVERY_HASH_KEY } }
             - name: KEYCLOAK_ISSUER
               value: https://auth.presence.example/realms/consumer   # per environment
-          readinessProbe: { httpGet: { path: /health, port: 4000 }, periodSeconds: 5 }
-          livenessProbe: { httpGet: { path: /health, port: 4000 }, periodSeconds: 10 }
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT   # TECH-11/12: traces by default
+              value: http://otel-collector.monitoring:4318
+            - name: DEPLOY_ENV
+              value: production   # per environment
+          readinessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 10 }
           resources:   # INF-05: 3 x 2 vCPU / 4 GB
             requests: { cpu: "1", memory: 2Gi }
             limits: { cpu: "2", memory: 4Gi }

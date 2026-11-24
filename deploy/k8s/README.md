@@ -3,6 +3,24 @@
 Target topology for integration/staging/production (INF-02/INF-04). Local
 development stays on `deploy/docker-compose.yml`.
 
+## Prerequisites
+
+- **Linkerd** (TR-03, ADR-0010): install the control plane and CNI plugin
+  before the first apply — the `presence` namespace carries
+  `linkerd.io/inject: enabled` and the restricted Pod Security profile needs
+  the CNI path (no NET_ADMIN init container):
+  ```bash
+  linkerd install-cni | kubectl apply -f -
+  linkerd install --set cniEnabled=true | kubectl apply -f -
+  linkerd check
+  ```
+- **External Secrets Operator** (SEC-28): production secrets are pulled from
+  the managed store, never created by hand:
+  ```bash
+  helm install external-secrets external-secrets/external-secrets \
+    -n external-secrets --create-namespace
+  ```
+
 ## Apply
 
 ```bash
@@ -41,18 +59,23 @@ kubectl -n presence create configmap keycloak-realms \
   --from-file=deploy/keycloak/realm-partners.json \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# 3. secrets (SEC-28: managed secret store in production, never committed)
-kubectl -n presence create secret generic presence-secrets \
-  --from-literal=POSTGRES_USER=... --from-literal=POSTGRES_PASSWORD=... \
-  --from-literal=EDGE_DATABASE_URL=... --from-literal=MATCH_DATABASE_URL=... \
-  --from-literal=CENTRIFUGO_API_KEY=... --from-literal=CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=... \
-  --from-literal=KEYCLOAK_ADMIN=... --from-literal=KEYCLOAK_ADMIN_PASSWORD=...
+# 3. secrets (SEC-28: managed secret store; nothing secret-shaped is committed)
+#    Edit the ClusterSecretStore backend block in external-secrets.yaml for the
+#    environment (AWS Secrets Manager or Vault), then:
+kubectl apply -f deploy/k8s/external-secrets.yaml
+#    The ExternalSecret materialises `presence-secrets` from the store; watch
+#    `kubectl -n presence get externalsecret presence-secrets` for Ready.
 
 # 4. progressive delivery (after Flagger + Prometheus are installed)
 kubectl apply -f deploy/k8s/canary.yaml
 
-# 5. alert set (NFR-33/34; needs the Prometheus Operator CRDs)
+# 5. alert set + scrape config (NFR-33/34; needs the Prometheus Operator CRDs)
 kubectl apply -f deploy/k8s/prometheusrules.yaml
+kubectl apply -f deploy/k8s/servicemonitor.yaml
+
+# 6. observability stack (TECH-11: OTel Collector + Tempo + Grafana, monitoring ns)
+kubectl apply -f deploy/k8s/observability.yaml
+#    Grafana is internal-only: kubectl -n monitoring port-forward svc/grafana 3000:3000
 ```
 
 ## Requirement coverage
@@ -67,10 +90,15 @@ kubectl apply -f deploy/k8s/prometheusrules.yaml
 | INF-16 canary 5%/10 min + auto rollback | `canary.yaml` (Flagger on the APISIX provider) |
 | TECH-21 APISIX sole public ingress | `apisix.yaml` LoadBalancer Service; everything else ClusterIP/headless |
 | NFR-31 request ids | APISIX `request-id` plugin (generate + echo); service logs key on it |
-| NFR-33 alert set | `prometheusrules.yaml` — SLO burn, error spike, presence-publish failure, match-rate collapse, moderation queue age |
+| NFR-33 alert set | `prometheusrules.yaml` — SLO burn, error spike, presence-publish failure, match-rate collapse, moderation queue age, realtime delivery (NFR-07); series emitted by the services' `/metrics`, scraped via `servicemonitor.yaml` |
 | NFR-34 runbook per alert | `docs/runbook.md` — every alert names an owner and first actions |
 | TECH-07 Keycloak | `keycloak.yaml` + realm ConfigMap |
-| SEC-06 TLS everywhere | Termination at APISIX done; east-west encryption awaits the mesh decision (still partial) |
+| TECH-11 observability stack | `observability.yaml` — OTel Collector → Tempo, Grafana datasources, monitoring namespace |
+| TECH-12 health, logs, traces by default | `/healthz` + structured logs + OTel SDK in `services/*/src/tracing.ts`, started before the module graph loads |
+| TR-03 east-west mutual auth | Linkerd mesh (ADR-0010) — namespace injection in `namespace.yaml`; NetworkPolicies remain the flow allowlist |
+| SEC-06 TLS everywhere | Termination at APISIX; east-west encryption via the mesh (TR-03) |
+| SEC-28 secrets in a managed store | `external-secrets.yaml` — ESO ClusterSecretStore + ExternalSecret; no Secret manifests committed |
+| INF-17 migration rehearsal | `scripts/rehearse_migrations.py` + the migration-rehearsal CI job; checklist in `docs/ops/migrations.md` |
 
 `scripts/validate_deploy.py` asserts the safety-critical invariants (TLS 1.3
 only, HPA scale-in ceiling, default-deny policies, canary step size) and runs

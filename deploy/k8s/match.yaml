@@ -30,8 +30,12 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: MATCH_DATABASE_URL } }
             - name: VALKEY_URL
               value: redis://valkey:6379
-          readinessProbe: { httpGet: { path: /health, port: 4100 }, periodSeconds: 5 }
-          livenessProbe: { httpGet: { path: /health, port: 4100 }, periodSeconds: 10 }
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT   # TECH-11/12: traces by default
+              value: http://otel-collector.monitoring:4318
+            - name: DEPLOY_ENV
+              value: production   # per environment
+          readinessProbe: { httpGet: { path: /healthz, port: 4100 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: 4100 }, periodSeconds: 10 }
           resources:   # INF-05: 3 x 2 vCPU / 4 GB
             requests: { cpu: "1", memory: 2Gi }
             limits: { cpu: "2", memory: 4Gi }

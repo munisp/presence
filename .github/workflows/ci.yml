@@ -128,6 +128,32 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:scale@localhost:5432/scale
 
+  # INF-17: every migration is rehearsed against a production-sized
+  # synthetic snapshot on a real Postgres before it can land.
+  migration-rehearsal:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: rehearse
+          POSTGRES_DB: rehearse
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q "psycopg[binary]"
+      - run: python3 scripts/rehearse_migrations.py
+        env:
+          DATABASE_URL: postgres://postgres:rehearse@localhost:5432/rehearse
+
   # TECH-18: the Rust match core — cargo test pins it to the same golden
   # corpus as the TS engine and the Python reference (1e-9, 120 pairs).
   match-core:

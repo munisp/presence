@@ -1,44 +1,17 @@
-/** Edge entrypoint. */
+/**
+ * Edge entrypoint. TECH-12: tracing starts FIRST — the rest of the module
+ * graph is loaded via dynamic import only after the OTel SDK is up, so the
+ * auto-instrumentations patch http/fastify/pg/ioredis before they load.
+ */
 
-import Postgres from "pg";
-import { Redis as Valkey } from "ioredis";
-import { buildApp } from "./app.js";
-import { randomIds, systemClock } from "./clock.js";
-import { startLifecycleJob } from "./lifecycle.js";
+import { startTracing } from "./tracing.js";
 
-const PORT = Number(process.env.PORT ?? 4000);
+const sdk = startTracing("presence-edge");
 
-async function main() {
-  const ctx = {
-    pg: new Postgres.Pool({
-      connectionString: process.env.DATABASE_URL ?? "postgres://presence_app:presence-dev@localhost:5432/presence",
-    }),
-    valkey: new Valkey(process.env.VALKEY_URL ?? "redis://localhost:6379"),
-    matchServiceUrl: process.env.MATCH_SERVICE_URL ?? "http://localhost:4100",
-    centrifugoUrl: process.env.CENTRIFUGO_URL ?? "http://localhost:8000",
-    centrifugoApiKey: process.env.CENTRIFUGO_API_KEY ?? "p0-dev-api-key",
-    // TECH-15: production context uses the wall clock and random ids; tests
-    // inject fakes through buildApp's context instead.
-    clock: systemClock,
-    ids: randomIds,
-  };
+const { main } = await import("./main.js");
 
-  const app = await buildApp(ctx);
-  await app.listen({ port: PORT, host: "0.0.0.0" });
-
-  // FR-33/37, NFR-20: offer expiry, conversation lapse, ciphertext purge.
-  const stopLifecycle = startLifecycleJob(ctx.pg);
-
-  const shutdown = async () => {
-    stopLifecycle();
-    await app.close();
-    await ctx.pg.end();
-    ctx.valkey.disconnect();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-}
+process.on("SIGTERM", () => void sdk?.shutdown());
+process.on("SIGINT", () => void sdk?.shutdown());
 
 main().catch((err) => {
   console.error(err);

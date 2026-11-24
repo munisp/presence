@@ -1,0 +1,217 @@
+# TECH-11: the observability stack — OpenTelemetry Collector, Tempo (traces)
+# and Grafana — in the monitoring namespace. Applied separately from the main
+# kustomization, like prometheusrules.yaml / servicemonitor.yaml:
+#
+#   kubectl apply -f deploy/k8s/observability.yaml
+#
+# Topology: edge and match emit OTLP/HTTP spans to otel-collector:4318
+# (OTEL_EXPORTER_OTLP_ENDPOINT in their Deployments; the presence-namespace
+# NetworkPolicies admit exactly this egress); the collector batches and
+# forwards to Tempo over OTLP/gRPC; Grafana queries Tempo for traces and the
+# Operator's Prometheus for the NFR-33 metrics. Grafana is AGPL-3.0 — it is
+# deployed for internal operational use only and is never exposed outside the
+# cluster (no Ingress/LoadBalancer here; reach it via kubectl port-forward).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: otel-collector, app.kubernetes.io/part-of: presence-observability }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: otel-collector }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: otel-collector, app.kubernetes.io/part-of: presence-observability }
+    spec:
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector:0.142.0
+          args: ["--config=/etc/collector/config.yaml"]
+          ports:
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: otlp-http, containerPort: 4318 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/collector }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: config
+          configMap: { name: otel-collector-config }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: monitoring
+  labels: { app.kubernetes.io/part-of: presence-observability }
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc: { endpoint: 0.0.0.0:4317 }
+          http: { endpoint: 0.0.0.0:4318 }
+    processors:
+      batch: { timeout: 2s, send_batch_size: 1024 }
+      memory_limiter: { check_interval: 1s, limit_mib: 768, spike_limit_mib: 256 }
+    exporters:
+      otlp/tempo:
+        endpoint: tempo.monitoring.svc.cluster.local:4317
+        tls: { insecure: true }   # in-cluster mesh provides transport security (TR-03)
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/tempo]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: otel-collector, app.kubernetes.io/part-of: presence-observability }
+spec:
+  selector: { app.kubernetes.io/name: otel-collector }
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: 4317 }
+    - { name: otlp-http, port: 4318, targetPort: 4318 }
+---
+# Tempo: single-binary trace store, local disk (P0 scale). Object storage
+# (S3/GCS) replaces the PVC when trace volume outgrows a node.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: tempo, app.kubernetes.io/part-of: presence-observability }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: tempo }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: tempo, app.kubernetes.io/part-of: presence-observability }
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.9.0
+          args: ["-config.file=/etc/tempo/tempo.yaml"]
+          ports:
+            - { name: http, containerPort: 3200 }
+            - { name: otlp-grpc, containerPort: 4317 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/tempo }
+            - { name: data, mountPath: /var/tempo }
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "1", memory: 2Gi }
+      volumes:
+        - name: config
+          configMap: { name: tempo-config }
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: monitoring
+  labels: { app.kubernetes.io/part-of: presence-observability }
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc: { endpoint: 0.0.0.0:4317 }
+    storage:
+      trace:
+        backend: local
+        local: { path: /var/tempo/traces }
+        wal: { path: /var/tempo/wal }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: tempo, app.kubernetes.io/part-of: presence-observability }
+spec:
+  selector: { app.kubernetes.io/name: tempo }
+  ports:
+    - { name: http, port: 3200, targetPort: 3200 }
+    - { name: otlp-grpc, port: 4317, targetPort: 4317 }
+---
+# Grafana: internal-only (AGPL-3.0). No Ingress — operators reach it with
+# kubectl -n monitoring port-forward svc/grafana 3000:3000. Anonymous access
+# is Viewer-only; wire SSO (GF_AUTH_GENERIC_OAUTH_*) before any wider use.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: grafana, app.kubernetes.io/part-of: presence-observability }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: grafana }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: grafana, app.kubernetes.io/part-of: presence-observability }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:12.3.0
+          env:
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Viewer }
+            - { name: GF_AUTH_DISABLE_LOGIN_FORM, value: "true" }
+          ports: [{ name: http, containerPort: 3000 }]
+          volumeMounts:
+            - { name: datasources, mountPath: /etc/grafana/provisioning/datasources }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: datasources
+          configMap: { name: grafana-datasources }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+  labels: { app.kubernetes.io/part-of: presence-observability }
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      # The Prometheus Operator's service (installed with the monitoring
+      # stack) feeds the NFR-33 dashboards and alert graphs.
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-operated.monitoring.svc.cluster.local:9090
+        isDefault: true
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo.monitoring.svc.cluster.local:3200
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: grafana, app.kubernetes.io/part-of: presence-observability }
+spec:
+  selector: { app.kubernetes.io/name: grafana }
+  ports: [{ name: http, port: 3000, targetPort: 3000 }]

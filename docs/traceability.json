@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 176,
-    "partial": 28,
+    "implemented": 181,
+    "partial": 23,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -44,8 +44,8 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 35,
-      "partial": 2,
+      "implemented": 36,
+      "partial": 1,
       "gap-p0": 0,
       "phase-gated": 1,
       "client": 6,
@@ -54,8 +54,8 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 23,
-      "partial": 6,
+      "implemented": 24,
+      "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 1,
@@ -64,8 +64,8 @@
       "superseded": 0
     },
     "INF": {
-      "implemented": 6,
-      "partial": 4,
+      "implemented": 7,
+      "partial": 3,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
@@ -74,8 +74,8 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 14,
-      "partial": 5,
+      "implemented": 16,
+      "partial": 3,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 3,
@@ -708,8 +708,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/index.ts",
-        "services/edge/src/lifecycle.ts"
+        "services/edge/src/lifecycle.ts",
+        "services/edge/src/main.ts"
       ],
       "note": "30-min offer window: expires_at set at first surfacing, renewed per action; lifecycle_tick expires overdue offers; tested."
     },
@@ -1408,11 +1408,11 @@
       "family": "NFR",
       "status": "implemented",
       "evidence": [
+        "deploy/k8s/README.md",
         "deploy/k8s/prometheusrules.yaml",
         "deploy/k8s/servicemonitor.yaml",
         "docs/runbook.md",
-        "scripts/validate_deploy.py",
-        "services/edge/src/context.ts"
+        "scripts/validate_deploy.py"
       ],
       "note": "The server leg of sender-to-device delivery is measured and SLO-alerted: publishRealtime times every broker call into presence_realtime_publish_duration_seconds per channel class and counts failures; RealtimeDeliverySlow (prometheusrules.yaml) pages realtime-oncall when the publish p95 exceeds the 500 ms budget for 15 min; runbook entry + ServiceMonitor scrape wired. The device-leg confirmation rides on client telemetry."
     },
@@ -1497,7 +1497,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/consent.ts"
+        "docs/ops/migrations.md",
+        "scripts/rehearse_migrations.py"
       ],
       "note": "24-h visibility masking (GET /consent) + lifecycle_tick hard-deletes pre-OPEN closed pairs with their ledger rows after 24 h, under the governed purge mode."
     },
@@ -1508,8 +1509,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0019_reporting_compliance.sql",
-        "services/edge/src/index.ts",
-        "services/edge/src/lifecycle.ts"
+        "services/edge/src/lifecycle.ts",
+        "services/edge/src/main.ts"
       ],
       "note": "lifecycle_tick deletes messages 24 h after pair close; messages RLS blocks reads on closed pairs immediately."
     },
@@ -1616,9 +1617,9 @@
       "evidence": [
         "deploy/k8s/README.md",
         "deploy/k8s/networkpolicy.yaml",
+        "deploy/k8s/observability.yaml",
         "deploy/k8s/prometheusrules.yaml",
-        "deploy/k8s/servicemonitor.yaml",
-        "scripts/validate_deploy.py"
+        "deploy/k8s/servicemonitor.yaml"
       ],
       "note": "deploy/k8s/prometheusrules.yaml \u2014 one PrometheusRule alert per required class, each with severity and owner; every alert-input series is emitted (edge services/edge/src/metrics.ts: http duration/requests, publish failures, realtime publish duration, moderation queue age refreshed on scrape; match services/match/src/metrics.ts: scan demand + served) and scraped via deploy/k8s/servicemonitor.yaml with the monitoring namespace admitted by the network policy."
     },
@@ -1670,9 +1671,15 @@
     },
     "TR-03": {
       "family": "TR",
-      "status": "partial",
-      "evidence": [],
-      "note": "K8s NetworkPolicies isolate east-west traffic (only declared flows allowed); mTLS between services awaits the mesh decision."
+      "status": "implemented",
+      "evidence": [
+        "deploy/k8s/README.md",
+        "deploy/k8s/namespace.yaml",
+        "deploy/k8s/observability.yaml",
+        "docs/adr/0010-east-west-mtls-linkerd.md",
+        "scripts/validate_deploy.py"
+      ],
+      "note": "Mesh decision made (ADR-0010: Linkerd) and wired: the presence namespace carries linkerd.io/inject: enabled so every pod-to-pod flow is mutually authenticated and encrypted transparently; the NetworkPolicies remain the flow allowlist underneath. Install + verification steps (linkerd check / linkerd viz edges) documented in deploy/k8s/README.md."
     },
     "TR-04": {
       "family": "TR",
@@ -2339,14 +2346,15 @@
     },
     "SEC-28": {
       "family": "SEC",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "deploy/docker-compose.yml",
         "deploy/k8s/README.md",
+        "deploy/k8s/external-secrets.yaml",
         "deploy/keycloak/README.md",
-        "services/edge/src/recovery.ts"
+        "scripts/validate_deploy.py"
       ],
-      "note": "Only clearly-marked dev secrets in compose; managed secret store arrives with K8s."
+      "note": "No Secret manifests anywhere in the repo (CI-pinned: validate_deploy fails on any Secret with data/stringData); production secrets materialise from a managed store via the External Secrets Operator (deploy/k8s/external-secrets.yaml \u2014 ClusterSecretStore with AWS-SM/Vault backend blocks + ExternalSecret covering all nine referenced keys); compose keeps only clearly-marked dev values."
     },
     "SEC-29": {
       "family": "SEC",
@@ -2567,6 +2575,7 @@
         "deploy/k8s/README.md",
         "deploy/k8s/namespace.yaml",
         "deploy/k8s/networkpolicy.yaml",
+        "docs/adr/0010-east-west-mtls-linkerd.md",
         "scripts/validate_deploy.py"
       ],
       "note": "Default-deny egress + per-workload egress allowlists (DNS only otherwise) in deploy/k8s/networkpolicy.yaml; asserted by scripts/validate_deploy.py."
@@ -2592,9 +2601,14 @@
     },
     "INF-17": {
       "family": "INF",
-      "status": "partial",
-      "evidence": [],
-      "note": "Forward-only migrations practised; rehearsal against a production-sized snapshot pending."
+      "status": "implemented",
+      "evidence": [
+        "deploy/k8s/README.md",
+        "docs/ops/migrations.md",
+        "scripts/rehearse_migrations.py",
+        "tests/test_batch28.py"
+      ],
+      "note": "scripts/rehearse_migrations.py: forward-only lint (DROP TABLE/TRUNCATE/DROP COLUMN rejected, runs in CI and pytest), review checklist in docs/ops/migrations.md (lock profile, CONCURRENTLY indexes, backfill plan, RLS/grants), and a rehearsal that builds the previous release on Postgres 17, populates a production-sized synthetic snapshot (100k users, 600k messages, ~1.75M rows), applies the pending migration timed, and asserts no row loss, valid FKs, RLS intact and the heaviest join resolving \u2014 gated by the migration-rehearsal CI job (900 s budget, 120 s per-migration lock warning)."
     },
     "INF-18": {
       "family": "INF",
@@ -2705,15 +2719,27 @@
     },
     "TECH-11": {
       "family": "TECH",
-      "status": "partial",
-      "evidence": [],
-      "note": "Fastify structured logs; OpenTelemetry traces + Grafana stack not wired (AGPL internal-only constraint noted)."
+      "status": "implemented",
+      "evidence": [
+        "deploy/k8s/README.md",
+        "deploy/k8s/edge.yaml",
+        "deploy/k8s/match.yaml",
+        "deploy/k8s/networkpolicy.yaml",
+        "deploy/k8s/observability.yaml"
+      ],
+      "note": "deploy/k8s/observability.yaml: OpenTelemetry Collector (OTLP gRPC+HTTP receivers, memory-limited batching) forwarding to Tempo, Grafana provisioned with Prometheus + Tempo datasources \u2014 internal-only (AGPL), viewer fallback, no external Service; applied to the monitoring namespace with OTLP egress admitted by the presence NetworkPolicies."
     },
     "TECH-12": {
       "family": "TECH",
-      "status": "partial",
-      "evidence": [],
-      "note": "Health endpoints + structured logs done; OpenTelemetry traces missing."
+      "status": "implemented",
+      "evidence": [
+        "deploy/k8s/README.md",
+        "scripts/validate_deploy.py",
+        "services/edge/src/index.ts",
+        "services/edge/src/tracing.ts",
+        "services/edge/test/tracing.test.ts"
+      ],
+      "note": "Every service exposes /healthz (probes pinned to it \u2014 a /health mismatch was caught and fixed), Fastify structured logs, and OTel traces by default: services/*/src/tracing.ts starts the NodeSDK with auto-instrumentations (http/fastify/pg/ioredis, fs excluded) before the module graph loads via dynamic import; OTLP/HTTP to the cluster collector by default, OTEL_SDK_DISABLED=true opts out for bare-metal runs."
     },
     "TECH-13": {
       "family": "TECH",
@@ -2736,7 +2762,7 @@
       "evidence": [
         "services/edge/src/clock.ts",
         "services/edge/src/context.ts",
-        "services/edge/src/index.ts",
+        "services/edge/src/main.ts",
         "services/edge/src/routes/scan.ts",
         "services/edge/test/metrics.test.ts"
       ],

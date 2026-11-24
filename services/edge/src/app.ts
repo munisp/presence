@@ -6,6 +6,7 @@ import { authenticate, registerAuth } from "./auth.js";
 import { EdgeContext } from "./context.js";
 import { registerIdempotency } from "./idempotency.js";
 import { scrubLogArgs } from "./logscrub.js";
+import { resolveRequestId } from "./requestid.js";
 import { registerCheckinRoutes } from "./routes/checkin.js";
 import { registerConsentRoutes } from "./routes/consent.js";
 import { registerAccountRoutes } from "./routes/account.js";
@@ -44,6 +45,14 @@ export async function buildApp(ctx: EdgeContext) {
       },
     },
     ajv: { customOptions: { strict: true, removeAdditional: false, allErrors: true } },
+    // NFR-31: the gateway (APISIX request-id) assigns X-Request-Id; honor it
+    // so edge log lines join the gateway's trace, else mint one.
+    genReqId: (req) => resolveRequestId(req.headers["x-request-id"]),
+  });
+
+  // NFR-31: the trace id rides back to the caller on every response.
+  app.addHook("onSend", async (req, reply) => {
+    reply.header("x-request-id", req.id);
   });
 
   // TECH-07: Keycloak consumer-realm RS256 via JWKS when KEYCLOAK_ISSUER is

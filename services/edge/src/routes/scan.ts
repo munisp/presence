@@ -183,9 +183,11 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         }));
       }
 
+      // NFR-31: the edge's trace id propagates to the match service so the
+      // scan path is traceable end to end (gateway → edge → match).
       const res = await fetch(`${ctx.matchServiceUrl}/v1/scan`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-request-id": req.id },
         body: JSON.stringify({ userId, cell, venue, exclude, tieBreakSeed }),
       });
       if (!res.ok) {

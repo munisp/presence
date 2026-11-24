@@ -35,13 +35,15 @@ export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): v
     },
     async (req, reply) => {
       const { venueId } = req.query as { venueId?: string };
+      // BR-14: a suspended venue's announcements stop being served.
       const rows = await ctx.pg.query(
-        `SELECT announcement_id, venue_id, category, body, publish_at, expire_at
-           FROM announcements
-          WHERE now() BETWEEN publish_at AND expire_at
-            AND removed_at IS NULL
-            AND (venue_id IS NULL OR venue_id = $1)
-          ORDER BY publish_at DESC`,
+        `SELECT a.announcement_id, a.venue_id, a.category, a.body, a.publish_at, a.expire_at
+           FROM announcements a
+           LEFT JOIN venues v ON v.venue_id = a.venue_id
+          WHERE now() BETWEEN a.publish_at AND a.expire_at
+            AND a.removed_at IS NULL
+            AND (a.venue_id IS NULL OR (a.venue_id = $1 AND v.active))
+          ORDER BY a.publish_at DESC`,
         [venueId ?? null],
       );
       return reply.send({ announcements: rows.rows });
@@ -63,11 +65,13 @@ export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): v
     async (req, reply) => {
       const { venueId } = req.query as { venueId?: string };
       if (!venueId) return reply.code(422).send({ error: "venueId is required" });
+      // BR-14: a suspended venue's offers stop being served.
       const rows = await ctx.pg.query(
-        `SELECT offer_id, title, terms, starts_at, ends_at
-           FROM offers
-          WHERE venue_id = $1 AND now() BETWEEN starts_at AND ends_at
-          ORDER BY ends_at ASC`,
+        `SELECT o.offer_id, o.title, o.terms, o.starts_at, o.ends_at
+           FROM offers o
+           JOIN venues v ON v.venue_id = o.venue_id AND v.active
+          WHERE o.venue_id = $1 AND now() BETWEEN o.starts_at AND o.ends_at
+          ORDER BY o.ends_at ASC`,
         [venueId],
       );
       return reply.send({ offers: rows.rows });

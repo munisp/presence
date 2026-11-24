@@ -356,6 +356,20 @@ export function declared(profile: Profile, graph: InterestGraph): string[] {
 }
 
 /**
+ * The count behind the FR-11 discoverability floor (fewer than two
+ * non-sensitive interests → not discoverable). Unlike declared(), a node
+ * the taxonomy no longer knows is skipped rather than throwing — a stale
+ * node cannot vouch for discoverability and must not crash the scan path.
+ */
+export function nonSensitiveCount(profile: Profile, graph: InterestGraph): number {
+  let n = 0;
+  for (const nid of Object.keys(profile)) {
+    if (graph.has(nid) && !graph.get(nid).sensitive) n += 1;
+  }
+  return n;
+}
+
+/**
  * Render the top reason deterministically from its path (TR-09, FR-27).
  * No LLM, no randomness.
  */

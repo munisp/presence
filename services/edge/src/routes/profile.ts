@@ -10,6 +10,10 @@
  *     120 characters, screened like announcement bodies. They are reason
  *     material for surfaced candidates — never searchable, never indexed.
  *   GET /v1/profile/prompts   — the requester's own prompts.
+ *   PUT /v1/profile/identity  — FR-06: handle (set-once), optional display
+ *     name (<=80 chars, defaults to the handle when unset) and a one-line
+ *     bio of at most 140 characters. Free text is screened like prompts.
+ *   GET /v1/profile/identity  — the requester's own identity block.
  *
  * TR-23: strict bodies — unknown fields fail validation with a 400.
  */
@@ -90,7 +94,29 @@ export function registerProfileRoutes(app: FastifyInstance, ctx: EdgeContext): v
         [req.userId],
       ),
     );
-    return reply.send({ interests: rows.rows });
+    // FR-11: the discoverability floor counts NON-sensitive interests — a
+    // node flipped sensitive by taxonomy governance (FR-59) after it was
+    // declared no longer counts. When the profile falls below the floor the
+    // response says so and explains why, so the editor can show the reason
+    // before the user leaves the screen.
+    const flags = await ctx.pg.query(
+      "SELECT node_id, sensitive FROM taxonomy_nodes WHERE node_id = ANY($1::text[])",
+      [rows.rows.map((r) => r.nodeId)],
+    );
+    const sensitive = new Map(flags.rows.map((r) => [r.node_id as string, r.sensitive as boolean]));
+    const nonSensitive = rows.rows.filter((r) => sensitive.get(r.nodeId) === false).length;
+    const discoverable = nonSensitive >= 2;
+    return reply.send({
+      interests: rows.rows,
+      discoverable,
+      ...(discoverable
+        ? {}
+        : {
+            discoverabilityNote:
+              "Your profile is not discoverable: it has fewer than two non-sensitive " +
+              "interests. Add interests to re-enter discovery (FR-11).",
+          }),
+    });
   });
 
   app.put(
@@ -166,5 +192,112 @@ export function registerProfileRoutes(app: FastifyInstance, ctx: EdgeContext): v
       ),
     );
     return reply.send({ prompts: rows.rows });
+  });
+
+  // FR-06: handle, optional display name (defaults to the handle), one-line
+  // bio of at most 140 characters. The photo is uploaded out of band and
+  // stays hidden until OPEN (identity_after_open RLS) — it is not set here.
+  const IDENTITY_PROPS = {
+    handle: { type: "string", pattern: "^[a-z0-9_]{3,24}$" },
+    displayName: { type: ["string", "null"], minLength: 1, maxLength: 80 },
+    bio: { type: ["string", "null"], maxLength: 140 },
+  } as const;
+
+  app.put(
+    "/v1/profile/identity",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: IDENTITY_PROPS,
+        },
+      },
+    },
+    async (req, reply) => {
+      const body = req.body as {
+        handle?: string;
+        displayName?: string | null;
+        bio?: string | null;
+      };
+      if (body.handle === undefined && body.displayName === undefined && body.bio === undefined) {
+        return reply.code(422).send({ error: "nothing to update" });
+      }
+      // FR-06/SEC-37: free text is screened like prompts — the explanation
+      // names categories, never the matched text.
+      for (const [field, value] of [["displayName", body.displayName], ["bio", body.bio]] as const) {
+        if (typeof value !== "string") continue;
+        const findings = screenText(value);
+        if (findings.length > 0) {
+          const categories = [...new Set(findings.map((f) => SCREENING_EXPLANATION[f.category]))];
+          return reply.code(422).send({
+            error: `${field} cannot contain ${categories.join(", ")}`,
+            categories: findings.map((f) => f.category),
+          });
+        }
+      }
+      const result = await withRls(ctx.pg, req.userId, async (c) => {
+        const existing = await c.query(
+          "SELECT handle FROM user_identities WHERE user_id = $1",
+          [req.userId],
+        );
+        if (existing.rows.length === 0) {
+          // First write: the handle is required to anchor the identity.
+          if (body.handle === undefined) {
+            return { status: 422 as const, error: "handle is required on first write (FR-06)" };
+          }
+          await c.query(
+            `INSERT INTO user_identities (user_id, handle, display_name, bio, updated_at)
+             VALUES ($1, $2, $3, $4, now())`,
+            [req.userId, body.handle, body.displayName ?? null, body.bio ?? null],
+          );
+        } else {
+          // The handle is set-once: a different handle is a conflict.
+          if (body.handle !== undefined && body.handle !== existing.rows[0].handle) {
+            return { status: 409 as const, error: "handle is set-once (FR-06)" };
+          }
+          const sets: string[] = ["updated_at = now()"];
+          const vals: unknown[] = [req.userId];
+          if (body.displayName !== undefined) {
+            vals.push(body.displayName);
+            sets.push(`display_name = $${vals.length}`);
+          }
+          if (body.bio !== undefined) {
+            vals.push(body.bio);
+            sets.push(`bio = $${vals.length}`);
+          }
+          await c.query(
+            `UPDATE user_identities SET ${sets.join(", ")} WHERE user_id = $1`,
+            vals,
+          );
+        }
+        const row = await c.query(
+          `SELECT handle, COALESCE(display_name, handle) AS "displayName", bio,
+                  photo_url AS "photoUrl", updated_at AS "updatedAt"
+             FROM user_identities WHERE user_id = $1`,
+          [req.userId],
+        );
+        return { status: 200 as const, identity: row.rows[0] };
+      });
+      if (result.status !== 200) {
+        return reply.code(result.status).send({ error: result.error });
+      }
+      return reply.send(result.identity);
+    },
+  );
+
+  app.get("/v1/profile/identity", async (req, reply) => {
+    const rows = await withRls(ctx.pg, req.userId, async (c) =>
+      c.query(
+        `SELECT handle, COALESCE(display_name, handle) AS "displayName", bio,
+                photo_url AS "photoUrl", updated_at AS "updatedAt"
+           FROM user_identities WHERE user_id = $1`,
+        [req.userId],
+      ),
+    );
+    if (rows.rows.length === 0) {
+      return reply.code(404).send({ error: "identity not set up yet (FR-06)" });
+    }
+    return reply.send(rows.rows[0]);
   });
 }

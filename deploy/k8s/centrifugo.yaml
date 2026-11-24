@@ -29,6 +29,14 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_API_KEY } }
             - name: CENTRIFUGO_TOKEN_HMAC_SECRET_KEY
               valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_TOKEN_HMAC_SECRET_KEY } }
+            # TECH-06: Valkey (Redis-compatible) engine — with replicas: 2
+            # the default memory engine would shard pub/sub per pod and
+            # silently drop cross-replica delivery; the Redis engine shares
+            # presence and pub/sub state across all replicas.
+            - name: CENTRIFUGO_ENGINE_TYPE
+              value: redis
+            - name: CENTRIFUGO_ENGINE_REDIS_ADDRESS
+              value: redis://valkey:6379/1
           readinessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 10 }
           resources:

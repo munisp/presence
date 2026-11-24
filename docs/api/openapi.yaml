@@ -1041,6 +1041,132 @@ paths:
                   activeOffers: { type: [integer, "null"] }
                   liveAnnouncements: { type: [integer, "null"] }
         "403": { description: Venue partner token required (BR-12). }
+  /v1/venues/{venueId}/registry:
+    get:
+      summary: Venue registry entry (FR-42)
+      description: >-
+        The venue's registry record: its geospatial cells (the attribution
+        projection), partner status (prospect/active/suspended/offboarded)
+        and operating schedule. Venue partner tokens only (BR-12).
+      parameters:
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The registry entry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venueId, name, partnerStatus, operatingSchedule, suspendedAt, h3Res, cells]
+                properties:
+                  venueId: { type: string, format: uuid }
+                  name: { type: string }
+                  partnerStatus: { type: string, enum: [prospect, active, suspended, offboarded] }
+                  operatingSchedule:
+                    type: [object, "null"]
+                    description: "{ timezone?, weekly: [{day, open, close}] } — days mon..sun, times HH:MM."
+                  suspendedAt: { type: [string, "null"], format: date-time }
+                  h3Res: { type: integer }
+                  cells: { type: array, items: { type: string } }
+        "403": { description: Venue partner token required (BR-12). }
+        "404": { description: Venue not found. }
+  /v1/venues/{venueId}/schedule:
+    put:
+      summary: Replace the venue's operating schedule (FR-42)
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [schedule]
+              additionalProperties: false
+              properties:
+                schedule:
+                  type: [object, "null"]
+                  additionalProperties: false
+                  properties:
+                    timezone: { type: string, minLength: 1, maxLength: 64 }
+                    weekly:
+                      type: array
+                      maxItems: 21
+                      items:
+                        type: object
+                        required: [day, open, close]
+                        additionalProperties: false
+                        properties:
+                          day: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] }
+                          open: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+                          close: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+      responses:
+        "200": { description: Schedule recorded (audited, FR-60). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Venue partner token required (BR-12). }
+        "404": { description: Venue not found. }
+        "422": { description: Invalid operating schedule shape (FR-42). }
+  /v1/venues/{venueId}/suspend:
+    post:
+      summary: Self-serve venue suspension (BR-14)
+      description: >-
+        The venue suspends the service on its own premises. The status flips
+        immediately, the venue's live presence set is purged, its offers and
+        announcements stop being served, and new presence attribution to the
+        venue is refused — effective well within one presence TTL
+        (15 minutes). Audited (FR-60).
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Venue suspended. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Venue partner token required (BR-12). }
+        "404": { description: Venue not found. }
+        "409": { description: Venue is offboarded. }
+  /v1/venues/{venueId}/resume:
+    post:
+      summary: End a self-serve venue suspension (BR-14)
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Venue active again. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Venue partner token required (BR-12). }
+        "404": { description: Venue not found. }
+        "409": { description: Venue is not suspended. }
+  /v1/venues/{venueId}/offboard:
+    post:
+      summary: Offboard a venue (FR-42; venue-ops console only)
+      description: >-
+        Terminal offboarding. Workforce realm with the venue-ops role only —
+        never self-serve. The venue's live presence is purged.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Venue offboarded. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Venue-ops role required. }
+        "404": { description: Venue not found. }
+        "409": { description: Venue is already offboarded. }
   /v1/tables:
     post:
       summary: Create a group table (FR-66, FR-69)
@@ -2210,7 +2336,12 @@ paths:
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "422": { description: Set size outside 3-20, duplicates, or unknown/sensitive node (FR-08/TR-22). }
     get:
-      summary: Read the declared interest set (FR-08)
+      summary: Read the declared interest set (FR-08, FR-11)
+      description: >-
+        Also carries the FR-11 discoverability state: fewer than two
+        non-sensitive interests makes the profile undiscoverable, and the
+        response explains why so the editor can show the reason before the
+        user leaves the screen.
       responses:
         "200":
           description: The requester's declared interests.
@@ -2218,7 +2349,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [interests]
+                required: [interests, discoverable]
                 properties:
                   interests:
                     type: array
@@ -2228,6 +2359,69 @@ paths:
                       properties:
                         nodeId: { type: string }
                         weight: { type: number }
+                  discoverable:
+                    type: boolean
+                    description: FR-11 — at least two non-sensitive interests.
+                  discoverabilityNote:
+                    type: string
+                    description: Present when discoverable is false; the FR-11 explanation for the editor.
+
+  /v1/profile/identity:
+    put:
+      summary: Write the profile identity (FR-06)
+      description: >-
+        Handle (set-once — a different handle after first write answers
+        409), optional display name (<=80 characters; when unset the display
+        name defaults to the handle) and a one-line bio of at most 140
+        characters. Free text is content-screened (SEC-37). The photo is
+        uploaded out of band and stays hidden until an introduction reaches
+        OPEN. First write requires the handle.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                handle: { type: string, pattern: "^[a-z0-9_]{3,24}$" }
+                displayName: { type: [string, "null"], minLength: 1, maxLength: 80 }
+                bio: { type: [string, "null"], maxLength: 140 }
+      responses:
+        "200":
+          description: The identity after the write.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [handle, displayName, bio, photoUrl, updatedAt]
+                properties:
+                  handle: { type: string }
+                  displayName: { type: string, description: "Defaults to the handle (FR-06)." }
+                  bio: { type: [string, "null"], maxLength: 140 }
+                  photoUrl: { type: [string, "null"] }
+                  updatedAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "409": { description: Handle is set-once (FR-06). }
+        "422": { description: Nothing to update, handle missing on first write, or screened text (SEC-37). }
+    get:
+      summary: Read the requester's profile identity (FR-06)
+      responses:
+        "200":
+          description: The identity block; displayName defaults to the handle.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [handle, displayName, bio, photoUrl, updatedAt]
+                properties:
+                  handle: { type: string }
+                  displayName: { type: string }
+                  bio: { type: [string, "null"], maxLength: 140 }
+                  photoUrl: { type: [string, "null"] }
+                  updatedAt: { type: string, format: date-time }
+        "404": { description: Identity not set up yet. }
 
   /v1/profile/prompts:
     put:

@@ -13,7 +13,8 @@
 
 import Fastify from "fastify";
 import { gridDisk, gridDistance } from "h3-js";
-import { Matcher, Profile } from "./engine.js";
+import { Matcher, nonSensitiveCount, Profile } from "./engine.js";
+import { resolveRequestId } from "./requestid.js";
 import { MIN_CELL_POPULATION, rankScan, ScanCandidate } from "./scan.js";
 import { Store } from "./store.js";
 
@@ -27,7 +28,17 @@ interface ScanBody {
 }
 
 export function buildServer(store: Store) {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: true,
+    // NFR-31: honor the edge's X-Request-Id so one trace id spans gateway →
+    // edge → match; malformed ids are replaced, never trusted.
+    genReqId: (req) => resolveRequestId(req.headers["x-request-id"]),
+  });
+
+  // NFR-31: the trace id rides back to the caller on every response.
+  app.addHook("onSend", async (req, reply) => {
+    reply.header("x-request-id", req.id);
+  });
 
   app.get("/healthz", async () => ({ ok: true }));
 
@@ -51,7 +62,8 @@ export function buildServer(store: Store) {
         if (uid === body.userId || seen.has(uid)) continue;
         seen.add(uid);
         const profile = await store.profile(uid);
-        if (!profile || Object.keys(profile).length < 2) continue; // FR-11
+        // FR-11: fewer than two non-sensitive interests → not discoverable.
+        if (!profile || nonSensitiveCount(profile, store.getGraph()) < 2) continue;
         candidates.push({
           userId: uid,
           profile,

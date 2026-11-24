@@ -134,6 +134,19 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       return reply.code(403).send({ error: "account is invisible (FR-18)" });
     }
 
+    // BR-14: an explicit claim to a venue that suspended the service (or
+    // is not yet live / was offboarded) is refused — presence there stops
+    // within one TTL of the status change.
+    if (venueId !== null) {
+      const venue = await ctx.pg.query(
+        "SELECT active FROM venues WHERE venue_id = $1",
+        [venueId],
+      );
+      if (venue.rows.length > 0 && venue.rows[0].active !== true) {
+        return reply.code(409).send({ error: "venue is not operating (BR-14)" });
+      }
+    }
+
     // FR-90/TR-38: when the client made no explicit venue claim, a published
     // venue polygon takes precedence over the cell — presence inside it
     // attributes to the venue geometry. The map is computed in the lakehouse

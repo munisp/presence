@@ -32,6 +32,7 @@ services:
       - ../db/migrations/0017_geofence_review.sql:/docker-entrypoint-initdb.d/19_geofence_review.sql:ro
       - ../db/migrations/0018_analytics_publication.sql:/docker-entrypoint-initdb.d/20_analytics_publication.sql:ro
       - ../db/migrations/0019_reporting_compliance.sql:/docker-entrypoint-initdb.d/21_reporting_compliance.sql:ro
+      - ../db/migrations/0020_venue_registry.sql:/docker-entrypoint-initdb.d/22_venue_registry.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]
@@ -60,6 +61,13 @@ services:
       CENTRIFUGO_ADMIN: "true"
       CENTRIFUGO_ADMIN_PASSWORD: p0-dev-admin
       CENTRIFUGO_ADMIN_SECRET: p0-dev-admin-secret
+      # TECH-06: Valkey (Redis-compatible) as the engine — presence/pub-sub
+      # state is shared across replicas instead of per-process memory.
+      CENTRIFUGO_ENGINE_TYPE: redis
+      CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://valkey:6379/1
+    depends_on:
+      valkey:
+        condition: service_healthy
     ports: ["8000:8000"]
 
   # TECH-07 / ARC-002 §8.2: Keycloak, three realms imported at boot

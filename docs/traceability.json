@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 157,
-    "partial": 47,
+    "implemented": 164,
+    "partial": 40,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -14,8 +14,8 @@
   },
   "per_family": {
     "BR": {
-      "implemented": 8,
-      "partial": 3,
+      "implemented": 9,
+      "partial": 2,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 69,
-      "partial": 15,
+      "implemented": 72,
+      "partial": 12,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 15,
@@ -34,8 +34,8 @@
       "superseded": 0
     },
     "NFR": {
-      "implemented": 9,
-      "partial": 4,
+      "implemented": 10,
+      "partial": 3,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 11,
@@ -74,8 +74,8 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 11,
-      "partial": 8,
+      "implemented": 13,
+      "partial": 6,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 3,
@@ -204,11 +204,15 @@
     },
     "BR-14": {
       "family": "BR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "deploy/keycloak/realm-workforce.json"
+        "db/migrations/0020_venue_registry.sql",
+        "deploy/keycloak/realm-workforce.json",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/content.ts",
+        "services/edge/src/routes/presence.ts"
       ],
-      "note": "venues.active is checked on scan (immediate effect); suspension fully propagates within the 15-min TTL; venue self-serve suspend endpoint missing."
+      "note": "POST /v1/venues/:venueId/suspend + resume (BR-12 claim-scoped) flip partner_status via venue_suspend/venue_resume SECURITY DEFINER (migration 0020, admin_audit FR-60); the sync trigger flips venues.active the moment the status is recorded, the edge purges presence:venue:{id} and strips venue attribution from live entries (KEEPTTL+XX), explicit claims to an inactive venue are refused 409 and polygon attribution skips it \u2014 effective immediately, well within the one-business-day allowance and the 15-min TTL bound."
     },
     "BR-15": {
       "family": "BR",
@@ -395,9 +399,14 @@
     },
     "FR-06": {
       "family": "FR",
-      "status": "partial",
-      "evidence": [],
-      "note": "user_identities carries handle + photo gated to OPEN by RLS; display-name default and 140-char bio missing."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0020_venue_registry.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/profile.ts",
+        "tests/test_venue_registry.py"
+      ],
+      "note": "PUT/GET /v1/profile/identity over user_identities (migration 0020): handle set-once (409 on change), display_name <=80 chars defaulting to the handle at render time (COALESCE in display_handle(), the route reads and dsar_export), bio varchar(140) enforced in the data layer and the route schema; display name and bio are content-screened (SEC-37 idiom); the photo stays RLS-gated to OPEN (identity_after_open) and is uploaded out of band."
     },
     "FR-07": {
       "family": "FR",
@@ -449,14 +458,15 @@
     },
     "FR-11": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "docs/api/openapi.yaml",
         "presence/matching.py",
-        "services/match/src/scan.ts",
-        "services/match/src/server.ts",
-        "services/match/src/store.ts"
+        "services/edge/src/routes/profile.ts",
+        "services/match/src/engine.ts",
+        "services/match/src/scan.ts"
       ],
-      "note": "Candidates need >=2 interests to be scored; publish-side >=3 enforcement + client explanation missing."
+      "note": "The discoverability floor counts NON-sensitive interests via nonSensitiveCount() (engine.ts) at all three match gates \u2014 scan candidates, corpus rebuild, global prior; a node flipped sensitive by FR-59 governance after declaration stops counting, a node the taxonomy no longer knows is skipped rather than throwing. GET /v1/profile/interests returns discoverable + discoverabilityNote explaining the floor so the editor can show the reason before the user leaves the screen."
     },
     "FR-12": {
       "family": "FR",
@@ -781,11 +791,15 @@
     },
     "FR-42": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "deploy/keycloak/realm-workforce.json"
+        "db/migrations/0020_venue_registry.sql",
+        "deploy/keycloak/realm-workforce.json",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/venue.ts",
+        "tests/test_venue_registry.py"
       ],
-      "note": "venues carries geofence (PostGIS), h3_res, thresholds, active; partner status + operating schedule missing."
+      "note": "venues is now the full registry (migration 0020): partner_status (prospect/active/suspended/offboarded) with venues.active derived by trigger, operating_schedule jsonb shape-checked by operating_schedule_valid() (timezone + weekly day/open/close HH:MM), suspended_at; cells map through the cell_attribution projection (0017). GET /v1/venues/:id/registry serves cells+status+schedule (BR-12), PUT .../schedule replaces it, offboard is venue-ops-only; every mutation is SECURITY DEFINER with an admin_audit row."
     },
     "FR-43": {
       "family": "FR",
@@ -912,10 +926,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0008_moderation.sql",
+        "db/migrations/0020_venue_registry.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/routes/moderation.ts",
-        "services/edge/src/routes/presence.ts",
-        "services/edge/test/moderation.test.ts"
+        "services/edge/src/routes/presence.ts"
       ],
       "note": "suspensions table + suspension_dimension enum (attestation_key/handle/payment_instrument), one active per (user, dimension) partial unique index; attestation gate wired into presence publish (neutral 403), handle mask via display_handle() inside group_member_directory, payment_instrument record-only until the P3 payments surface; lift is per-dimension."
     },
@@ -967,9 +981,9 @@
       "evidence": [
         "db/migrations/0006_profile_safety.sql",
         "db/migrations/0007_group_surface.sql",
+        "db/migrations/0020_venue_registry.sql",
         "docs/adr/0009-lakehouse-publication-via-governed-sql.md",
-        "docs/api/openapi.yaml",
-        "services/edge/src/features.ts"
+        "docs/api/openapi.yaml"
       ],
       "note": "db/migrations/0006 admin_audit \u2014 append-only (immutability trigger for every role), actor/action/reason_code/target/before+after jsonb; SECURITY DEFINER admin_audit_log writer for ops and the FR-54 console."
     },
@@ -989,8 +1003,8 @@
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0004_discovery_safety.sql",
         "db/migrations/0019_reporting_compliance.sql",
-        "docs/api/openapi.yaml",
-        "services/edge/src/routes/account.ts"
+        "db/migrations/0020_venue_registry.sql",
+        "docs/api/openapi.yaml"
       ],
       "note": "GET /account/export assembles the full subject record (profile, interests, pairs, ledger actions, blocks, reports) via dsar_export() with FR-32/34 masking intact; erasure via DELETE /account."
     },
@@ -1550,14 +1564,15 @@
     },
     "NFR-31": {
       "family": "NFR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "deploy/k8s/README.md",
         "deploy/k8s/apisix.yaml",
         "docs/runbook.md",
-        "scripts/validate_deploy.py"
+        "scripts/validate_deploy.py",
+        "services/edge/src/app.ts"
       ],
-      "note": "Fastify request ids per service; APISIX request-id plugin generates and echoes X-Request-Id at the gateway; edge->match propagation of the id still missing."
+      "note": "End-to-end: APISIX request-id generates/echoes X-Request-Id; the edge's genReqId honors a charset-validated incoming id (resolveRequestId, visible ASCII <=128) else mints a uuid and echoes it on every response (onSend); the scan route forwards x-request-id to the match service, whose own genReqId honors/echoes it the same way \u2014 one trace id spans gateway -> edge -> match, and Fastify logs carry reqId at every hop."
     },
     "NFR-32": {
       "family": "NFR",
@@ -2576,12 +2591,13 @@
     },
     "TECH-04": {
       "family": "TECH",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "db/migrations/0014_markets.sql",
-        "deploy/k8s/postgres.yaml"
+        "deploy/k8s/postgres.yaml",
+        "tests/test_venue_registry.py"
       ],
-      "note": "Postgres 17 + PostGIS deployed; h3-pg extension not yet added."
+      "note": "deploy/postgres/Dockerfile builds on postgis/postgis:17-3.5-alpine with pgvector v0.8.0 and h3-pg v4.2.1 compiled from pinned tags (batch 19); native h3-pg powers the TR-16/37 ladder lookups."
     },
     "TECH-05": {
       "family": "TECH",
@@ -2593,11 +2609,14 @@
     },
     "TECH-06": {
       "family": "TECH",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "deploy/k8s/centrifugo.yaml"
+        "deploy/docker-compose.yml",
+        "deploy/k8s/centrifugo.yaml",
+        "deploy/k8s/networkpolicy.yaml",
+        "tests/test_venue_registry.py"
       ],
-      "note": "Centrifugo deployed; Valkey-as-broker not yet configured (in-memory engine in dev compose)."
+      "note": "Centrifugo v6 (Apache-2.0) runs the Redis engine over Valkey in compose and k8s (CENTRIFUGO_ENGINE_TYPE=redis, CENTRIFUGO_ENGINE_REDIS_ADDRESS=redis://valkey:6379/1) \u2014 presence and pub/sub state is shared across the 2 k8s replicas instead of per-process memory; network policies admit centrifugo->valkey and nowhere else."
     },
     "TECH-07": {
       "family": "TECH",

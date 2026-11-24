@@ -52,6 +52,7 @@ export async function lookupAttribution(
        JOIN venues v
          ON v.venue_id = ca.venue_id
         AND v.geofence_version = ca.geometry_version
+        AND v.active
       WHERE ca.cell = $1`,
     [key],
   );

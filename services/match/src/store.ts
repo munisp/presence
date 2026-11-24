@@ -14,7 +14,7 @@
 // identical.
 import Postgres from "pg";
 import { Redis as Valkey } from "ioredis";
-import { Corpus, InterestGraph, Matcher, Profile } from "./engine.js";
+import { Corpus, InterestGraph, Matcher, nonSensitiveCount, Profile } from "./engine.js";
 
 export const CORPUS_REFRESH_MS = 60_000; // TR-05: at least every 60 seconds
 export const PRIOR_REFRESH_MS = 600_000; // TR-36: global prior every 10 minutes
@@ -106,7 +106,8 @@ export class Store {
     const vectors = [];
     for (const uid of userIds) {
       const profile = await this.profile(uid);
-      if (profile && Object.keys(profile).length >= 2) { // FR-11
+      // FR-11: fewer than two non-sensitive interests → not discoverable.
+      if (profile && nonSensitiveCount(profile, this.getGraph()) >= 2) {
         vectors.push(matcher.vector(profile, false));    // link-free (TR-05)
       }
     }
@@ -139,7 +140,8 @@ export class Store {
     const df = new Map<string, number>();
     let size = 0;
     for (const profile of byUser.values()) {
-      if (Object.keys(profile).length < 2) continue; // FR-11
+      // FR-11: fewer than two non-sensitive interests → not discoverable.
+      if (nonSensitiveCount(profile, this.getGraph()) < 2) continue;
       for (const nid of matcher.vector(profile, false).keys()) { // link-free (TR-05)
         df.set(nid, (df.get(nid) ?? 0) + 1);
       }

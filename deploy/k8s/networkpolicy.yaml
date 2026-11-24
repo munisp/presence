@@ -91,6 +91,20 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: centrifugo-egress-allowlist
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: centrifugo }
+  policyTypes: [Egress]
+  egress:
+    # TECH-06: the Redis engine's only dependency is Valkey.
+    - to: [{ podSelector: { matchLabels: { app: valkey } } }]
+      ports: [{ protocol: TCP, port: 6379 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: keycloak-from-apisix-and-edge
   namespace: presence
 spec:
@@ -132,6 +146,9 @@ spec:
     - from:
         - podSelector: { matchLabels: { app: edge } }
         - podSelector: { matchLabels: { app: match } }
+        # TECH-06: the Centrifugo Redis engine keeps its pub/sub and
+        # presence state in Valkey.
+        - podSelector: { matchLabels: { app: centrifugo } }
       ports: [{ protocol: TCP, port: 6379 }]
 ---
 # Egress allowlist (INF-14): workloads may talk only to their declared

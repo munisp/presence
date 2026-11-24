@@ -14,7 +14,11 @@
  * unsupported versions prompt instead of failing silently (TR-27),
  * external links stay plain text behind a confirmation interstitial
  * (SEC-34), and the match surface renders from the versioned diagram
- * spec alone (TR-35).
+ * spec alone (TR-35). The publish lifecycle is disciplined end to end:
+ * the accuracy grant gates every publish (FR-88), the published cell is
+ * stabilised over a five-minute window (FR-92), reduced power caps the
+ * cadence at ten minutes (FR-85), and backgrounding withdraws presence
+ * within 60 seconds (FR-19).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -23,6 +27,10 @@ import { StyleSheet, Text, View } from "react-native";
 import { BLE_ROTATION_PERIOD_S } from "./src/presence/bleCodes.js";
 import { PRESENCE_H3_RESOLUTION } from "./src/presence/cell.js";
 import { LOCAL_STATE_ALLOWLIST } from "./src/presence/localState.js";
+import { REDUCED_PUBLISH_INTERVAL_S } from "./src/presence/powerMode.js";
+import { BACKGROUND_WITHDRAWAL_DEADLINE_S } from "./src/presence/presenceLifecycle.js";
+import { STABILISATION_WINDOW_MS } from "./src/presence/cellStabiliser.js";
+import { ACCURACY_REFUSAL_ALTERNATIVE } from "./src/presence/publishGate.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 export default function App() {
@@ -34,6 +42,9 @@ export default function App() {
       <Text style={styles.note}>
         On-device cells (H3 r{PRESENCE_H3_RESOLUTION}) · {LOCAL_STATE_ALLOWLIST.length} local keys, wiped
         on logout · BLE codes rotate every {BLE_ROTATION_PERIOD_S / 60} min · protocol v{CLIENT_PROTOCOL_VERSION}
+        {"\n"}cells settle over {STABILISATION_WINDOW_MS / 60000} min · reduced power publishes every{" "}
+        {REDUCED_PUBLISH_INTERVAL_S / 60} min · background exit withdraws in {BACKGROUND_WITHDRAWAL_DEADLINE_S}s ·
+        approximate location → {ACCURACY_REFUSAL_ALTERNATIVE}
       </Text>
     </View>
   );

@@ -100,7 +100,14 @@ paths:
         (FR-18). A publish without a live session starts one and returns its
         FR-16 session id; heartbeats present the live id to keep it, and a
         stale id is rejected with a 409. Consecutive fixes that imply
-        impossible travel are refused with a 422 (SEC-20).
+        impossible travel are refused with a 422 (SEC-20). Client-side
+        publish disciplines (client/): the platform accuracy grant is read
+        before any publish and approximate-only refuses with the check-in
+        offer (FR-88); the published cell is the modal cell of a five-minute
+        window unless the device moved more than one cell (FR-92); the
+        publish cadence is 300 s standard and never more often than 600 s in
+        reduced-power mode (FR-85) — both strictly below the 900 s FR-14
+        session TTL.
       parameters:
         - name: x-app-attest-assertion
           in: header
@@ -157,7 +164,11 @@ paths:
         "409": { description: Presented session id is not the live one; start a new session (FR-16). }
         "422": { description: Invalid H3 cell, coordinate-shaped payload (TR-15), impossible travel (SEC-20), or an undeclared floorId (FR-99). }
     delete:
-      summary: Leave; presence and cell membership are removed
+      summary: Leave; presence and cell membership are removed (FR-19)
+      description: >-
+        FR-19: clients withdraw presence within 60 seconds of the app
+        entering the background unless the user enabled background
+        presence; this endpoint is the withdrawal wire target.
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       responses:
         "200":
@@ -178,7 +189,9 @@ paths:
         server-side secret and answers with the (venueId, floorId) pair to
         attribute the next presence publish to. Tokens are short-lived
         (≤ 300 s) and single-purpose; an invalid, tampered or expired token
-        answers the same 401 — no oracle on which part failed.
+        answers the same 401 — no oracle on which part failed. FR-88: this
+        endpoint is the alternative every reduced-accuracy refusal offers —
+        check-in needs no location grant at all.
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true

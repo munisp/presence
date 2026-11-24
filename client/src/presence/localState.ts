@@ -27,6 +27,8 @@ export const LOCAL_STATE_ALLOWLIST = [
   "presence.notifications.prefs",
   // Taxonomy snapshot version for offline pickers (TR-20/TR-34).
   "presence.taxonomy.version",
+  // Reduced-power selection (FR-85) — a user preference, wiped on logout.
+  "presence.powerMode",
 ] as const;
 
 export type LocalStateKey = (typeof LOCAL_STATE_ALLOWLIST)[number];

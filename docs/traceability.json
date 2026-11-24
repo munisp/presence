@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 203,
+    "implemented": 207,
     "partial": 8,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 29,
+    "client": 25,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -24,11 +24,11 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 78,
+      "implemented": 82,
       "partial": 6,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 15,
+      "client": 11,
       "organisational": 1,
       "external-evidence": 0,
       "superseded": 0
@@ -548,11 +548,13 @@
     },
     "FR-19": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [
-        "tests/test_batch34.py"
+        "docs/api/openapi.yaml",
+        "tests/test_batch34.py",
+        "tests/test_batch37.py"
       ],
-      "note": "Background-withdrawal <=60 s is client lifecycle behaviour."
+      "note": "client/src/presence/presenceLifecycle.ts \u2014 backgrounding without the background-presence opt-in yields a withdraw decision pinned to the 60 s deadline and the DELETE /v1/presence wire target; foreground return cancels a pending withdrawal; FR-85 reduced power never extends the deadline. Pinned by client tests + tests/test_batch37.py."
     },
     "FR-20": {
       "family": "FR",
@@ -1226,9 +1228,13 @@
     },
     "FR-85": {
       "family": "FR",
-      "status": "client",
-      "evidence": [],
-      "note": "Reduced-power 10-min cadence mode with visibility trade-off notice."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "tests/test_batch34.py",
+        "tests/test_batch37.py"
+      ],
+      "note": "client/src/presence/powerMode.ts \u2014 standard 300 s / reduced 600 s publish intervals, both strictly below the FR-14 900 s session TTL; the pinned REDUCED_POWER_NOTICE states matches arrive less timely; the selection persists under presence.powerMode (TR-30 allowlist, wiped on logout). Pinned by client tests + tests/test_batch37.py."
     },
     "FR-86": {
       "family": "FR",
@@ -1244,11 +1250,13 @@
     },
     "FR-88": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [
-        "tests/test_batch34.py"
+        "docs/api/openapi.yaml",
+        "tests/test_batch34.py",
+        "tests/test_batch37.py"
       ],
-      "note": "Location-accuracy authorization read before publish; refuse on approximate-only."
+      "note": "client/src/presence/publishGate.ts \u2014 the platform accuracy grant is read before any publish; only an explicit precise grant publishes, approximate/garbage fails closed with the pinned one-sentence refusal and the venue check-in offer (POST /v1/presence/checkin, FR-99/100). The fix-accuracy half stays in cell.ts (MAX_FIX_ACCURACY_M). Pinned by client tests + tests/test_batch37.py."
     },
     "FR-89": {
       "family": "FR",
@@ -1282,9 +1290,12 @@
     },
     "FR-92": {
       "family": "FR",
-      "status": "client",
-      "evidence": [],
-      "note": "5-min modal-cell stabilisation on device (SHOULD)."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "tests/test_batch37.py"
+      ],
+      "note": "client/src/presence/cellStabiliser.ts \u2014 sliding 5-min sample window; the published cell is the mode of the window (deterministic ties: frequency, recency, cell id); movement > 1 h3 grid step publishes fresh immediately, and unmeasurable distance counts as movement, never as same place. Pinned by client tests + tests/test_batch37.py."
     },
     "FR-93": {
       "family": "FR",
@@ -1985,7 +1996,8 @@
       "status": "implemented",
       "evidence": [
         "docs/security/sdk-allowlist.json",
-        "tests/test_batch34.py"
+        "tests/test_batch34.py",
+        "tests/test_batch37.py"
       ],
       "note": "client/src/presence/cell.ts: computePresenceCell turns a fix into an H3 r9 cell on device (h3-js \u2014 the governed library the match service shares); toPublishPayload returns exactly {cell} and refuses approximate-only fixes (FR-88, MAX_FIX_ACCURACY_M=100); payloadDiscardsCoordinates pins the no-coordinates contract under node --test."
     },

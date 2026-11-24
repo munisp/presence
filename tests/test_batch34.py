@@ -109,8 +109,10 @@ def test_local_state_is_allowlisted_and_wiped() -> None:
         "presence.device.id",
         "presence.notifications.prefs",
         "presence.taxonomy.version",
+        # FR-85 (batch 37): the reduced-power selection persists locally.
+        "presence.powerMode",
     )]
-    assert len(set(allowlist)) == 4
+    assert len(set(allowlist)) == 5
     # The wipe iterates the allowlist itself — retention and wipe cannot drift.
     assert "LOCAL_STATE_ALLOWLIST.map((key) => backend.deleteItem(key))" in LOCAL_STATE_TS
     assert "createMemoryBackend" in LOCAL_STATE_TS

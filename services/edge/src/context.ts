@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto";
 
 import Postgres from "pg";
 import { Redis as Valkey } from "ioredis";
+import { Clock, IdSource, randomIds, systemClock } from "./clock.js";
+import { realtimePublishDuration, realtimePublishFailures } from "./metrics.js";
 
 export interface EdgeContext {
   pg: Postgres.Pool;
@@ -11,6 +13,18 @@ export interface EdgeContext {
   matchServiceUrl: string;
   centrifugoUrl: string;
   centrifugoApiKey: string;
+  /** TECH-15: injectable — defaults are the wall clock and random ids. */
+  clock: Clock;
+  ids: IdSource;
+}
+
+/** TECH-15: every context gets the system defaults unless a test overrides. */
+export function withTime<T extends Omit<EdgeContext, "clock" | "ids">>(
+  ctx: T,
+  clock: Clock = systemClock,
+  ids: IdSource = randomIds,
+): T & { clock: Clock; ids: IdSource } {
+  return { ...ctx, clock, ids };
 }
 
 declare module "fastify" {
@@ -65,14 +79,31 @@ export async function publishRealtime(
   channel: string,
   event: Record<string, unknown>,
 ): Promise<void> {
-  await fetch(`${ctx.centrifugoUrl}/api/publish`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `apikey ${ctx.centrifugoApiKey}`,
-    },
-    body: JSON.stringify({ channel, data: event }),
-  });
+  // NFR-07: the realtime leg of sender-to-device delivery is timed per
+  // channel class — the p95 of this histogram is what RealtimeDeliverySlow
+  // alerts on (deploy/k8s/prometheusrules.yaml).
+  const channelClass = channel.split(":", 1)[0] ?? "unknown";
+  const started = ctx.clock.now();
+  try {
+    const res = await fetch(`${ctx.centrifugoUrl}/api/publish`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `apikey ${ctx.centrifugoApiKey}`,
+      },
+      body: JSON.stringify({ channel, data: event }),
+    });
+    if (!res.ok) {
+      realtimePublishFailures().inc({ channel_class: channelClass });
+    }
+  } catch (err) {
+    realtimePublishFailures().inc({ channel_class: channelClass });
+    throw err;
+  } finally {
+    realtimePublishDuration().observe((ctx.clock.now() - started) / 1000, {
+      channel_class: channelClass,
+    });
+  }
 }
 
 /**
@@ -89,10 +120,12 @@ export async function purgePresence(ctx: EdgeContext, userId: string): Promise<v
       const prev = JSON.parse(previous) as {
         cell?: string;
         venueId?: string | null;
+        eventId?: string | null;
         sessionId?: string;
       };
       if (prev.cell) pipe.srem(`presence:cell:${prev.cell}`, userId);
       if (prev.venueId) pipe.srem(`presence:venue:${prev.venueId}`, userId);
+      if (prev.eventId) pipe.srem(`presence:event:${prev.eventId}`, userId); // FR-43
       if (prev.sessionId) pipe.del(sessionKey(prev.sessionId));
     } catch {
       // Malformed entry — still purge the primary key below.

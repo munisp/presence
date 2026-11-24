@@ -49,13 +49,17 @@ def test_attribution_runs_before_resolution_ladder():
     )
 
 
-def test_presence_response_contract_unchanged():
-    """The attribution is silent: the publish response carries exactly the
-    fields it carried before."""
-    assert re.search(
-        r"return reply\.send\(\{ ok: true, cell: storedCell, ttl: PRESENCE_TTL_S, sessionId \}\);",
-        PRESENCE,
-    )
+def test_presence_response_contract():
+    """The publish response carries exactly the contract fields: ok, cell,
+    ttl, sessionId and — since batch 27 (FR-43) — the event the presence is
+    attributable to, null when the venue hosts no live event. The FR-90
+    analytics attribution itself remains silent (no analytics field leaks)."""
+    m = re.search(r"return reply\.send\(\{(.*?)\}\);", PRESENCE, re.S)
+    assert m, "publish reply not found"
+    body = re.sub(r"^\s*//.*$", "", m.group(1), flags=re.M)  # drop comments
+    fields = re.findall(r"^\s*(\w+)\s*[:,]", body, re.M)
+    assert fields == ["ok", "cell", "ttl", "sessionId", "event"], fields
+    assert "event: eventId ? { eventId, name: eventName } : null" in m.group(1)
 
 
 # --- pipeline end-to-end ------------------------------------------------------

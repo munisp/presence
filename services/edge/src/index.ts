@@ -3,6 +3,7 @@
 import Postgres from "pg";
 import { Redis as Valkey } from "ioredis";
 import { buildApp } from "./app.js";
+import { randomIds, systemClock } from "./clock.js";
 import { startLifecycleJob } from "./lifecycle.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -16,6 +17,10 @@ async function main() {
     matchServiceUrl: process.env.MATCH_SERVICE_URL ?? "http://localhost:4100",
     centrifugoUrl: process.env.CENTRIFUGO_URL ?? "http://localhost:8000",
     centrifugoApiKey: process.env.CENTRIFUGO_API_KEY ?? "p0-dev-api-key",
+    // TECH-15: production context uses the wall clock and random ids; tests
+    // inject fakes through buildApp's context instead.
+    clock: systemClock,
+    ids: randomIds,
   };
 
   const app = await buildApp(ctx);

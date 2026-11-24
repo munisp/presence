@@ -56,6 +56,11 @@ spec:
     - from:
         - podSelector: { matchLabels: { app: apisix } }
         - podSelector: { matchLabels: { app: prometheus } }   # metrics scrape
+        # NFR-33: Prometheus Operator commonly lives in the monitoring
+        # namespace; both scrape sources are admitted, nobody else.
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+          podSelector: { matchLabels: { app.kubernetes.io/name: prometheus } }
       ports: [{ protocol: TCP, port: 4000 }]
 ---
 apiVersion: networking.k8s.io/v1
@@ -71,6 +76,9 @@ spec:
     - from:
         - podSelector: { matchLabels: { app: edge } }
         - podSelector: { matchLabels: { app: prometheus } }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+          podSelector: { matchLabels: { app.kubernetes.io/name: prometheus } }
       ports: [{ protocol: TCP, port: 4100 }]
 ---
 apiVersion: networking.k8s.io/v1

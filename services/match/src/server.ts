@@ -14,6 +14,7 @@
 import Fastify from "fastify";
 import { gridDisk, gridDistance } from "h3-js";
 import { Matcher, nonSensitiveCount, Profile } from "./engine.js";
+import { matchesServed, renderMetrics, scanRequests } from "./metrics.js";
 import { resolveRequestId } from "./requestid.js";
 import { MIN_CELL_POPULATION, rankScan, ScanCandidate } from "./scan.js";
 import { Store } from "./store.js";
@@ -42,6 +43,14 @@ export function buildServer(store: Store) {
 
   app.get("/healthz", async () => ({ ok: true }));
 
+  // NFR-33: Prometheus scrape endpoint — the MatchRateCollapse alert reads
+  // these two counters. Operational surface, aggregates only.
+  app.get("/metrics", async (_req, reply) =>
+    reply
+      .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
+      .send(renderMetrics()),
+  );
+
   app.post("/v1/score", async (req) => {
     const { a, b } = req.body as { a: Profile; b: Profile };
     const matcher = new Matcher(store.getGraph());
@@ -49,6 +58,7 @@ export function buildServer(store: Store) {
   });
 
   app.post("/v1/scan", async (req, reply) => {
+    scanRequests.inc();
     const body = req.body as ScanBody;
     const k = body.ringK ?? 1;
     const cells = gridDisk(body.cell, k);
@@ -61,7 +71,10 @@ export function buildServer(store: Store) {
       for (const uid of members) {
         if (uid === body.userId || seen.has(uid)) continue;
         seen.add(uid);
-        const profile = await store.profile(uid);
+        // TR-02: cache-only — the scan path never calls Postgres. A cold
+        // profile warms in the background and joins discovery next scan (or
+        // at the 60 s corpus refresh, whichever comes first).
+        const profile = store.cachedProfile(uid);
         // FR-11: fewer than two non-sensitive interests → not discoverable.
         if (!profile || nonSensitiveCount(profile, store.getGraph()) < 2) continue;
         candidates.push({
@@ -78,9 +91,11 @@ export function buildServer(store: Store) {
       return reply.send({ state: "quiet", results: [] });
     }
 
-    const requesterProfile = await store.profile(body.userId);
+    const requesterProfile = store.cachedProfile(body.userId);
     if (!requesterProfile) {
-      return reply.code(422).send({ error: "requester has no profile" });
+      // TR-02: same discipline for the requester — warm async, answer the
+      // explanatory empty state this scan rather than hit Postgres.
+      return reply.send({ state: "quiet", results: [] });
     }
 
     const matcher = new Matcher(store.getGraph());
@@ -92,6 +107,7 @@ export function buildServer(store: Store) {
       body.venue ?? {},
       body.tieBreakSeed,
     );
+    matchesServed.inc(results.length);
     return reply.send({ state: "ok", results });
   });
 

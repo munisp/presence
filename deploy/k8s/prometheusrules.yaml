@@ -82,3 +82,20 @@ spec:
           annotations:
             summary: "Moderation queue ageing past the 1 h SLA"
             runbook: "docs/runbook.md#moderationqueueage"
+
+        - alert: RealtimeDeliverySlow
+          # NFR-07: message delivery sender → recipient device, p95 ≤ 500 ms.
+          # The server-side leg is the realtime publish; when its p95 sits
+          # above the 500 ms budget for 15 min the end-to-end SLO cannot be
+          # met and the realtime path needs attention first.
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(presence_realtime_publish_duration_seconds_bucket[5m])) by (le)
+            ) > 0.5
+          for: 15m
+          labels:
+            severity: page
+            owner: realtime-oncall
+          annotations:
+            summary: "Realtime publish p95 above the 500 ms NFR-07 budget"
+            runbook: "docs/runbook.md#realtimedeliveryslow"

@@ -19,6 +19,7 @@
 // identical.
 import Postgres from "pg";
 import { Redis as Valkey } from "ioredis";
+import { Clock, systemClock } from "./clock.js";
 import { Corpus, InterestGraph, Matcher, nonSensitiveCount, Profile } from "./engine.js";
 
 export const CORPUS_REFRESH_MS = 60_000; // TR-05: at least every 60 seconds
@@ -42,6 +43,8 @@ export class Store {
   constructor(
     private readonly pg: Postgres.Pool,
     public readonly valkey: Valkey,
+    /** TECH-15: injectable; tests advance it instead of sleeping. */
+    public readonly clock: Clock = systemClock,
   ) {}
 
   /** Taxonomy is near-static; loaded at boot and on demand after import. */
@@ -64,7 +67,7 @@ export class Store {
   /** Profile with a short cache; Postgres is never hit twice per minute per user. */
   async profile(userId: string): Promise<Profile | null> {
     const cached = this.profileCache.get(userId);
-    if (cached && Date.now() - cached.at < CORPUS_REFRESH_MS) return cached.profile;
+    if (cached && this.clock.now() - cached.at < CORPUS_REFRESH_MS) return cached.profile;
     const rows = await this.pg.query(
       "SELECT node_id, weight FROM profile_interests WHERE user_id = $1",
       [userId],
@@ -72,8 +75,28 @@ export class Store {
     if (rows.rows.length === 0) return null;
     const profile: Profile = {};
     for (const r of rows.rows) profile[r.node_id] = r.weight;
-    this.profileCache.set(userId, { profile, at: Date.now() });
+    this.profileCache.set(userId, { profile, at: this.clock.now() });
     return profile;
+  }
+
+  /**
+   * TR-02: the scan path's only profile read — cache, never Postgres. A miss
+   * schedules a fire-and-forget warm so the next scan (or the 60 s corpus
+   * loop, which warms every live member anyway) finds it hot; the candidate
+   * is simply not discoverable on this scan. Cold-start bound: a live user is
+   * cached at most CORPUS_REFRESH_MS after their first presence publish.
+   */
+  cachedProfile(userId: string): Profile | null {
+    const cached = this.profileCache.get(userId);
+    if (!cached) {
+      this.profile(userId).catch((err) => console.error("profile warm failed", err));
+      return null;
+    }
+    if (this.clock.now() - cached.at >= CORPUS_REFRESH_MS) {
+      // Stale: serve it this scan, refresh for the next — still no sync read.
+      this.profile(userId).catch((err) => console.error("profile refresh failed", err));
+    }
+    return cached.profile;
   }
 
   /** Live presence for one user, or null when the TTL has lapsed (FR-14). */

@@ -1,0 +1,38 @@
+# NFR-33/NFR-07: Prometheus Operator scrape configuration for the workloads
+# that emit the alert-input series. Requires the Prometheus Operator CRDs —
+# apply with the monitoring stack, like prometheusrules.yaml:
+#
+#   kubectl apply -f deploy/k8s/servicemonitor.yaml
+#
+# The scrape endpoints (GET /metrics on edge :4000 and match :4100) serve
+# aggregates only; the network policy admits the prometheus pods and nobody
+# else to those ports from outside the apisix path.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: presence-edge
+  namespace: presence
+  labels: { app: edge, app.kubernetes.io/part-of: presence }
+spec:
+  selector:
+    matchLabels: { app: edge }
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: presence-match
+  namespace: presence
+  labels: { app: match, app.kubernetes.io/part-of: presence }
+spec:
+  selector:
+    matchLabels: { app: match }
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

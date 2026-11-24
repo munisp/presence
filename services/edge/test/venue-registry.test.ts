@@ -34,6 +34,7 @@ test("NFR-31: minted ids are unique", () => {
 function fakeValkey(entries: Record<string, string | null>, members: string[]) {
   const sets: Array<{ key: string; value: string; flags: unknown[] }> = [];
   const dels: string[] = [];
+  const srems: Array<{ key: string; member: string }> = [];
   const valkey = {
     smembers: async (_key: string) => members,
     pipeline() {
@@ -42,12 +43,17 @@ function fakeValkey(entries: Record<string, string | null>, members: string[]) {
         get(k: string) { ops.push({ cmd: "get", args: [k] }); return pipe; },
         set(...args: unknown[]) { ops.push({ cmd: "set", args }); return pipe; },
         del(k: string) { ops.push({ cmd: "del", args: [k] }); return pipe; },
+        srem(k: string, m: string) { ops.push({ cmd: "srem", args: [k, m] }); return pipe; },
         async exec() {
           return ops.map((op) => {
             if (op.cmd === "get") return [null, entries[op.args[0] as string] ?? null];
             if (op.cmd === "set") {
               sets.push({ key: op.args[0] as string, value: op.args[1] as string, flags: op.args.slice(2) });
               return [null, "OK"];
+            }
+            if (op.cmd === "srem") {
+              srems.push({ key: op.args[0] as string, member: op.args[1] as string });
+              return [null, 1];
             }
             dels.push(op.args[0] as string);
             return [null, 1];
@@ -57,7 +63,7 @@ function fakeValkey(entries: Record<string, string | null>, members: string[]) {
       return pipe;
     },
   };
-  return { valkey, sets, dels };
+  return { valkey, sets, dels, srems };
 }
 
 test("BR-14: suspension strips venue attribution, keeps cell presence and TTL", async () => {
@@ -88,4 +94,29 @@ test("BR-14: purging an empty venue still drops the venue set", async () => {
   await purgeVenuePresence({ valkey } as unknown as EdgeContext, "v9");
   assert.deepEqual(dels, ["presence:venue:v9"]);
   assert.equal(sets.length, 0);
+});
+
+test("FR-43: suspension strips event attribution and leaves the event sets", async () => {
+  const entries = {
+    "presence:user:u1": JSON.stringify({ cell: "abc", venueId: "v1", eventId: "e1", sessionId: "s1" }),
+    "presence:user:u2": JSON.stringify({ cell: "abc", venueId: "v1", eventId: "e1", sessionId: "s2" }),
+    "presence:user:u3": JSON.stringify({ cell: "abc", venueId: "v1", sessionId: "s3" }), // no event
+    "presence:user:u4": JSON.stringify({ cell: "abc", venueId: "v2", eventId: "e9", sessionId: "s4" }),
+  };
+  const { valkey, sets, srems } = fakeValkey(entries, ["u1", "u2", "u3", "u4"]);
+  await purgeVenuePresence({ valkey } as unknown as EdgeContext, "v1");
+
+  assert.deepEqual(
+    srems.sort((a, b) => a.member.localeCompare(b.member)),
+    [
+      { key: "presence:event:e1", member: "u1" },
+      { key: "presence:event:e1", member: "u2" },
+    ],
+    "event-attributed members leave the per-event live set",
+  );
+  for (const s of sets) {
+    const body = JSON.parse(s.value) as Record<string, unknown>;
+    assert.equal("eventId" in body, false);
+  }
+  assert.ok(sets.every((s) => s.key !== "presence:user:u4"), "other venue's event untouched");
 });

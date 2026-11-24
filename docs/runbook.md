@@ -76,3 +76,23 @@ page owner → service lead → incident commander (per ops policy).
    organisational alert, not a code alert.
 - **Escalate if:** queue age passes the internal escalation threshold in the
   moderation ops policy.
+
+## RealtimeDeliverySlow
+
+- **Owner:** realtime-oncall
+- **Symptom:** realtime publish p95 above 500 ms for 15 minutes
+  (`presence_realtime_publish_duration_seconds`).
+- **Impact:** NFR-07 breach — sender-to-recipient-device delivery can no
+  longer meet its 500 ms p95 budget while the server-side leg alone is this
+  slow; messages, match notifications and nudges all arrive late.
+- **First actions:**
+  1. Check Centrifugo health and its Valkey engine (TECH-06) — publish
+   latency is usually broker or broker-redis latency, not edge CPU.
+  2. Check the channel-class breakdown on the histogram: a single hot
+   channel class points at a fan-out hotspot, all classes slow points at
+   Centrifugo/Valkey.
+  3. Check `presence_realtime_publish_failures_total` alongside — slowness
+   with failures rising is a broker under distress, not just load.
+- **Escalate if:** p95 keeps rising after a Centrifugo restart, or failures
+  exceed publishes succeeding — treat as realtime outage and follow the
+  platform incident process.

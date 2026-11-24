@@ -285,7 +285,8 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       // their intent and the pair's recurrence counter in one pipeline.
       const myIntentRaw = await ctx.valkey.get(`intent:${userId}`);
       const myIntent = myIntentRaw ? (JSON.parse(myIntentRaw) as { intent: string }).intent : null;
-      const today = dayOrdinal(new Date());
+      // TECH-15: the day ordinal comes from the injected clock.
+      const today = dayOrdinal(new Date(ctx.clock.now()));
       const signalPipe = ctx.valkey.pipeline();
       for (const r of detected) {
         signalPipe.get(`intent:${r.candidateId}`);

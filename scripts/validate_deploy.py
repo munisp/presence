@@ -10,6 +10,10 @@ Asserts (with requirement ids):
          automatic rollback thresholds on latency and success rate.
   INF-11 HSTS + CSP headers are set at the gateway.
   TECH-21 APISIX is the sole public (LoadBalancer) ingress.
+  NFR-33 ServiceMonitors scrape edge and match on /metrics; the monitoring
+         namespace Prometheus is admitted to the scrape ports.
+  NFR-34 every alert names an owner and its runbook anchor resolves.
+  NFR-07 the realtime-delivery SLO alert carries the 500 ms p95 budget.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -92,8 +96,24 @@ def main() -> int:
     egress_policies = [p for p in nps if "Egress" in p["spec"]["policyTypes"] and p["metadata"]["name"] != "default-deny-all"]
     check("INF-14 egress allowlists exist", len(egress_policies) >= 4, f"{len(egress_policies)} allowlists")
     edge_in = next(p for p in nps if p["metadata"]["name"] == "edge-from-apisix")
-    sources = {f["podSelector"]["matchLabels"]["app"] for r in edge_in["spec"]["ingress"] for f in r["from"] if "podSelector" in f}
+    sources = {
+        f["podSelector"]["matchLabels"].get("app") or f["podSelector"]["matchLabels"].get("app.kubernetes.io/name")
+        for r in edge_in["spec"]["ingress"]
+        for f in r["from"]
+        if "podSelector" in f and "namespaceSelector" not in f
+    }
     check("INF-12 edge reachable only from apisix (+prometheus)", sources == {"apisix", "prometheus"}, str(sources))
+    # NFR-33: the monitoring-namespace Prometheus is also admitted to the
+    # scrape ports on edge and match, and nothing else is.
+    for name, port in (("edge-from-apisix", 4000), ("match-from-edge", 4100)):
+        pol = next(p for p in nps if p["metadata"]["name"] == name)
+        monitoring = [
+            f
+            for r in pol["spec"]["ingress"]
+            for f in r["from"]
+            if f.get("namespaceSelector", {}).get("matchLabels", {}).get("kubernetes.io/metadata.name") == "monitoring"
+        ]
+        check(f"NFR-33 {name} admits monitoring-namespace prometheus", len(monitoring) == 1)
 
     # TECH-21: APISIX is the only LoadBalancer
     lbs = [
@@ -117,6 +137,41 @@ def main() -> int:
             f"INF-16 {c['metadata']['name']} auto-rollback metrics",
             {"request-success-rate", "request-duration"} <= metric_names,
         )
+
+    # NFR-33: ServiceMonitors scrape both alert-input workloads on /metrics.
+    monitors = docs(K8S / "servicemonitor.yaml")
+    check("NFR-33 ServiceMonitors for edge and match", len(monitors) == 2)
+    for m in monitors:
+        app = m["metadata"]["labels"]["app"]
+        check(
+            f"NFR-33 {app} monitor scrapes /metrics",
+            m["spec"]["endpoints"][0]["path"] == "/metrics"
+            and m["spec"]["selector"]["matchLabels"] == {"app": app},
+        )
+        svc = next(d for d in docs(K8S / f"{app}.yaml") if d["kind"] == "Service")
+        check(
+            f"NFR-33 {app} service port is named (monitor reference)",
+            svc["spec"]["ports"][0].get("name") == "http",
+        )
+
+    # NFR-33/NFR-34: every alert's runbook anchor resolves in docs/runbook.md,
+    # and every alert names an owner.
+    rules = docs(K8S / "prometheusrules.yaml")[0]
+    runbook = (ROOT / "docs" / "runbook.md").read_text()
+    for group in rules["spec"]["groups"]:
+        for rule in group["rules"]:
+            name = rule["alert"]
+            anchor = rule["annotations"]["runbook"].split("#", 1)[1]
+            check(f"NFR-34 {name} runbook anchor resolves", f"## {name}" in runbook)
+            check(f"NFR-34 {name} names an owner", bool(rule["labels"].get("owner")))
+
+    # NFR-07: the realtime-delivery SLO alert exists with the 500 ms budget.
+    all_rules = [r for g in rules["spec"]["groups"] for r in g["rules"]]
+    rt = next((r for r in all_rules if r["alert"] == "RealtimeDeliverySlow"), None)
+    check(
+        "NFR-07 realtime p95 <= 500 ms alert",
+        rt is not None and "> 0.5" in rt["expr"] and rt["labels"]["owner"] == "realtime-oncall",
+    )
 
     print()
     if failures:

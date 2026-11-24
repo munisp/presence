@@ -53,7 +53,7 @@ metadata:
   labels: { app: edge }
 spec:
   selector: { app: edge }
-  ports: [{ port: 4000, targetPort: 4000 }]
+  ports: [{ name: http, port: 4000, targetPort: 4000 }]
 ---
 # INF-10: same autoscaling contract as match — p95 > 120 ms for 3 minutes
 # scales out; scale-in <= 1 pod per 10 minutes.

@@ -85,12 +85,21 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ok, cell, ttl, sessionId]
+                required: [ok, cell, ttl, sessionId, event]
                 properties:
                   ok: { type: boolean }
                   cell: { type: string, description: cell as stored, coarsened to the venue resolution }
                   ttl: { type: integer, example: 900 }
                   sessionId: { type: string, description: FR-16 session id — the only handle scan results expose pre-OPEN }
+                  event:
+                    type: [object, "null"]
+                    description: >-
+                      FR-43: when the venue hosts a live event (now inside its
+                      window) the presence is attributable to it and the event
+                      is echoed back; null otherwise.
+                    properties:
+                      eventId: { type: string, format: uuid }
+                      name: { type: string }
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "401": { description: Missing token or app-attestation assertion. }
         "403": { description: Discovery unavailable (neutral — FR-02/FR-04) or account invisible (FR-18). }
@@ -1039,7 +1048,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [venueId, k, livePresence, scansLastHour, activeOffers, liveAnnouncements]
+                required: [venueId, k, livePresence, scansLastHour, activeOffers, liveAnnouncements, liveEvent, liveEventPresence]
                 properties:
                   venueId: { type: string, format: uuid }
                   k: { type: integer, example: 11 }
@@ -1047,6 +1056,19 @@ paths:
                   scansLastHour: { type: [integer, "null"] }
                   activeOffers: { type: [integer, "null"] }
                   liveAnnouncements: { type: [integer, "null"] }
+                  liveEvent:
+                    type: [object, "null"]
+                    description: >-
+                      FR-43: the event currently live at the venue
+                      (starts_at ≤ now < ends_at), null when none is.
+                    properties:
+                      eventId: { type: string, format: uuid }
+                      name: { type: string }
+                      startsAt: { type: string, format: date-time }
+                      endsAt: { type: string, format: date-time }
+                  liveEventPresence:
+                    type: [integer, "null"]
+                    description: FR-43 live presence attributed to the live event, k-suppressed like every other figure.
         "403": { description: Venue partner token required (BR-12). }
   /v1/venues/{venueId}/registry:
     get:
@@ -1067,7 +1089,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [venueId, name, partnerStatus, operatingSchedule, suspendedAt, h3Res, cells]
+                required: [venueId, name, partnerStatus, operatingSchedule, suspendedAt, h3Res, cells, liveEvent]
                 properties:
                   venueId: { type: string, format: uuid }
                   name: { type: string }
@@ -1078,6 +1100,14 @@ paths:
                   suspendedAt: { type: [string, "null"], format: date-time }
                   h3Res: { type: integer }
                   cells: { type: array, items: { type: string } }
+                  liveEvent:
+                    type: [object, "null"]
+                    description: FR-43 — the event currently live at the venue, null when none is.
+                    properties:
+                      eventId: { type: string, format: uuid }
+                      name: { type: string }
+                      startsAt: { type: string, format: date-time }
+                      endsAt: { type: string, format: date-time }
         "403": { description: Venue partner token required (BR-12). }
         "404": { description: Venue not found. }
   /v1/venues/{venueId}/schedule:

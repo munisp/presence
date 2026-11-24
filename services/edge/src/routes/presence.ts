@@ -30,7 +30,6 @@ import { cellToParent, getResolution, gridDistance, isValidCell } from "h3-js";
 import { containsCoordinates } from "../auth.js";
 import {
   EdgeContext,
-  newPresenceSessionId,
   purgePresence,
   sessionKey,
 } from "../context.js";
@@ -71,6 +70,7 @@ interface PresenceEntry {
   cell: string;
   venueId: string | null;
   floorId: string | null;
+  eventId: string | null;
   sessionId: string;
   publishedAt: number;
 }
@@ -181,6 +181,27 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       }
     }
 
+    // FR-43: an event is a venue plus a time window, and presence inside the
+    // window attributes to the event. The live event rides the presence
+    // entry; its index set follows the same TTL + grace discipline as the
+    // cell/venue sets (NFR-18). BR-05: this is the event-scoped mode — a
+    // conference day is a self-contained presence surface.
+    let eventId: string | null = null;
+    let eventName: string | null = null;
+    if (venueId !== null) {
+      const ev = await ctx.pg.query(
+        `SELECT event_id, name FROM events
+          WHERE venue_id = $1 AND starts_at <= now() AND ends_at > now()
+          ORDER BY starts_at DESC
+          LIMIT 1`,
+        [venueId],
+      );
+      if (ev.rows.length > 0) {
+        eventId = ev.rows[0].event_id as string;
+        eventName = ev.rows[0].name as string;
+      }
+    }
+
     // TR-12/14: coarsen the client cell to the venue's active resolution.
     // TR-37: the ladder comes from the market's configuration (TR-16 native
     // h3-pg lookup, cached a minute), not from code constants.
@@ -202,7 +223,7 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       }
       // FR-16: heartbeats keep the live session id. Legacy entries without
       // one are upgraded in place.
-      sessionId = prev.sessionId ?? newPresenceSessionId();
+      sessionId = prev.sessionId ?? ctx.ids.sessionId();
 
       if (prev.cell !== storedCell) {
         // SEC-20: impossible-travel check between consecutive fixes. Both
@@ -221,7 +242,7 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
             recordSecurityEvent(ctx.pg, "impossible_travel", userId, { resolution: res });
             return reply.code(422).send({ error: "presence moved implausibly fast (SEC-20)" });
           }
-          if (isImpossibleTravel(steps, res, Date.now() - prev.publishedAt)) {
+          if (isImpossibleTravel(steps, res, ctx.clock.now() - prev.publishedAt)) {
             // SEC-30: record for abuse review. The detail carries the
             // comparison resolution only — never a cell (SEC-29).
             recordSecurityEvent(ctx.pg, "impossible_travel", userId, { resolution: res });
@@ -233,6 +254,9 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       if (prev.venueId && prev.venueId !== venueId) {
         await ctx.valkey.srem(`presence:venue:${prev.venueId}`, userId);
       }
+      if (prev.eventId && prev.eventId !== eventId) {
+        await ctx.valkey.srem(`presence:event:${prev.eventId}`, userId);
+      }
     } else {
       if (presentedSessionId) {
         // FR-16: the client claims a session that is not live.
@@ -240,15 +264,16 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
           error: "presence session id rejected; start a new session (FR-16)",
         });
       }
-      sessionId = newPresenceSessionId();
+      sessionId = ctx.ids.sessionId();
     }
 
     const entry: PresenceEntry = {
       cell: storedCell,
       venueId,
       floorId,
+      eventId,
       sessionId,
-      publishedAt: Date.now(),
+      publishedAt: ctx.clock.now(),
     };
     const pipe = ctx.valkey.pipeline();
     pipe.set(`presence:user:${userId}`, JSON.stringify(entry), "EX", PRESENCE_TTL_S);
@@ -261,6 +286,10 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       pipe.sadd(`presence:venue:${venueId}`, userId);
       pipe.expire(`presence:venue:${venueId}`, PRESENCE_INDEX_TTL_S);
     }
+    if (eventId) {
+      pipe.sadd(`presence:event:${eventId}`, userId);
+      pipe.expire(`presence:event:${eventId}`, PRESENCE_INDEX_TTL_S);
+    }
     // FR-16 reverse index: session id -> account id, same TTL as presence.
     pipe.set(sessionKey(sessionId), userId, "EX", PRESENCE_TTL_S);
     await pipe.exec();
@@ -270,7 +299,14 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       console.error("presence index prune failed", err),
     );
 
-    return reply.send({ ok: true, cell: storedCell, ttl: PRESENCE_TTL_S, sessionId });
+    return reply.send({
+      ok: true,
+      cell: storedCell,
+      ttl: PRESENCE_TTL_S,
+      sessionId,
+      // FR-43: the client learns its presence attributed to a live event.
+      event: eventId ? { eventId, name: eventName } : null,
+    });
     },
   );
 

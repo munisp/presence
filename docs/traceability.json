@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 170,
-    "partial": 34,
+    "implemented": 176,
+    "partial": 28,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -14,8 +14,8 @@
   },
   "per_family": {
     "BR": {
-      "implemented": 9,
-      "partial": 2,
+      "implemented": 10,
+      "partial": 1,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 74,
-      "partial": 10,
+      "implemented": 75,
+      "partial": 9,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 15,
@@ -34,8 +34,8 @@
       "superseded": 0
     },
     "NFR": {
-      "implemented": 12,
-      "partial": 1,
+      "implemented": 13,
+      "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 11,
@@ -44,8 +44,8 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 34,
-      "partial": 3,
+      "implemented": 35,
+      "partial": 2,
       "gap-p0": 0,
       "phase-gated": 1,
       "client": 6,
@@ -54,8 +54,8 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 22,
-      "partial": 7,
+      "implemented": 23,
+      "partial": 6,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 1,
@@ -74,8 +74,8 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 13,
-      "partial": 6,
+      "implemented": 14,
+      "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 3,
@@ -131,11 +131,13 @@
     },
     "BR-05": {
       "family": "BR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "deploy/keycloak/realm-partners.json"
+        "deploy/keycloak/realm-partners.json",
+        "services/edge/src/routes/presence.ts",
+        "tests/test_batch27.py"
       ],
-      "note": "events table models venue+window; event-scoped instance mode and presence-to-event attribution not wired."
+      "note": "Event-scoped mode is live: an event is a venue+window (0001, CHECK ends_at > starts_at), presence published inside the window attributes to the event (FR-43) and the venue dashboard/registry expose the live event with k-suppressed liveEventPresence \u2014 a conference or match day runs as a self-contained discovery surface (per-event live set presence:event:{id}) with no permanent local user base required."
     },
     "BR-06": {
       "family": "BR",
@@ -473,7 +475,8 @@
       "status": "implemented",
       "evidence": [
         "deploy/k8s/prometheusrules.yaml",
-        "docs/runbook.md"
+        "docs/runbook.md",
+        "services/edge/src/app.ts"
       ],
       "note": "Profile and corpus caches refresh on a 60 s loop (TR-05)."
     },
@@ -514,10 +517,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "services/edge/src/clock.ts",
         "services/edge/src/context.ts",
         "services/edge/src/rooms.ts",
-        "services/edge/src/routes/account.ts",
-        "services/edge/src/routes/presence.ts"
+        "services/edge/src/routes/account.ts"
       ],
       "note": "newPresenceSessionId (128-bit hex) on session start, kept on heartbeats, reuse rejected 409; presence:session reverse index; scan results carry sessionId+pairId \u2014 account ids never leave the edge pre-OPEN."
     },
@@ -807,12 +810,15 @@
     },
     "FR-43": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "deploy/keycloak/realm-partners.json",
+        "docs/api/openapi.yaml",
+        "services/edge/src/context.ts",
+        "services/edge/src/routes/presence.ts",
         "services/edge/src/routes/venue.ts"
       ],
-      "note": "events = venue + window in schema; presence-to-event attribution not wired."
+      "note": "events = venue + window (0001). Presence published at a venue with a live event (starts_at <= now < ends_at) attributes to it: the entry carries eventId, presence:event:{id} keeps the live set under the NFR-18 TTL, the publish reply echoes {eventId, name}, moving between events/leave/venue suspension all strip the attribution, and dashboard + registry surface the live event with k-suppressed presence."
     },
     "FR-44": {
       "family": "FR",
@@ -1400,9 +1406,15 @@
     },
     "NFR-07": {
       "family": "NFR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Centrifugo realtime fan-out wired; <=500 ms delivery unmeasured."
+      "status": "implemented",
+      "evidence": [
+        "deploy/k8s/prometheusrules.yaml",
+        "deploy/k8s/servicemonitor.yaml",
+        "docs/runbook.md",
+        "scripts/validate_deploy.py",
+        "services/edge/src/context.ts"
+      ],
+      "note": "The server leg of sender-to-device delivery is measured and SLO-alerted: publishRealtime times every broker call into presence_realtime_publish_duration_seconds per channel class and counts failures; RealtimeDeliverySlow (prometheusrules.yaml) pages realtime-oncall when the publish p95 exceeds the 500 ms budget for 15 min; runbook entry + ServiceMonitor scrape wired. The device-leg confirmation rides on client telemetry."
     },
     "NFR-08": {
       "family": "NFR",
@@ -1603,9 +1615,12 @@
       "status": "implemented",
       "evidence": [
         "deploy/k8s/README.md",
-        "deploy/k8s/prometheusrules.yaml"
+        "deploy/k8s/networkpolicy.yaml",
+        "deploy/k8s/prometheusrules.yaml",
+        "deploy/k8s/servicemonitor.yaml",
+        "scripts/validate_deploy.py"
       ],
-      "note": "deploy/k8s/prometheusrules.yaml \u2014 one PrometheusRule alert per required class, each with severity and owner."
+      "note": "deploy/k8s/prometheusrules.yaml \u2014 one PrometheusRule alert per required class, each with severity and owner; every alert-input series is emitted (edge services/edge/src/metrics.ts: http duration/requests, publish failures, realtime publish duration, moderation queue age refreshed on scrape; match services/match/src/metrics.ts: scan demand + served) and scraped via deploy/k8s/servicemonitor.yaml with the monitoring namespace admitted by the network policy."
     },
     "NFR-34": {
       "family": "NFR",
@@ -1613,7 +1628,8 @@
       "evidence": [
         "deploy/k8s/README.md",
         "deploy/k8s/prometheusrules.yaml",
-        "docs/runbook.md"
+        "docs/runbook.md",
+        "scripts/validate_deploy.py"
       ],
       "note": "docs/runbook.md \u2014 per-alert symptom/impact/first-actions/escalation, owner named per alert."
     },
@@ -1643,9 +1659,14 @@
     },
     "TR-02": {
       "family": "TR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Scan reads Valkey + warmed caches; a cold profile cache miss still hits Postgres inline \u2014 bulk warming or async load outstanding."
+      "status": "implemented",
+      "evidence": [
+        "services/match/src/server.ts",
+        "services/match/src/store.ts",
+        "services/match/test/store-cache.test.ts",
+        "tests/test_batch27.py"
+      ],
+      "note": "The scan path never calls Postgres: the match HTTP surface reads profiles exclusively through Store.cachedProfile (cache-only; a miss warms asynchronously and the candidate joins discovery next scan \u2014 cold-start bounded at one CORPUS_REFRESH_MS cycle since the 60 s corpus loop warms every live presence member anyway). Pinned by tests/test_batch27.py and services/match/test/store-cache.test.ts."
     },
     "TR-03": {
       "family": "TR",
@@ -2103,9 +2124,12 @@
     },
     "SEC-05": {
       "family": "SEC",
-      "status": "partial",
-      "evidence": [],
-      "note": "Only the edge role reads envelopes, RLS-gated to pair members; no analytics/admin read path exists."
+      "status": "implemented",
+      "evidence": [
+        "services/edge/src/metrics.ts",
+        "tests/test_batch27.py"
+      ],
+      "note": "Two service roles only: presence_match (BYPASSRLS) holds grants on taxonomy/profile tables \u2014 never messages; presence_app reads messages solely through the messages_open_members RLS policy (OPEN pair members, app_user context); no SECURITY DEFINER function SELECTs envelope (lifecycle_tick DELETEs on the NFR-20 retention schedule only); the analytics pipeline has no message event kind and deny-lists envelope/ciphertext/content; the moderation console never touches ciphertext. Pinned by tests/test_batch27.py."
     },
     "SEC-06": {
       "family": "SEC",
@@ -2332,7 +2356,7 @@
         "docs/runbook.md",
         "services/edge/src/app.ts",
         "services/edge/src/logscrub.ts",
-        "services/edge/src/routes/presence.ts"
+        "services/edge/src/metrics.ts"
       ],
       "note": "pino hooks.logMethod scrubber: coordinate/content/credential keys redacted, Bearer/apikey/JWT strings scrubbed, cell+user pairings redacted; 10 unit tests."
     },
@@ -2636,6 +2660,7 @@
         "deploy/docker-compose.yml",
         "deploy/k8s/centrifugo.yaml",
         "deploy/k8s/networkpolicy.yaml",
+        "docs/runbook.md",
         "tests/test_venue_registry.py"
       ],
       "note": "Centrifugo v6 (Apache-2.0) runs the Redis engine over Valkey in compose and k8s (CENTRIFUGO_ENGINE_TYPE=redis, CENTRIFUGO_ENGINE_REDIS_ADDRESS=redis://valkey:6379/1) \u2014 presence and pub/sub state is shared across the 2 k8s replicas instead of per-process memory; network policies admit centrifugo->valkey and nowhere else."
@@ -2707,9 +2732,15 @@
     },
     "TECH-15": {
       "family": "TECH",
-      "status": "partial",
-      "evidence": [],
-      "note": "Python engine is pure/deterministic; TS services read the wall clock directly \u2014 clock/id injection not formalised."
+      "status": "implemented",
+      "evidence": [
+        "services/edge/src/clock.ts",
+        "services/edge/src/context.ts",
+        "services/edge/src/index.ts",
+        "services/edge/src/routes/scan.ts",
+        "services/edge/test/metrics.test.ts"
+      ],
+      "note": "Time, randomness and identifiers are injected everywhere they govern behaviour: EdgeContext carries clock/ids (presence TTL math, impossible-travel, publishedAt, session-id minting; scan day-ordinal) with withTime() overrides; the match Store takes a Clock (profile-cache freshness); shouldNotify already took now; rankScan takes tieBreakSeed. Expiry/rotation tests advance fake clocks instead of sleeping (store-cache.test.ts, metrics.test.ts)."
     },
     "TECH-16": {
       "family": "TECH",

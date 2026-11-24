@@ -81,6 +81,8 @@ function venueClaimOk(req: unknown, venueId: string): boolean {
  * BR-14: a suspension takes effect at once — the venue's live presence set
  * is dropped and each member's entry loses its venue attribution (cell
  * presence is untouched; the TTL still bounds what remains).
+ * FR-43: event attribution goes with the venue — entries lose their eventId
+ * and leave the per-event live sets they were attributed to.
  */
 export async function purgeVenuePresence(ctx: EdgeContext, venueId: string): Promise<void> {
   const members = await ctx.valkey.smembers(`presence:venue:${venueId}`);
@@ -97,6 +99,10 @@ export async function purgeVenuePresence(ctx: EdgeContext, venueId: string): Pro
     if (entry.venueId !== venueId) continue;
     delete entry.venueId;
     delete entry.floorId;
+    if (typeof entry.eventId === "string") {
+      writes.srem(`presence:event:${entry.eventId}`, uid);
+      delete entry.eventId;
+    }
     // Preserve the remaining TTL — presence still expires on schedule. XX
     // keeps a key that expired between the read and this write from being
     // resurrected without a TTL.
@@ -120,6 +126,23 @@ export function registerVenueRoutes(app: FastifyInstance, ctx: EdgeContext): voi
     const scansRaw = await ctx.valkey.get(`stats:venue:${venueId}:scans:h`);
     const scansLastHour = scansRaw ? Number.parseInt(scansRaw, 10) : 0;
 
+    // FR-43: when the venue hosts a live event, the dashboard reports it —
+    // presence inside the window is attributable to the event, and the
+    // per-event live set feeds the (k-suppressed) event presence figure.
+    const ev = await ctx.pg.query(
+      `SELECT event_id AS "eventId", name,
+              starts_at AS "startsAt", ends_at AS "endsAt"
+         FROM events
+        WHERE venue_id = $1 AND starts_at <= now() AND ends_at > now()
+        ORDER BY starts_at DESC
+        LIMIT 1`,
+      [venueId],
+    );
+    const liveEvent = ev.rows.length > 0 ? ev.rows[0] : null;
+    const liveEventPresence = liveEvent
+      ? await ctx.valkey.scard(`presence:event:${liveEvent.eventId}`)
+      : 0;
+
     const offerRows = await ctx.pg.query(
       "SELECT count(*)::int AS n FROM offers WHERE venue_id = $1 AND starts_at <= now() AND ends_at > now()",
       [venueId],
@@ -138,6 +161,8 @@ export function registerVenueRoutes(app: FastifyInstance, ctx: EdgeContext): voi
       scansLastHour: kSuppressed(scansLastHour),
       activeOffers: kSuppressed(offerRows.rows[0].n),
       liveAnnouncements: kSuppressed(announcementRows.rows[0].n),
+      liveEvent,
+      liveEventPresence: kSuppressed(liveEventPresence),
     });
   });
 
@@ -164,9 +189,21 @@ export function registerVenueRoutes(app: FastifyInstance, ctx: EdgeContext): voi
         "SELECT cell FROM cell_attribution WHERE venue_id = $1 ORDER BY cell",
         [venueId],
       );
+      // FR-43: the registry names the event currently live at the venue, if
+      // any, so an operator can see what the presence window attributes to.
+      const ev = await ctx.pg.query(
+        `SELECT event_id AS "eventId", name,
+                starts_at AS "startsAt", ends_at AS "endsAt"
+           FROM events
+          WHERE venue_id = $1 AND starts_at <= now() AND ends_at > now()
+          ORDER BY starts_at DESC
+          LIMIT 1`,
+        [venueId],
+      );
       return reply.send({
         ...venue.rows[0],
         cells: cells.rows.map((r) => r.cell as string),
+        liveEvent: ev.rows.length > 0 ? ev.rows[0] : null,
       });
     },
   );

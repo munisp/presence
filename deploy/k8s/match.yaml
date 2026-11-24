@@ -44,7 +44,7 @@ metadata:
   labels: { app: match }
 spec:
   selector: { app: match }
-  ports: [{ port: 4100, targetPort: 4100 }]
+  ports: [{ name: http, port: 4100, targetPort: 4100 }]
 ---
 # INF-10: scale out when p95 latency exceeds 120 ms sustained for 3 minutes
 # (the prometheus-adapter query window); scale in at most 1 pod per 10 min.

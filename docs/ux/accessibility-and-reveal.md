@@ -20,12 +20,14 @@ the shell palette are audited against.
 
 ## What is deliberately NOT here
 
-Five requirements remain client-gated in the traceability matrix:
+Three requirements were client-gated in the traceability matrix when
+this document first landed; two of them closed in the next batch:
 NFR-27 (localisation — English at launch, localisable without code
-changes), NFR-28 (OS floors with graceful BLE-floor degradation) and
-TECH-08 (OpenMLS/vodozemac E2E crypto with libsignal prohibited).
-These are the next batch's scope. On-device assistive-technology
-validation (a real VoiceOver/TalkBack pass, a physical one-handed
-reach study) is not expressible as a contract and stays out of scope
-here — what this module pins is everything the code can guarantee
-before that pass.
+changes) now lives in `client/src/presence/copyRegistry.ts`, and NFR-28
+(OS floors with graceful BLE-floor degradation) in
+`client/src/presence/bleFloor.ts`. TECH-08 (OpenMLS/vodozemac E2E
+crypto with libsignal prohibited) remains and is the next batch's
+scope. On-device assistive-technology validation (a real
+VoiceOver/TalkBack pass, a physical one-handed reach study) is not
+expressible as a contract and stays out of scope here — what this
+module pins is everything the code can guarantee before that pass.

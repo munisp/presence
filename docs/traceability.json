@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 229,
+    "implemented": 231,
     "partial": 8,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 3,
+    "client": 1,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -34,11 +34,11 @@
       "superseded": 0
     },
     "NFR": {
-      "implemented": 17,
+      "implemented": 19,
       "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 2,
+      "client": 0,
       "organisational": 0,
       "external-evidence": 13,
       "superseded": 0
@@ -1134,7 +1134,9 @@
       "evidence": [
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
-        "docs/ux/journeys-and-conversations.md"
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch38.py",
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/verificationBadge.ts \u2014 the identity-reveal registry is exactly the three SRS surfaces (offer, table-roster, booked-slot; account settings is NOT one); a reveal is built from the FR-51 attestation state alone with the badge label pinned (a surface cannot forge a friendlier status), and unregistered surfaces, blank names and garbage states fail closed to null; the audit flags a label that does not match its state. Pinned by client tests + tests/test_batch43.py."
     },
@@ -1666,7 +1668,9 @@
       "evidence": [
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
-        "docs/ux/journeys-and-conversations.md"
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch38.py",
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/accessibility.ts \u2014 WCAG 2.2 AA as code: relative-luminance contrast (4.5:1 normal / 3:1 large and non-text) audited over the pinned shell palette (the audit caught the note colour at 3.50:1 \u2014 moved to #74879B); dynamic type pinned to the 200 % resize floor (clamped, garbage fails closed to 1); reduced motion is a pinned instant fallback with unreadable preference treated as reduce; screen-reader labelling and focus order audited per control (non-empty label, registered role, unique non-negative focus position). On-device VoiceOver/TalkBack validation is the named residual beyond code. Pinned by client tests + tests/test_batch43.py."
     },
@@ -1674,28 +1678,33 @@
       "family": "NFR",
       "status": "implemented",
       "evidence": [
-        "docs/ux/accessibility-and-reveal.md"
+        "docs/ux/accessibility-and-reveal.md",
+        "tests/test_batch43.py"
       ],
       "note": "client/src/presence/accessibility.ts \u2014 every interactive control declares a touch TARGET (not a glyph size) and the audit requires >= 44 x 44 pt in both dimensions; undersized or non-finite targets are violations. Pinned by client tests + tests/test_batch43.py."
     },
     "NFR-27": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [
-        "docs/ux/accessibility-and-reveal.md",
-        "docs/ux/client-budgets.md"
-      ],
-      "note": "English at launch; localisable without code changes; +2 locales in 3 months."
-    },
-    "NFR-28": {
-      "family": "NFR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
-        "tests/test_batch34.py"
+        "docs/ux/localisation-and-degradation.md",
+        "tests/test_batch43.py"
       ],
-      "note": "iOS 16+ / Android 10+ with graceful BLE-floor degradation."
+      "note": "client/src/presence/copyRegistry.ts \u2014 one copy registry keyed off the English launch baseline; a locale is pure data (BCP-47-lite tag + string map) so adding one needs no code change (proven by the master guard registering a synthetic locale at runtime); missing keys fall back to the English floor, unknown keys fail closed to null, malformed tags/bundles resolve as English; localeCoverage/localeIsLaunchReady set the full-coverage bar for the pinned +2-locales-in-3-months commitment; the shell renders title/subtitle through the registry with ACTIVE_LOCALE=null. Pinned by client tests + tests/test_batch44.py."
+    },
+    "NFR-28": {
+      "family": "NFR",
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/accessibility-and-reveal.md",
+        "docs/ux/client-budgets.md",
+        "docs/ux/localisation-and-degradation.md",
+        "tests/test_batch34.py",
+        "tests/test_batch43.py"
+      ],
+      "note": "client/src/presence/bleFloor.ts \u2014 OS floors pinned in code (IOS_FLOOR_MAJOR 16 / ANDROID_FLOOR_API 29) and cross-checked against app.json (deploymentTarget/minSdkVersion) by tests/test_batch44.py; boundary-exact (floor supported, one below refuses with pinned upgrade notice, non-finite fails closed); the BLE capability ladder advertise+scan -> scan-only -> none degrades attestation two-way -> witness-only -> off with pinned notices, and every supported OS/capability combination is proven dead-end-free through the TR-32 resolver; garbage readings fail closed to the least radio. Pinned by client tests + tests/test_batch44.py."
     },
     "NFR-29": {
       "family": "NFR",
@@ -1789,7 +1798,8 @@
       "family": "NFR",
       "status": "implemented",
       "evidence": [
-        "docs/ux/accessibility-and-reveal.md"
+        "docs/ux/accessibility-and-reveal.md",
+        "tests/test_batch43.py"
       ],
       "note": "client/src/presence/accessibility.ts \u2014 the primary action passes only when its top edge sits at or below the lower-40% line (fraction 0.6 pinned; 6.1-inch / 844 pt reference device); garbage geometry fails closed. Pinned by client tests + tests/test_batch43.py."
     },
@@ -2131,6 +2141,7 @@
       "status": "implemented",
       "evidence": [
         "docs/security/sdk-allowlist.json",
+        "docs/ux/localisation-and-degradation.md",
         "tests/test_batch35.py"
       ],
       "note": "client/src/presence/bleCodes.ts: BLE attestation codes are derived, never stable \u2014 code = HMAC-SHA256(presence session id, 'presence-ble-v1'|windowIndex) truncated to 128 bits over a 900 s window (the SRS cap is 15 min; rotationPeriodWithinLimit pins it). The advertisement carries exactly one field \u2014 the derived code \u2014 and advertisementDiscardsIdentifiers pins that no session/device/user id can ever ride along; receivers verify the current window with at most one lookback (boundary clock skew) and reject older or future codes. Pure-TS SHA-256/HMAC (client/src/presence/sha256.ts, RFC 4231-pinned, cross-checked against node:crypto) \u2014 zero added dependencies, Hermes-safe."
@@ -2139,6 +2150,7 @@
       "family": "TR",
       "status": "implemented",
       "evidence": [
+        "docs/ux/localisation-and-degradation.md",
         "tests/test_batch35.py"
       ],
       "note": "client/src/presence/permissions.ts: resolveCapabilities maps bluetooth/location/push denials to a degraded-but-never-dead profile. The floors are architectural: manual-checkin is always present (FR-99/FR-100 check-in tokens need no OS permission), push-denied falls back to the in-app Centrifugo realtime channel (TECH-06), and consent/chat are server-driven (FR-29). assertNoDeadEnds proves every core journey step (check-in, discover, connect, chat) keeps a satisfier across all eight permission combinations; each denial carries a user-facing impact + recovery hint."
@@ -2913,8 +2925,8 @@
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
         "docs/ux/journeys-and-conversations.md",
-        "services/edge/src/screening.ts",
-        "tests/test_batch42.py"
+        "docs/ux/localisation-and-degradation.md",
+        "services/edge/src/screening.ts"
       ],
       "note": "OpenMLS/vodozemac client crypto; libsignal prohibited (AGPL-3.0 vs closed client)."
     },

@@ -52,7 +52,11 @@
  * shell holds WCAG 2.2 AA: palette contrast audited (the note colour
  * moved when the audit caught it), 200 % dynamic type, reduced motion
  * honoured, 44 pt targets, and the primary action in the lower 40
- * percent of the display (NFR-25/26/37).
+ * percent of the display (NFR-25/26/37). Copy localises without code
+ * changes — every shell string resolves through the copy registry with
+ * the English baseline as the floor (NFR-27) — and the OS floors are
+ * pinned while BLE capability degrades down a pinned ladder that never
+ * strands the core journey (NFR-28).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -101,7 +105,17 @@ import {
   accessibilityHonoursNfr25Nfr26Nfr37,
   primaryActionInReachZone,
 } from "./src/presence/accessibility.js";
+import { copyHonoursNfr27, resolveCopy, type LocaleBundle } from "./src/presence/copyRegistry.js";
+import {
+  ANDROID_FLOOR_API,
+  IOS_FLOOR_MAJOR,
+  bleFloorHonoursNfr28,
+  resolveBlePlan,
+} from "./src/presence/bleFloor.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
+
+/** NFR-27: English at launch; a locale pack is data dropped in here. */
+const ACTIVE_LOCALE: LocaleBundle | null = null;
 
 const SURFACE_CHECKS = [
   // FR-80: pairs and rooms share the one discovery skeleton.
@@ -168,6 +182,11 @@ const SURFACE_CHECKS = [
       REACH_REFERENCE_DEVICE.logicalHeightPt * 0.75,
       REACH_REFERENCE_DEVICE.logicalHeightPt,
     ),
+  // NFR-27: copy resolves through the registry with the English floor.
+  copyHonoursNfr27() && resolveCopy(ACTIVE_LOCALE, "app.title") === "Presence",
+  // NFR-28: OS floors pinned; every BLE capability degrades, never dead-ends.
+  bleFloorHonoursNfr28() &&
+    resolveBlePlan({ os: "android", version: ANDROID_FLOOR_API }, "scan-only").tier === "degraded",
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
@@ -175,8 +194,8 @@ export default function App() {
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <Text style={styles.title}>Presence</Text>
-      <Text style={styles.subtitle}>Be where your people are.</Text>
+      <Text style={styles.title}>{resolveCopy(ACTIVE_LOCALE, "app.title")}</Text>
+      <Text style={styles.subtitle}>{resolveCopy(ACTIVE_LOCALE, "app.subtitle")}</Text>
       <Text style={styles.note}>
         On-device cells (H3 r{PRESENCE_H3_RESOLUTION}) · {LOCAL_STATE_ALLOWLIST.length} local keys, wiped
         on logout · BLE codes rotate every {BLE_ROTATION_PERIOD_S / 60} min · protocol v{CLIENT_PROTOCOL_VERSION}
@@ -197,6 +216,8 @@ export default function App() {
         bundle &le;{Math.round(BUNDLE_CAP_BYTES / 1024 / 1024)} MB
         {"\n"}verification badge on every reveal · AA contrast · {TOUCH_TARGET_MIN_PT} pt targets ·
         primary action in the lower 40 %
+        {"\n"}copy registry: English at launch, locales are data · iOS {IOS_FLOOR_MAJOR}+ / API{" "}
+        {ANDROID_FLOOR_API}+ floors · BLE degrades, never dead-ends
       </Text>
     </View>
   );

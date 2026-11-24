@@ -326,6 +326,7 @@ def test_traceability_reclassifies_batch_42() -> None:
     assert "| NFR-36 | implemented |" in rows["NFR-36"]
     assert "| TECH-16 | implemented |" in rows["TECH-16"]
     # Batch 43: FR-70 + NFR-25/26/37 client → implemented: 225 → 229, 8 → 8, 7 → 3.
-    assert "| implemented | 229 |" in TRACEABILITY
+    # Batch 44: NFR-27 + NFR-28 client → implemented: 229 → 231, 8 → 8, 3 → 1.
+    assert "| implemented | 231 |" in TRACEABILITY
     assert "| partial | 8 |" in TRACEABILITY
-    assert "| client | 3 |" in TRACEABILITY
+    assert "| client | 1 |" in TRACEABILITY

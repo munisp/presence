@@ -20,6 +20,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fastifyJwt from "@fastify/jwt";
 import jwksRsa from "jwks-rsa";
 import Postgres from "pg";
+import { recordSecurityEvent } from "./security.js";
 
 export interface AuthedRequest extends FastifyRequest {
   userId: string;
@@ -124,6 +125,16 @@ async function requireWorkforceRole(req: FastifyRequest, reply: FastifyReply, ro
       ? payload.iss.includes("/realms/workforce")
       : !process.env.KEYCLOAK_ISSUER;
   if (!workforceRealm || !roles.includes(role)) {
+    // SEC-30: a denied console authorization is a security-relevant event.
+    // Fire-and-forget — the denial never waits on the audit write, and the
+    // detail carries the role and path only (no token material).
+    const pool = (req.server as unknown as { edgeCtx?: { pg: Postgres.Pool } }).edgeCtx?.pg;
+    if (pool) {
+      recordSecurityEvent(pool, "console_authorization_denied", (req as AuthedRequest).userId ?? null, {
+        role,
+        path: req.url.split("?")[0],
+      });
+    }
     await reply.code(403).send({ error: `${role} role required` });
   }
 }

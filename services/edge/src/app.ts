@@ -51,6 +51,10 @@ export async function buildApp(ctx: EdgeContext) {
   await registerAuth(app);
   await app.register(fastifyRateLimit, { global: false });
 
+  // SEC-30: lets the workforce-role gate (auth.ts) reach the audit store
+  // without threading the context through every preHandler signature.
+  app.decorate("edgeCtx", ctx);
+
   app.get("/healthz", async () => ({ ok: true }));
 
   // Everything below requires a verified bearer token (the JWT hook sets

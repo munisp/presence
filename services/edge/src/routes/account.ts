@@ -15,12 +15,18 @@
  *                                        hides the account from every discovery
  *                                        surface and purges live presence at once
  *   GET    /v1/account/visibility      — FR-18: current switch state
+ *   GET    /v1/account/consents        — SEC-13: my data-processing consent
+ *                                        artefacts (purpose, scope, policy
+ *                                        version, grant/withdrawal timestamps)
+ *   PUT    /v1/account/consents/:purpose   — SEC-13: grant or re-grant
+ *   DELETE /v1/account/consents/:purpose   — SEC-13: withdraw; as easy as grant
  *
  * The block is deliberately neutral: the response never says "under 18" —
  * discovery is simply "not available on this account".
  */
 
 import { FastifyInstance } from "fastify";
+import { withRls } from "../auth.js";
 import { EdgeContext, purgePresence } from "../context.js";
 import { applyPrefsPatch, getQuietWindow, mergePrefs, NOTIFICATION_CATEGORIES } from "../notifications.js";
 
@@ -243,6 +249,138 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: EdgeContext): v
         [req.userId, JSON.stringify(out.prefs)],
       );
       return reply.send({ ok: true, prefs: out.prefs });
+    },
+  );
+
+  // SEC-13: data-processing consents — recorded with purpose, scope,
+  // timestamp and policy version; the stored row is the retrievable
+  // artefact (also part of the DSAR export). Withdrawal is one DELETE,
+  // exactly as easy as the PUT that granted. The artefact is never
+  // destroyed: withdrawal marks withdrawn_at, re-grant supersedes.
+  app.get("/v1/account/consents", async (req, reply) => {
+    const rows = await withRls(ctx.pg, req.userId, async (c) => {
+      const r = await c.query(
+        `SELECT purpose, scope, policy_version, granted_at, withdrawn_at
+           FROM data_processing_consents
+          WHERE user_id = $1
+          ORDER BY purpose ASC`,
+        [req.userId],
+      );
+      return r.rows as Array<{
+        purpose: string;
+        scope: string;
+        policy_version: string;
+        granted_at: string;
+        withdrawn_at: string | null;
+      }>;
+    });
+    return reply.send({
+      consents: rows.map((r) => ({
+        purpose: r.purpose,
+        scope: r.scope,
+        policyVersion: r.policy_version,
+        grantedAt: r.granted_at,
+        withdrawnAt: r.withdrawn_at,
+      })),
+    });
+  });
+
+  const CONSENT_PURPOSE_PARAMS = {
+    type: "object" as const,
+    required: ["purpose"],
+    additionalProperties: false as const,
+    properties: { purpose: { type: "string", pattern: "^[a-z0-9_]{1,64}$" } },
+  };
+
+  app.put(
+    "/v1/account/consents/:purpose",
+    {
+      schema: {
+        params: CONSENT_PURPOSE_PARAMS,
+        body: {
+          type: "object",
+          required: ["scope", "policyVersion"],
+          additionalProperties: false,
+          properties: {
+            scope: { type: "string", minLength: 1 },
+            policyVersion: { type: "string", minLength: 1 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { purpose } = req.params as { purpose: string };
+      const body = req.body as { scope: string; policyVersion: string };
+      const row = await withRls(ctx.pg, req.userId, async (c) => {
+        // Grant (or re-grant after withdrawal): the upsert supersedes any
+        // earlier artefact for this purpose and clears the withdrawal mark.
+        const r = await c.query(
+          `INSERT INTO data_processing_consents (user_id, purpose, scope, policy_version)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id, purpose) DO UPDATE
+               SET scope = $3, policy_version = $4, granted_at = now(), withdrawn_at = NULL
+           RETURNING purpose, scope, policy_version, granted_at, withdrawn_at`,
+          [req.userId, purpose, body.scope, body.policyVersion],
+        );
+        return r.rows[0] as {
+          purpose: string;
+          scope: string;
+          policy_version: string;
+          granted_at: string;
+          withdrawn_at: string | null;
+        };
+      });
+      return reply.send({
+        purpose: row.purpose,
+        scope: row.scope,
+        policyVersion: row.policy_version,
+        grantedAt: row.granted_at,
+        withdrawnAt: row.withdrawn_at,
+      });
+    },
+  );
+
+  app.delete(
+    "/v1/account/consents/:purpose",
+    { schema: { params: CONSENT_PURPOSE_PARAMS } },
+    async (req, reply) => {
+      const { purpose } = req.params as { purpose: string };
+      const row = await withRls(ctx.pg, req.userId, async (c) => {
+        const r = await c.query(
+          `UPDATE data_processing_consents SET withdrawn_at = now()
+            WHERE user_id = $1 AND purpose = $2 AND withdrawn_at IS NULL
+            RETURNING purpose, scope, policy_version, granted_at, withdrawn_at`,
+          [req.userId, purpose],
+        );
+        if (r.rows.length === 0) {
+          // Idempotent withdrawal: an already-withdrawn consent returns its
+          // current artefact; a purpose never granted is a 404.
+          const existing = await c.query(
+            `SELECT purpose, scope, policy_version, granted_at, withdrawn_at
+               FROM data_processing_consents WHERE user_id = $1 AND purpose = $2`,
+            [req.userId, purpose],
+          );
+          return existing.rows[0] ?? null;
+        }
+        return r.rows[0];
+      });
+      if (row === null) {
+        return reply.code(404).send({ error: "no consent on file for this purpose" });
+      }
+      const r = row as {
+        purpose: string;
+        scope: string;
+        policy_version: string;
+        granted_at: string;
+        withdrawn_at: string | null;
+      };
+      return reply.send({
+        purpose: r.purpose,
+        scope: r.scope,
+        policyVersion: r.policy_version,
+        grantedAt: r.granted_at,
+        withdrawnAt: r.withdrawn_at,
+      });
     },
   );
 

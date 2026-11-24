@@ -23,6 +23,7 @@ import { AuthedRequest, requireTaxonomist, withTaxonomist } from "../auth.js";
 import { EdgeContext } from "../context.js";
 import { EMBEDDER_ID, embed, nodeText, toVectorLiteral } from "../linking.js";
 import {
+  TAXONOMY_PROVENANCE,
   TaxonomyLink,
   TaxonomyNode,
   TaxonomyState,
@@ -41,7 +42,7 @@ function UUID_PARAMS(keys: string[]) {
 }
 
 const RELEASE_COLS = `release_id, version, status, author, reviewer, message, summary,
-  published_by, rolled_back_by, created_at, submitted_at, reviewed_at, published_at, rolled_back_at`;
+  provenance, published_by, rolled_back_by, created_at, submitted_at, reviewed_at, published_at, rolled_back_at`;
 
 function releaseJson(r: Record<string, unknown>) {
   return {
@@ -52,6 +53,7 @@ function releaseJson(r: Record<string, unknown>) {
     reviewer: r.reviewer,
     message: r.message,
     summary: r.summary,
+    provenance: r.provenance ?? null,
     publishedBy: r.published_by,
     rolledBackBy: r.rolled_back_by,
     createdAt: r.created_at,
@@ -305,12 +307,14 @@ export function registerTaxonomyRoutes(app: FastifyInstance, ctx: EdgeContext): 
           await persistState(client, before, after);
 
           const summary = diffSummary(ops);
+          // BR-21: the licence lineage is recorded at publish and stays
+          // with the release forever — even through a rollback.
           const updated = await client.query(
             `UPDATE taxonomy_releases
                 SET status = 'published', version = nextval('taxonomy_release_version'),
-                    summary = $2, snapshot = $3, published_by = $4, published_at = now()
+                    summary = $2, snapshot = $3, provenance = $5, published_by = $4, published_at = now()
               WHERE release_id = $1 RETURNING ${RELEASE_COLS}`,
-            [releaseId, JSON.stringify(summary), JSON.stringify(snapshot), publisher],
+            [releaseId, JSON.stringify(summary), JSON.stringify(snapshot), publisher, JSON.stringify(TAXONOMY_PROVENANCE)],
           );
           await client.query(
             "SELECT admin_audit_log($1, 'taxonomy.release.published', 'taxonomy_release', 'taxonomy_release', $2, NULL, $3)",

@@ -4,9 +4,13 @@
  *   GET  /v1/announcements?venueId= — live announcements (venue + global);
  *                                     removed rows never surface (FR-98)
  *   GET  /v1/offers?venueId=        — offers inside their validity window
- *   POST /v1/reports                — file a report against another user or
- *                                     an announcement; two reports in ten
- *                                     minutes remove the announcement (FR-98)
+ *   POST /v1/reports                — file a report against another user, an
+ *                                     announcement, or from inside a
+ *                                     conversation (anchored to the pair and
+ *                                     optionally one message, FR-40) with a
+ *                                     fixed category (FR-49); two reports in
+ *                                     ten minutes remove the announcement
+ *                                     (FR-98)
  *
  * TR-23: query/body carry strict JSON Schemas — unknown fields fail
  * validation (400) before the handler runs.
@@ -15,6 +19,7 @@
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
 import { EdgeContext, publishRealtime } from "../context.js";
+import { REPORT_CATEGORIES, ReportCategory } from "../reports.js";
 
 export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): void {
   app.get(
@@ -75,13 +80,16 @@ export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): v
       schema: {
         body: {
           type: "object",
-          required: ["reason"],
+          required: ["reason", "category"],
           additionalProperties: false,
           properties: {
             reported: { type: "string", format: "uuid" },
             venueId: { type: "string" },
             announcementId: { type: "string", format: "uuid" },
+            pairId: { type: "string", format: "uuid" },
+            messageId: { type: "string", format: "uuid" },
             reason: { type: "string", minLength: 1 },
+            category: { type: "string", enum: [...REPORT_CATEGORIES] },
             details: { type: "string" },
           },
         },
@@ -92,14 +100,22 @@ export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): v
         reported?: string;
         venueId?: string;
         announcementId?: string;
+        pairId?: string;
+        messageId?: string;
         reason?: string;
+        category?: ReportCategory;
         details?: string;
       };
       if (!body.reason) {
         return reply.code(422).send({ error: "reason is required" });
       }
-      if (!body.reported && !body.announcementId) {
-        return reply.code(422).send({ error: "reported or announcementId is required" });
+      // FR-49: the category is one of six fixed values; the schema enum
+      // rejects anything else with a 400 before we get here.
+      if (!body.category || !REPORT_CATEGORIES.includes(body.category)) {
+        return reply.code(422).send({ error: "category is required" });
+      }
+      if (!body.reported && !body.announcementId && !body.pairId && !body.messageId) {
+        return reply.code(422).send({ error: "reported, announcementId or pairId is required" });
       }
       if (body.reported === req.userId) {
         return reply.code(422).send({ error: "cannot report yourself" });
@@ -110,6 +126,42 @@ export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): v
         const id = await withRls(ctx.pg, req.userId, async (c) => {
           let reported = body.reported ?? null;
           let venueId = body.venueId ?? null;
+          // FR-40: the in-conversation control anchors the report to the
+          // offer identifier (the pair) and optionally to one message in it.
+          // Both reads run under RLS, so a pair or message the reporter is
+          // not part of is simply "not found" — membership is proven by the
+          // row being visible at all.
+          let pairId = body.pairId ?? null;
+          let messageId = body.messageId ?? null;
+          if (messageId) {
+            const msg = await c.query("SELECT pair_id FROM messages WHERE message_id = $1", [
+              messageId,
+            ]);
+            if (msg.rows.length === 0) {
+              throw Object.assign(new Error("message not found"), { code: 422 });
+            }
+            const msgPair = msg.rows[0].pair_id as string;
+            if (pairId && pairId !== msgPair) {
+              throw Object.assign(new Error("message does not belong to this pair"), { code: 422 });
+            }
+            pairId = msgPair;
+          }
+          if (pairId) {
+            const pair = await c.query(
+              "SELECT user_lo, user_hi FROM matches WHERE pair_id = $1",
+              [pairId],
+            );
+            if (pair.rows.length === 0) {
+              throw Object.assign(new Error("pair not found"), { code: 422 });
+            }
+            if (!reported) {
+              // A conversation-anchored report defaults to the counterpart.
+              reported =
+                pair.rows[0].user_lo === req.userId
+                  ? (pair.rows[0].user_hi as string)
+                  : (pair.rows[0].user_lo as string);
+            }
+          }
           if (body.announcementId) {
             // FR-98: an announcement report names the announcement; the edge
             // resolves its publisher server-side — announcements never expose
@@ -125,15 +177,25 @@ export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): v
             venueId = venueId ?? (ann.rows[0].venue_id as string | null);
           }
           if (!reported) {
-            throw Object.assign(new Error("reported or announcementId is required"), { code: 422 });
+            throw Object.assign(new Error("reported, announcementId or pairId is required"), { code: 422 });
           }
           if (reported === req.userId) {
             throw Object.assign(new Error("cannot report yourself"), { code: 422 });
           }
           const r = await c.query(
-            `INSERT INTO reports (reporter, reported, venue_id, announcement_id, reason, details)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING report_id`,
-            [req.userId, reported, venueId, body.announcementId ?? null, body.reason, body.details ?? null],
+            `INSERT INTO reports (reporter, reported, venue_id, announcement_id, reason, details, category, pair_id, message_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING report_id`,
+            [
+              req.userId,
+              reported,
+              venueId,
+              body.announcementId ?? null,
+              body.reason,
+              body.details ?? null,
+              body.category,
+              pairId,
+              messageId,
+            ],
           );
           if (body.announcementId) {
             // FR-98: two reports in ten minutes remove the announcement; the

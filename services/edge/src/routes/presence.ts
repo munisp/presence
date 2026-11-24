@@ -35,6 +35,7 @@ import {
   sessionKey,
 } from "../context.js";
 import { isImpossibleTravel } from "../velocity.js";
+import { recordSecurityEvent } from "../security.js";
 import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed, isInvisible } from "./account.js";
 import { ladderForCell, resolutionFor } from "../markets.js";
 import { lookupAttribution } from "../attribution.js";
@@ -88,6 +89,9 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     if (!req.headers["x-app-attest-assertion"]) {
       // P0: assertion presence only; cryptographic verification lands with
       // the attestation milestone.
+      // SEC-30: the refusal is a security-relevant event — recorded for
+      // abuse review, never disclosed back beyond the 401.
+      recordSecurityEvent(ctx.pg, "missing_attestation", req.userId, { surface: "presence_publish" });
       return reply.code(401).send({ error: "missing app attestation" });
     }
 
@@ -181,9 +185,13 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
           } catch {
             // Pentagon distortion makes the distance undefined — treat the
             // jump as impossible rather than wave it through.
+            recordSecurityEvent(ctx.pg, "impossible_travel", userId, { resolution: res });
             return reply.code(422).send({ error: "presence moved implausibly fast (SEC-20)" });
           }
           if (isImpossibleTravel(steps, res, Date.now() - prev.publishedAt)) {
+            // SEC-30: record for abuse review. The detail carries the
+            // comparison resolution only — never a cell (SEC-29).
+            recordSecurityEvent(ctx.pg, "impossible_travel", userId, { resolution: res });
             return reply.code(422).send({ error: "presence moved implausibly fast (SEC-20)" });
           }
         }

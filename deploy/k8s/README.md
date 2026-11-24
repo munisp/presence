@@ -32,6 +32,7 @@ kubectl -n presence create configmap postgres-initdb \
   --from-file=18_age_assurance.sql=db/migrations/0016_age_assurance.sql \
   --from-file=19_geofence_review.sql=db/migrations/0017_geofence_review.sql \
   --from-file=20_analytics_publication.sql=db/migrations/0018_analytics_publication.sql \
+  --from-file=21_reporting_compliance.sql=db/migrations/0019_reporting_compliance.sql \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n presence create configmap keycloak-realms \
   --from-file=deploy/keycloak/realm-consumer.json \

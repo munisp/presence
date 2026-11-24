@@ -35,6 +35,22 @@ export const RELEASE_MESSAGE_MAX_LEN = 500;
 export const RELEASE_OPS_MAX = 200;
 export const NODE_LABEL_MAX_LEN = 80;
 
+/**
+ * BR-21: the licence lineage recorded on every published release. The
+ * taxonomy structure is Wikidata-derived under CC0; the attribution text is
+ * retained in the provenance record itself, and no proprietary venue data
+ * is redistributed — venue names/geometry live in the venues domain, never
+ * in the taxonomy. Recorded at publish (taxonomy_releases.provenance,
+ * migration 0019) and immutable afterwards.
+ */
+export const TAXONOMY_PROVENANCE = {
+  license: "CC0",
+  structureSource: "Wikidata",
+  attribution:
+    "Interest taxonomy structure derived from Wikidata (https://www.wikidata.org), available under CC0.",
+  proprietaryVenueData: "none",
+} as const;
+
 /** Lowercase dotted path; each segment is a slug. */
 export const NODE_ID_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 

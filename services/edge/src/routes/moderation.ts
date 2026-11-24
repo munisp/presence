@@ -19,6 +19,9 @@
  *   POST /v1/moderation/suspensions/:suspensionId/lift — FR-55 per-dimension
  *   GET  /v1/moderation/appeals                        — open appeals
  *   POST /v1/moderation/appeals/:appealId/resolve      — uphold or overturn
+ *   GET  /v1/moderation/security-events                — SEC-30 abuse review:
+ *                                                        the append-only
+ *                                                        security-event store
  *
  * User-facing appeal path (FR-53), under the normal RLS context:
  *
@@ -41,6 +44,7 @@ import {
   parseResolveReportBody,
 } from "../moderation.js";
 import { screenText, screeningErrorMessage } from "../screening.js";
+import { SECURITY_EVENT_KINDS } from "../security.js";
 
 const UUID_PARAMS = (names: string[]) => ({
   type: "object" as const,
@@ -79,6 +83,49 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
           status: r.status,
           trust: r.trust === null ? null : Number(r.trust),
           createdAt: r.created_at,
+        })),
+      });
+    },
+  );
+
+  // SEC-30/SEC-36: the abuse-review surface for the security-event store.
+  // Moderator GUC only — there is deliberately no user-facing read path, so
+  // a mock-location refusal (SEC-36) or an attestation signal is never
+  // disclosed to other users.
+  app.get(
+    "/v1/moderation/security-events",
+    {
+      preHandler: requireModerator,
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            kind: { type: "string", enum: [...SECURITY_EVENT_KINDS] },
+            limit: { type: "integer", minimum: 1, maximum: 500 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const q = req.query as { kind?: string; limit?: number };
+      const rows = await withModerator(ctx.pg, async (c) =>
+        c.query(
+          `SELECT event_id, kind, actor, detail, occurred_at
+             FROM security_audit
+            WHERE ($1::text IS NULL OR kind = $1)
+            ORDER BY occurred_at DESC
+            LIMIT $2`,
+          [q.kind ?? null, q.limit ?? 100],
+        ),
+      );
+      return reply.send({
+        events: rows.rows.map((r) => ({
+          eventId: r.event_id,
+          kind: r.kind,
+          actor: r.actor,
+          detail: r.detail,
+          occurredAt: r.occurred_at,
         })),
       });
     },

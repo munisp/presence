@@ -22,6 +22,7 @@ import {
   deviceFingerprint,
   parseDeviceBody,
 } from "../devices.js";
+import { recordSecurityEvent } from "../security.js";
 import { screenText } from "../screening.js";
 
 export function registerDeviceRoutes(app: FastifyInstance, ctx: EdgeContext): void {
@@ -41,6 +42,8 @@ export function registerDeviceRoutes(app: FastifyInstance, ctx: EdgeContext): vo
       if (typeof assertion !== "string" || assertion.length === 0) {
         // P0: assertion presence only; cryptographic verification lands with
         // the attestation milestone (same gate as presence publishing).
+        // SEC-30: the refusal is recorded for abuse review.
+        recordSecurityEvent(ctx.pg, "missing_attestation", req.userId, { surface: "device_enrol" });
         return reply.code(401).send({ error: "missing app attestation" });
       }
       const parsed = parseDeviceBody(req.body, screenText);
@@ -54,10 +57,19 @@ export function registerDeviceRoutes(app: FastifyInstance, ctx: EdgeContext): vo
         const enrolled = await withRls(ctx.pg, userId, async (client) => {
           // FR-07: register the key first — a collision is recorded and
           // audited inside the function; the outcome never leaves the server.
-          await client.query("SELECT register_attestation_key($1, $2::uuid) AS outcome", [
+          const reg = await client.query("SELECT register_attestation_key($1, $2::uuid) AS outcome", [
             keyHash,
             userId,
           ]);
+          const outcome = reg.rows[0]?.outcome as string;
+          if (outcome === "duplicate") {
+            // SEC-30: a key registered to another account is a
+            // security-relevant signal for abuse review (admin_audit already
+            // carries the FR-60 ops record inside register_attestation_key).
+            recordSecurityEvent(ctx.pg, "attestation_key_duplicate", userId, {
+              keyHashPrefix: keyHash.slice(0, 8),
+            });
+          }
           // FR-05: the device_cap trigger rejects a fourth active device
           // under a row lock; the partial unique index makes a revoked row
           // re-enrollable under the same fingerprint.
@@ -133,4 +145,30 @@ export function registerDeviceRoutes(app: FastifyInstance, ctx: EdgeContext): vo
     });
     return reply.send({ ok: true });
   });
+
+  // SEC-36: the client detected the platform mock-location flag and refused
+  // to publish presence; the refusal is recorded server-side for abuse
+  // review. It is never disclosed to other users — the only read path is
+  // the moderation console's security-events view (moderator GUC).
+  app.post(
+    "/v1/devices/mock-location-refusal",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            platform: { type: "string", enum: ["android", "ios"] },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const body = (req.body ?? {}) as { platform?: string };
+      recordSecurityEvent(ctx.pg, "mock_location_refusal", req.userId, {
+        platform: body.platform ?? "unknown",
+      });
+      return reply.code(202).send({ recorded: true });
+    },
+  );
 }

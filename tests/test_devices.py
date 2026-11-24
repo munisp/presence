@@ -113,9 +113,17 @@ def test_fr07_duplicate_branch_records_and_audits() -> None:
 
 def test_fr07_outcome_never_leaves_the_server() -> None:
     post = ROUTE.split('"/v1/devices"')[1].split("app.get(")[0]
-    assert "duplicate" not in post, "the client response must be neutral"
-    assert "refreshed" not in post
     assert "reply.code(201)" in post
+    # The registration outcome may be consumed server-side — batch 24 records
+    # a duplicate into security_audit (SEC-30) — but the client response is
+    # always the same neutral 201 and never references the outcome.
+    for line in post.splitlines():
+        if "reply." in line:
+            assert "outcome" not in line and "duplicate" not in line and "refreshed" not in line
+        if '"duplicate"' in line or '"refreshed"' in line:
+            assert "recordSecurityEvent" in line or "outcome ===" in line, (
+                "the outcome may only feed the server-side SEC-30 audit record"
+            )
 
 
 def test_fr07_registry_is_console_only() -> None:

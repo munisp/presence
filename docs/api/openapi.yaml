@@ -229,6 +229,36 @@ paths:
         - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "200": { description: Revoked (or nothing to revoke). }
+  /v1/devices/mock-location-refusal:
+    post:
+      summary: Record a client mock-location refusal (SEC-36)
+      description: >-
+        The client detected the platform mock-location flag and refused to
+        publish presence; this endpoint records the refusal in the
+        append-only security-event store (SEC-30) for abuse review. The
+        refusal is never disclosed to other users — the only read path is
+        the moderation console.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                platform: { type: string, enum: [android, ios] }
+      responses:
+        "202":
+          description: Refusal recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recorded]
+                properties:
+                  recorded: { type: boolean }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
   /v1/profile/interests/link:
     post:
       summary: Link free text to taxonomy nodes (FR-09, TECH-09)
@@ -344,12 +374,14 @@ paths:
         "409": { description: Not in review, or review requires a second person. }
   /v1/taxonomy/releases/{releaseId}/publish:
     post:
-      summary: Publish an approved release (FR-59, TR-20)
+      summary: Publish an approved release (FR-59, TR-20, BR-21)
       description: >-
         One transaction: snapshot the pre-publish state, apply the
         operations (re-validated against live state), assign the monotonic
-        version, record the diff summary, rebuild the closure (TR-18) and
-        re-sync the embedding search space (TR-22). Audited (FR-60).
+        version, record the diff summary, record the licence provenance
+        (BR-21: Wikidata-derived structure, CC0, attribution retained; no
+        proprietary venue data), rebuild the closure (TR-18) and re-sync the
+        embedding search space (TR-22). Audited (FR-60).
       parameters:
         - name: releaseId
           in: path
@@ -1616,10 +1648,15 @@ paths:
     post:
       summary: File a report (BR-07, FR-40, FR-49, FR-98)
       description: >-
-        Reports target a user (reported) or an announcement (announcementId);
-        for an announcement the edge resolves the publisher server-side. Two
-        reports against one announcement inside ten minutes remove it; the
-        evidence is retained (FR-98).
+        Reports target a user (reported), an announcement (announcementId) or
+        a conversation (pairId — the offer identifier — optionally with one
+        messageId inside it, FR-40); for an announcement the edge resolves
+        the publisher server-side, and a pair anchor defaults the report to
+        the counterpart. Anchors are validated under RLS: a pair or message
+        the reporter is not part of is simply not found. The category is one
+        of six fixed values (FR-49); reason/details carry the free-text
+        narrative. Two reports against one announcement inside ten minutes
+        remove it; the evidence is retained (FR-98).
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -1627,13 +1664,18 @@ paths:
           application/json:
             schema:
               type: object
-              required: [reason]
+              required: [reason, category]
               additionalProperties: false
               properties:
                 reported: { type: string, format: uuid }
                 venueId: { type: string }
                 announcementId: { type: string, format: uuid }
+                pairId: { type: string, format: uuid }
+                messageId: { type: string, format: uuid }
                 reason: { type: string, minLength: 1 }
+                category:
+                  type: string
+                  enum: [harassment, impersonation, under_age, commercial_solicitation, hate, other]
                 details: { type: string }
       responses:
         "201":
@@ -1649,7 +1691,7 @@ paths:
                   announcementRemoved: { type: boolean, description: FR-98 auto-removal fired }
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "404": { description: Announcement not found. }
-        "422": { description: Missing fields or self-report. }
+        "422": { description: Missing fields, self-report, or anchor not found / not a member. }
   /v1/moderation/queue:
     get:
       summary: Moderation queue (FR-52, FR-54)
@@ -1678,6 +1720,47 @@ paths:
                         status: { type: string }
                         trust: { type: number, nullable: true }
                         createdAt: { type: string, format: date-time }
+        "403": { description: Moderator role required. }
+  /v1/moderation/security-events:
+    get:
+      summary: Security-event abuse review (SEC-30, SEC-36)
+      description: >-
+        The append-only security-event store, newest first, optionally
+        filtered by kind (impossible_travel, missing_attestation,
+        attestation_key_duplicate, mock_location_refusal,
+        console_authorization_denied, retention.purge). This is the only
+        read path — security signals are never disclosed to other users.
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [impossible_travel, missing_attestation, attestation_key_duplicate,
+                   mock_location_refusal, console_authorization_denied, retention.purge]
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Security events, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        eventId: { type: string, format: uuid }
+                        kind: { type: string }
+                        actor: { type: string, format: uuid, nullable: true }
+                        detail: { type: object }
+                        occurredAt: { type: string, format: date-time }
         "403": { description: Moderator role required. }
   /v1/moderation/accounts/{userId}:
     get:
@@ -2293,6 +2376,76 @@ paths:
         "200": { description: Switches stored. }
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "422": { description: Attempt to switch off safety notices (FR-58) or a malformed quiet window. }
+
+  /v1/account/consents:
+    get:
+      summary: My data-processing consent artefacts (SEC-13)
+      description: >-
+        Every consent on file with its purpose, scope, policy version and
+        grant/withdrawal timestamps — the retrievable artefact SEC-13
+        requires. The same artefacts are part of the DSAR export (FR-62).
+      responses:
+        "200":
+          description: Consent artefacts, ordered by purpose.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [consents]
+                properties:
+                  consents:
+                    type: array
+                    items:
+                      type: object
+                      required: [purpose, scope, policyVersion, grantedAt, withdrawnAt]
+                      properties:
+                        purpose: { type: string }
+                        scope: { type: string }
+                        policyVersion: { type: string }
+                        grantedAt: { type: string, format: date-time }
+                        withdrawnAt: { type: string, format: date-time, nullable: true }
+  /v1/account/consents/{purpose}:
+    put:
+      summary: Grant (or re-grant) a data-processing consent (SEC-13)
+      description: >-
+        Records the consent with purpose, scope, timestamp and policy
+        version. Re-granting a withdrawn purpose supersedes the earlier
+        artefact and clears the withdrawal mark.
+      parameters:
+        - name: purpose
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[a-z0-9_]{1,64}$" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, policyVersion]
+              additionalProperties: false
+              properties:
+                scope: { type: string, minLength: 1 }
+                policyVersion: { type: string, minLength: 1 }
+      responses:
+        "200": { description: Consent recorded; returns the stored artefact. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+    delete:
+      summary: Withdraw a data-processing consent (SEC-13)
+      description: >-
+        Withdrawal is as easy as grant — one call. The artefact is kept and
+        marked withdrawn_at; withdrawing twice returns the same artefact.
+      parameters:
+        - name: purpose
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[a-z0-9_]{1,64}$" }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Consent withdrawn; returns the stored artefact. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: No consent on file for this purpose. }
 
   /v1/account:
     delete:

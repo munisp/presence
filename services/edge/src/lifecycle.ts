@@ -50,8 +50,14 @@ export async function lifecycleTick(pg: Postgres.Pool): Promise<{
   envelopesPurged: number;
   offersPurged: number;
   ledgersAnonymised: number;
+  reportsPurged: number;
 }> {
   const r = await pg.query("SELECT * FROM lifecycle_tick()");
+  // NFR-22: reports and their moderation decisions are disposed of after 12
+  // months; the purge is a SECURITY DEFINER function of its own so the hot
+  // 60-second tick path is untouched, and the disposal is audited into
+  // security_audit (SEC-30).
+  const rr = await pg.query("SELECT reports_retention_tick() AS purged");
   const row = r.rows[0];
   return {
     offersExpired: row.offers_expired,
@@ -59,6 +65,7 @@ export async function lifecycleTick(pg: Postgres.Pool): Promise<{
     envelopesPurged: row.envelopes_purged,
     offersPurged: row.offers_purged,
     ledgersAnonymised: row.ledgers_anonymised,
+    reportsPurged: rr.rows[0].purged,
   };
 }
 

@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 150,
-    "partial": 54,
+    "implemented": 157,
+    "partial": 47,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -14,8 +14,8 @@
   },
   "per_family": {
     "BR": {
-      "implemented": 7,
-      "partial": 4,
+      "implemented": 8,
+      "partial": 3,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 67,
-      "partial": 17,
+      "implemented": 69,
+      "partial": 15,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 15,
@@ -34,8 +34,8 @@
       "superseded": 0
     },
     "NFR": {
-      "implemented": 8,
-      "partial": 5,
+      "implemented": 9,
+      "partial": 4,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 11,
@@ -54,8 +54,8 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 19,
-      "partial": 10,
+      "implemented": 22,
+      "partial": 7,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 1,
@@ -248,9 +248,15 @@
     },
     "BR-21": {
       "family": "BR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Taxonomy seed is synthetic (no CC0 content used); per-release provenance record (TR-20) missing."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0019_reporting_compliance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/taxonomy.ts",
+        "services/edge/src/taxonomy.ts",
+        "services/edge/test/reporting.test.ts"
+      ],
+      "note": "taxonomy_releases.provenance (migration 0019) recorded at publish: license CC0, structureSource Wikidata, attribution text retained in the record, proprietaryVenueData none; immutable afterwards \u2014 rolled-back releases keep the provenance they published with (TAXONOMY_PROVENANCE, services/edge/src/taxonomy.ts; publish route writes it in the same transaction)."
     },
     "BR-22": {
       "family": "BR",
@@ -356,8 +362,10 @@
       "status": "partial",
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
+        "db/migrations/0019_reporting_compliance.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/account.ts"
+        "services/edge/src/routes/account.ts",
+        "tests/test_reporting_compliance.py"
       ],
       "note": "DELETE /v1/account erases in one authenticated call; the <=3-tap journey is client UX, pending with the RN client."
     },
@@ -638,9 +646,9 @@
       "evidence": [
         "db/migrations/0001_init.sql",
         "db/migrations/0002_offer_lifecycle.sql",
+        "db/migrations/0019_reporting_compliance.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/consent.ts",
-        "services/edge/src/routes/scan.ts"
+        "services/edge/src/routes/consent.ts"
       ],
       "note": "DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested."
     },
@@ -752,11 +760,14 @@
     },
     "FR-40": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "docs/api/openapi.yaml"
+        "db/migrations/0019_reporting_compliance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/content.ts",
+        "tests/test_reporting_compliance.py"
       ],
-      "note": "Reports endpoint with announcement anchor (announcement_id, migration 0004); pair/offer anchor columns and the in-conversation control remain."
+      "note": "POST /v1/reports anchors to the offer identifier: pair_id (+ optional message_id) columns on reports (migration 0019, ON DELETE SET NULL so anchors detach with NFR-20/erasure while the report survives), validated under RLS \u2014 a pair or message the reporter is not part of is simply not found; a pair anchor defaults reported to the counterpart. The in-conversation control itself is client work over this contract."
     },
     "FR-41": {
       "family": "FR",
@@ -835,11 +846,15 @@
     },
     "FR-49": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "docs/api/openapi.yaml"
+        "db/migrations/0019_reporting_compliance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/reports.ts",
+        "services/edge/src/routes/content.ts",
+        "services/edge/test/reporting.test.ts"
       ],
-      "note": "reports accepts free-text reason; the fixed category enum is missing."
+      "note": "reports.category NOT NULL with the six governed values (harassment, impersonation, under_age, commercial_solicitation, hate, other) as a CHECK constraint (migration 0019); the edge requires it in the report schema via REPORT_CATEGORIES (services/edge/src/reports.ts) \u2014 pinned equal to the SQL list by test_reporting_compliance.py so the vocabularies cannot drift."
     },
     "FR-50": {
       "family": "FR",
@@ -973,6 +988,7 @@
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0004_discovery_safety.sql",
+        "db/migrations/0019_reporting_compliance.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/routes/account.ts"
       ],
@@ -1453,6 +1469,7 @@
       "evidence": [
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
+        "db/migrations/0019_reporting_compliance.sql",
         "services/edge/src/index.ts",
         "services/edge/src/lifecycle.ts"
       ],
@@ -1469,9 +1486,13 @@
     },
     "NFR-22": {
       "family": "NFR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Reports persisted; 12-month retention policy job missing."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0019_reporting_compliance.sql",
+        "services/edge/src/lifecycle.ts",
+        "tests/test_reporting_compliance.py"
+      ],
+      "note": "reports_retention_tick() (migration 0019) disposes of reports \u2014 and the moderation decisions recorded on them (outcome/resolved_by/resolved_at) \u2014 12 months after filing; SECURITY DEFINER, driven by the edge lifecycle job alongside lifecycle_tick, and every disposal is itself audited into security_audit (retention.purge). Appeals keep their own record; the report FK detaches (SET NULL)."
     },
     "NFR-23": {
       "family": "NFR",
@@ -1823,9 +1844,9 @@
       "evidence": [
         "docs/api/openapi.yaml",
         "services/edge/src/app.ts",
+        "services/edge/src/reports.ts",
         "services/edge/src/routes/account.ts",
-        "services/edge/src/routes/announcements.ts",
-        "services/edge/src/routes/content.ts"
+        "services/edge/src/routes/announcements.ts"
       ],
       "note": "docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode \u2014 unknown fields hard-400 before the handler runs."
     },
@@ -2113,9 +2134,14 @@
     },
     "SEC-13": {
       "family": "SEC",
-      "status": "partial",
-      "evidence": [],
-      "note": "Introduction consent ledgered with actor+timestamp; data-processing consent artefacts (purpose/scope/policy version) missing."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0019_reporting_compliance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/account.ts",
+        "tests/test_reporting_compliance.py"
+      ],
+      "note": "Introduction consent ledgered with actor+timestamp (FR-35); data-processing consents in data_processing_consents (migration 0019): purpose, scope, policy_version, granted_at/withdrawn_at, owner-only RLS, no DELETE policy \u2014 withdrawal marks the artefact (PUT/DELETE /v1/account/consents/:purpose are symmetric), GET /v1/account/consents is the retrievable artefact and dsar_export carries it; account erasure disposes of the artefacts with the account."
     },
     "SEC-14": {
       "family": "SEC",
@@ -2265,18 +2291,25 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
+        "db/migrations/0019_reporting_compliance.sql",
         "docs/runbook.md",
         "services/edge/src/app.ts",
         "services/edge/src/logscrub.ts",
-        "services/edge/test/logscrub.test.ts"
+        "services/edge/src/routes/presence.ts"
       ],
       "note": "pino hooks.logMethod scrubber: coordinate/content/credential keys redacted, Bearer/apikey/JWT strings scrubbed, cell+user pairings redacted; 10 unit tests."
     },
     "SEC-30": {
       "family": "SEC",
-      "status": "partial",
-      "evidence": [],
-      "note": "Append-only consent ledger exists; general security-event audit store + 12-month retention missing."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0019_reporting_compliance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/app.ts",
+        "services/edge/src/auth.ts",
+        "services/edge/src/lifecycle.ts"
+      ],
+      "note": "security_audit (migration 0019): append-only security-event store, separate from application logs, retained indefinitely (12-month floor) \u2014 immutability trigger for every role, governed kind vocabulary (impossible_travel, missing_attestation, attestation_key_duplicate, mock_location_refusal, console_authorization_denied, retention.purge) enforced by CHECK and pinned equal to the edge SECURITY_EVENT_KINDS, writes only via SECURITY DEFINER record_security_event, reads only through the app_moderator GUC (GET /v1/moderation/security-events). Wired at presence publish (impossible travel, missing attestation), device enrolment (attestation), console role denials and the NFR-22 purge."
     },
     "SEC-31": {
       "family": "SEC",
@@ -2322,9 +2355,15 @@
     },
     "SEC-36": {
       "family": "SEC",
-      "status": "partial",
-      "evidence": [],
-      "note": "Mock-location refusal is client-side; the server-side refusal record endpoint is missing."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0019_reporting_compliance.sql",
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/devices.ts",
+        "services/edge/src/routes/moderation.ts",
+        "tests/test_reporting_compliance.py"
+      ],
+      "note": "POST /v1/devices/mock-location-refusal (202) records the client-side refusal in security_audit (kind mock_location_refusal) for abuse review; there is no user-facing read path \u2014 disclosure to other users is impossible by construction, the only reader is the moderation console under the moderator GUC. The mock-location detection itself is client work."
     },
     "SEC-37": {
       "family": "SEC",

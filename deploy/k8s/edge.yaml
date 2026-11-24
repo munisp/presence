@@ -39,6 +39,14 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: RECOVERY_HASH_KEY } }
             - name: KEYCLOAK_ISSUER
               value: https://auth.presence.example/realms/consumer   # per environment
+            # FR-01: the DEVICE-REACHABLE issuer the app signs in against,
+            # served at GET /v1/client/config. KEYCLOAK_ISSUER above is the
+            # URL the EDGE verifies tokens against — a phone cannot resolve
+            # an in-cluster name. Both are public values (no secret material).
+            - name: KEYCLOAK_PUBLIC_ISSUER_URL
+              value: https://auth.presence.example/realms/consumer   # per environment
+            - name: KEYCLOAK_CLIENT_ID
+              value: presence-app   # the realm-exported public client (deploy/keycloak/realm-consumer.json)
             - name: OTEL_EXPORTER_OTLP_ENDPOINT   # TECH-11/12: traces by default
               value: http://otel-collector.monitoring:4318
             - name: DEPLOY_ENV

@@ -14,7 +14,11 @@ info:
   description: >-
     PRS-SRS-001 §5. All /v1 endpoints require a Keycloak consumer-realm bearer
     token (RS256 via JWKS; HS256 dev fallback per ADR-0003), except the
-    unauthenticated bootstrap config GET /v1/client/config (TR-33). Responses never
+    unauthenticated bootstrap config GET /v1/client/config (TR-33). Sign-in is
+    passkey-only (FR-01): the client runs Authorization Code + PKCE (S256) in
+    the system browser against the passkey-only consumer realm, learns the
+    device-reachable issuer from the bootstrap config, and attaches the FR-05
+    x-device-id header alongside the bearer on every authed call. Responses never
     carry coordinates, metres, bearings, or pre-OPEN identity (TR-13/FR-25/
     FR-30). Schema violations answer 400; semantic violations answer 422;
     consent/offer conflicts answer 409. Every mutating endpoint accepts an
@@ -60,6 +64,12 @@ paths:
         protocol version is below minClientVersion (or that does not
         understand version) must prompt for an update rather than fail
         silently. This route is exempt from the 426 floor on purpose.
+        The auth object is the FR-01 sign-in bootstrap: the device-reachable
+        issuer of the passkey-only consumer realm and the realm's public
+        client id. The client runs Authorization Code + PKCE (S256) in the
+        system browser against this issuer — the passkey ceremony never
+        touches app code, and no password is ever set. An empty issuer
+        means sign-in is unavailable; the client must not guess endpoints.
       responses:
         "200":
           description: Current client config.
@@ -67,7 +77,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [configVersion, pinning, api]
+                required: [configVersion, pinning, api, auth]
                 properties:
                   configVersion: { type: integer, minimum: 1 }
                   pinning:
@@ -90,6 +100,16 @@ paths:
                         type: integer
                         minimum: 1
                         description: minimum client protocol version served (TR-27)
+                  auth:
+                    type: object
+                    required: [issuer, clientId]
+                    properties:
+                      issuer:
+                        type: string
+                        description: device-reachable issuer of the passkey-only consumer realm (FR-01)
+                      clientId:
+                        type: string
+                        description: the realm's public client for the app (FR-01)
   /v1/presence:
     post:
       summary: Enter or heartbeat presence (FR-14, FR-16, TR-12/14/15)

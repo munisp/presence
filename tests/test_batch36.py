@@ -197,7 +197,7 @@ def test_openapi_documents_the_version_contract_and_diagram_spec() -> None:
     assert "x-api-version" in OPENAPI
     assert "426 upgrade_required (TR-27)" in OPENAPI
     assert "minClientVersion" in OPENAPI
-    assert "required: [configVersion, pinning, api]" in OPENAPI
+    assert "required: [configVersion, pinning, api, auth]" in OPENAPI  # auth added in batch 38 (FR-01)
     assert "required: [pairId, sessionId, score, band, reasons, icebreaker, diagramSpec]" in OPENAPI
     assert "TR-35" in OPENAPI
 

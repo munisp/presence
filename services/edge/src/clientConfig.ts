@@ -21,6 +21,14 @@
  *   CLIENT_MIN_VERSION    — TR-27: minimum client protocol version served
  *                           (see versioning.ts); the bootstrap channel of
  *                           unsupported-version detection
+ *   KEYCLOAK_PUBLIC_ISSUER_URL — FR-01: the DEVICE-REACHABLE issuer of the
+ *                           passkey-only consumer realm (KEYCLOAK_ISSUER is
+ *                           the in-cluster URL the edge verifies against —
+ *                           a phone cannot resolve it). Falls back to
+ *                           KEYCLOAK_ISSUER so compose/dev stays zero-config.
+ *   KEYCLOAK_CLIENT_ID    — the realm's public client for the app; defaults
+ *                           to the realm-exported "presence-app". Public
+ *                           values, like the pins: no secret material.
  */
 
 import { FastifyInstance } from "fastify";
@@ -32,11 +40,21 @@ export interface ClientConfig {
   pinning: { enabled: boolean; pins: string[] };
   /** TR-27: the server's version posture, evaluated at client startup. */
   api: { version: number; minClientVersion: number };
+  /**
+   * FR-01: where the client authenticates — the passkey-only consumer
+   * realm. The client builds its Authorization Code + PKCE (S256) request
+   * against this issuer and refuses to sign in when it is empty.
+   */
+  auth: { issuer: string; clientId: string };
 }
 
 export interface ClientConfigEnv extends VersionEnv {
   CLIENT_CONFIG_VERSION?: string | undefined;
   CLIENT_TLS_PINS?: string | undefined;
+  KEYCLOAK_PUBLIC_ISSUER_URL?: string | undefined;
+  KEYCLOAK_CLIENT_ID?: string | undefined;
+  /** In-cluster issuer (auth.ts verifies against it); dev fallback only. */
+  KEYCLOAK_ISSUER?: string | undefined;
 }
 
 /** Resolve the live config from the environment (read per request). */
@@ -47,10 +65,16 @@ export function resolveClientConfig(env: ClientConfigEnv = process.env): ClientC
     .filter((p) => p.length > 0);
   const parsed = Number.parseInt(env.CLIENT_CONFIG_VERSION ?? "1", 10);
   const configVersion = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+  const issuer = (env.KEYCLOAK_PUBLIC_ISSUER_URL ?? env.KEYCLOAK_ISSUER ?? "").replace(
+    /\/+$/,
+    "",
+  );
+  const clientId = (env.KEYCLOAK_CLIENT_ID ?? "").trim() || "presence-app";
   return {
     configVersion,
     pinning: { enabled: pins.length > 0, pins },
     api: { version: API_VERSION, minClientVersion: resolveMinClientVersion(env) },
+    auth: { issuer, clientId },
   };
 }
 
@@ -64,7 +88,7 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
         response: {
           200: {
             type: "object",
-            required: ["configVersion", "pinning", "api"],
+            required: ["configVersion", "pinning", "api", "auth"],
             properties: {
               configVersion: { type: "integer" },
               pinning: {
@@ -81,6 +105,14 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
                 properties: {
                   version: { type: "integer" },
                   minClientVersion: { type: "integer" },
+                },
+              },
+              auth: {
+                type: "object",
+                required: ["issuer", "clientId"],
+                properties: {
+                  issuer: { type: "string" },
+                  clientId: { type: "string" },
                 },
               },
             },

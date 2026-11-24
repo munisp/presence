@@ -437,6 +437,15 @@ def main() -> int:
         and "CLIENT_CONFIG_VERSION" in compose_src,
     )
 
+    # ---------------- FR-01 (batch 38) ----------------
+    check(
+        "FR-01 auth bootstrap env is documented in k8s and compose (public issuer, realm client)",
+        "KEYCLOAK_PUBLIC_ISSUER_URL" in k8s_edge_src
+        and "KEYCLOAK_CLIENT_ID" in k8s_edge_src
+        and "KEYCLOAK_PUBLIC_ISSUER_URL" in compose_src
+        and "KEYCLOAK_CLIENT_ID" in compose_src,
+    )
+
     # ---------------- TR-27 / TR-35 (batch 36) ----------------
     versioning_src_path = ROOT / "services" / "edge" / "src" / "versioning.ts"
     versioning_src = versioning_src_path.read_text() if versioning_src_path.exists() else ""

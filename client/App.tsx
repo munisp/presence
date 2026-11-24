@@ -18,7 +18,11 @@
  * the accuracy grant gates every publish (FR-88), the published cell is
  * stabilised over a five-minute window (FR-92), reduced power caps the
  * cadence at ten minutes (FR-85), and backgrounding withdraws presence
- * within 60 seconds (FR-19).
+ * within 60 seconds (FR-19). Sign-in is passkey-only (FR-01): the
+ * ceremony runs in the system browser against the consumer realm over
+ * Authorization Code + PKCE (S256), the session refreshes ahead of the
+ * five-minute SEC-02 token expiry, and logout withdraws presence before
+ * it ends the IdP session and wipes local state (TR-30).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -31,6 +35,8 @@ import { REDUCED_PUBLISH_INTERVAL_S } from "./src/presence/powerMode.js";
 import { BACKGROUND_WITHDRAWAL_DEADLINE_S } from "./src/presence/presenceLifecycle.js";
 import { STABILISATION_WINDOW_MS } from "./src/presence/cellStabiliser.js";
 import { ACCURACY_REFUSAL_ALTERNATIVE } from "./src/presence/publishGate.js";
+import { PKCE_CHALLENGE_METHOD } from "./src/presence/authFlow.js";
+import { ACCESS_TOKEN_LIFESPAN_S, REFRESH_MARGIN_S } from "./src/presence/session.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 export default function App() {
@@ -45,6 +51,8 @@ export default function App() {
         {"\n"}cells settle over {STABILISATION_WINDOW_MS / 60000} min · reduced power publishes every{" "}
         {REDUCED_PUBLISH_INTERVAL_S / 60} min · background exit withdraws in {BACKGROUND_WITHDRAWAL_DEADLINE_S}s ·
         approximate location → {ACCURACY_REFUSAL_ALTERNATIVE}
+        {"\n"}passkey-only sign-in · PKCE {PKCE_CHALLENGE_METHOD} · {ACCESS_TOKEN_LIFESPAN_S / 60} min tokens,
+        refreshed {REFRESH_MARGIN_S}s early · logout withdraws presence first
       </Text>
     </View>
   );

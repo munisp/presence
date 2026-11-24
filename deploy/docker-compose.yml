@@ -132,6 +132,12 @@ services:
       JWT_SECRET: p0-dev-secret-change-me
       RECOVERY_HASH_KEY: p0-dev-recovery-key-change-me   # SEC-09 dev-only HMAC key (SEC-28)
       KEYCLOAK_ISSUER: http://keycloak:8080/realms/consumer
+      # FR-01: the DEVICE-REACHABLE issuer the app signs in against, served
+      # at GET /v1/client/config (the URL above is the in-cluster one the
+      # edge verifies against). Android emulators reach the host as
+      # 10.0.2.2 — see docs/security/client-auth.md.
+      KEYCLOAK_PUBLIC_ISSUER_URL: http://localhost:8080/realms/consumer
+      KEYCLOAK_CLIENT_ID: presence-app   # the realm-exported public client
       # TR-33: TLS pinning policy for GET /v1/client/config. Public SPKI
       # fingerprints, plain env; empty pins = disabled. Remove/rotate by
       # editing the value + bumping the version — no app update.

@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 207,
-    "partial": 8,
+    "implemented": 208,
+    "partial": 7,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 25,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 82,
-      "partial": 6,
+      "implemented": 83,
+      "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 11,
@@ -345,9 +345,15 @@
     },
     "FR-01": {
       "family": "FR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Consumer realm ships the passkey policy (platform authenticator, user verification required, passwords disabled); edge verifies RS256 via JWKS; passkey-only onboarding flow + RN client pending."
+      "status": "implemented",
+      "evidence": [
+        "deploy/docker-compose.yml",
+        "deploy/k8s/edge.yaml",
+        "docs/api/openapi.yaml",
+        "docs/security/client-auth.md",
+        "scripts/validate_deploy.py"
+      ],
+      "note": "Passkey-only sign-in end to end: the consumer realm ships the passkey policy (platform authenticator, user verification required, passwords disabled \u2014 b31) and the edge verifies RS256 via JWKS; the client runs Authorization Code + PKCE (S256) in the system browser (authFlow.ts \u2014 fail-closed callback parse, S256 via the in-repo pure-TS SHA-256, injected randomness) and owns the token lifecycle (session.ts \u2014 refresh 30 s ahead of the 300 s SEC-02 expiry, exactly one refresh-retry per 401, x-device-id on every authed call, logout pinned to withdraw-first \u2192 RP-initiated logout \u2192 TR-30 wipe). The device-reachable issuer is served at GET /v1/client/config (auth block; KEYCLOAK_PUBLIC_ISSUER_URL, compose + k8s). A second device enrols only through an authenticated session at attestation-gated POST /v1/devices (three-device cap); recovery is the SEC-09 recovery phone. docs/security/client-auth.md."
     },
     "FR-02": {
       "family": "FR",
@@ -391,9 +397,9 @@
       "evidence": [
         "db/migrations/0010_devices.sql",
         "docs/api/openapi.yaml",
+        "docs/security/client-auth.md",
         "services/edge/src/devices.ts",
-        "services/edge/src/routes/devices.ts",
-        "services/edge/test/devices.test.ts"
+        "services/edge/src/routes/devices.ts"
       ],
       "note": "POST/GET/DELETE /v1/devices over the devices registry (migration 0010): device_cap() trigger locks the user row FOR UPDATE and rejects the fourth concurrent device (SEC-33 idiom; re-enrolment of a live fingerprint is a refresh, exempt from the count); one active row per key_fingerprint via partial unique index; enrolment publishes device_enrolled to the account's own channel with label only \u2014 never the fingerprint; revocation is idempotent and owner-scoped by RLS."
     },
@@ -551,6 +557,7 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/security/client-auth.md",
         "tests/test_batch34.py",
         "tests/test_batch37.py"
       ],
@@ -2005,6 +2012,7 @@
       "family": "TR",
       "status": "implemented",
       "evidence": [
+        "docs/security/client-auth.md",
         "docs/security/sdk-allowlist.json",
         "tests/test_batch34.py"
       ],
@@ -2175,7 +2183,7 @@
         "docs/api/openapi.yaml",
         "docs/security/aal2.md",
         "docs/security/attestation.md",
-        "scripts/revocation_drill.py"
+        "docs/security/client-auth.md"
       ],
       "note": "5-minute consumer-realm access tokens (existing), plus active server-side revocation meeting the 60-second budget: deleting a device writes the Valkey denylist (revoked:dev:{id}) before the route replies, and the authenticate hook denies any request presenting that x-device-id \u2014 passive expiry is never the mechanism. The end-to-end propagation contract is exercised by scripts/revocation_drill.py (budget capped at 60 s; validate_deploy-pinned). Pins: test_batch29.py + edge revocation.test.ts."
     },
@@ -2322,11 +2330,11 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
+        "docs/security/client-auth.md",
         "docs/security/sdk-allowlist.json",
         "scripts/check_sdk_allowlist.py",
         "tests/test_batch34.py",
-        "tests/test_batch35.py",
-        "tests/test_batch36.py"
+        "tests/test_batch35.py"
       ],
       "note": "Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) \u2014 an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit."
     },

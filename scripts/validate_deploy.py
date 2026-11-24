@@ -38,6 +38,9 @@ Asserts (with requirement ids):
          resolver) with the evidence collector and runbook.
   TECH-24 the geofence QA migration is mounted and ships the overlap
          gate (publish-time) plus the estate audit report.
+  TR-33 the client config route is registered outside the authed scope and
+         the pinning env (public SPKI pins + monotonic version) is
+         documented in both deploy manifests.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -408,6 +411,27 @@ def main() -> int:
         and "geofence overlaps venue" in geofence_qa_src
         and "CREATE OR REPLACE FUNCTION geofence_qa_report()" in geofence_qa_src
         and "app_venue_ops()" in geofence_qa_src,
+    )
+
+    # ---------------- TR-33 (batch 35) ----------------
+    edge_app_src = (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+    client_config_src_path = ROOT / "services" / "edge" / "src" / "clientConfig.ts"
+    client_config_src = client_config_src_path.read_text() if client_config_src_path.exists() else ""
+    check(
+        "TR-33 client config route is registered outside the authed scope",
+        'registerClientConfigRoute(app)' in edge_app_src
+        and edge_app_src.index("registerClientConfigRoute(app)")
+        < edge_app_src.index("await app.register(async (authed)")
+        and 'app.get(\n    "/v1/client/config"' in client_config_src,
+    )
+    k8s_edge_src = (K8S / "edge.yaml").read_text()
+    compose_src = (ROOT / "deploy" / "docker-compose.yml").read_text()
+    check(
+        "TR-33 pinning env is documented in k8s and compose (public pins, monotonic version)",
+        "CLIENT_TLS_PINS" in k8s_edge_src
+        and "CLIENT_CONFIG_VERSION" in k8s_edge_src
+        and "CLIENT_TLS_PINS" in compose_src
+        and "CLIENT_CONFIG_VERSION" in compose_src,
     )
 
     print()

@@ -13,7 +13,8 @@ info:
   version: 1.0.0
   description: >-
     PRS-SRS-001 §5. All /v1 endpoints require a Keycloak consumer-realm bearer
-    token (RS256 via JWKS; HS256 dev fallback per ADR-0003). Responses never
+    token (RS256 via JWKS; HS256 dev fallback per ADR-0003), except the
+    unauthenticated bootstrap config GET /v1/client/config (TR-33). Responses never
     carry coordinates, metres, bearings, or pre-OPEN identity (TR-13/FR-25/
     FR-30). Schema violations answer 400; semantic violations answer 422;
     consent/offer conflicts answer 409. Every mutating endpoint accepts an
@@ -39,6 +40,37 @@ paths:
                 required: [ok]
                 properties:
                   ok: { type: boolean }
+  /v1/client/config:
+    get:
+      summary: Client security and compatibility config (TR-33)
+      security: []
+      description: >-
+        Unauthenticated bootstrap config the client reads at startup, before
+        login completes. Carries the monotonic config version and the TLS
+        certificate-pinning policy: pins present means pinning enabled, empty
+        means disabled. Ops rotate or remove the pin set by changing
+        server-side configuration and bumping the version only — no app
+        update, so a pin incident can never brick installed clients (the
+        SRS's condition on pinning being allowed at all). SPKI pin
+        fingerprints are public values; the payload carries no user data.
+      responses:
+        "200":
+          description: Current client config.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configVersion, pinning]
+                properties:
+                  configVersion: { type: integer, minimum: 1 }
+                  pinning:
+                    type: object
+                    required: [enabled, pins]
+                    properties:
+                      enabled: { type: boolean }
+                      pins:
+                        type: array
+                        items: { type: string }
   /v1/presence:
     post:
       summary: Enter or heartbeat presence (FR-14, FR-16, TR-12/14/15)

@@ -132,6 +132,11 @@ services:
       JWT_SECRET: p0-dev-secret-change-me
       RECOVERY_HASH_KEY: p0-dev-recovery-key-change-me   # SEC-09 dev-only HMAC key (SEC-28)
       KEYCLOAK_ISSUER: http://keycloak:8080/realms/consumer
+      # TR-33: TLS pinning policy for GET /v1/client/config. Public SPKI
+      # fingerprints, plain env; empty pins = disabled. Remove/rotate by
+      # editing the value + bumping the version — no app update.
+      CLIENT_CONFIG_VERSION: "1"   # monotonic; bump on every change
+      CLIENT_TLS_PINS: ""   # comma-separated sha256/SPKI base64 pins
     depends_on:
       - match
       - centrifugo

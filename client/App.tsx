@@ -7,13 +7,16 @@
  *
  * The product surfaces land in the surface batches; the foundation here
  * is the privacy contract the surfaces are held to: cells are computed on
- * device (TR-29) and local state is allowlisted and wiped on logout
- * (TR-30).
+ * device (TR-29), local state is allowlisted and wiped on logout (TR-30),
+ * BLE codes rotate and carry no stable identifier (TR-31), denied
+ * permissions degrade without dead ends (TR-32), and TLS pinning is
+ * remotely removable (TR-33).
  */
 
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, Text, View } from "react-native";
 
+import { BLE_ROTATION_PERIOD_S } from "./src/presence/bleCodes.js";
 import { PRESENCE_H3_RESOLUTION } from "./src/presence/cell.js";
 import { LOCAL_STATE_ALLOWLIST } from "./src/presence/localState.js";
 
@@ -25,7 +28,7 @@ export default function App() {
       <Text style={styles.subtitle}>Be where your people are.</Text>
       <Text style={styles.note}>
         On-device cells (H3 r{PRESENCE_H3_RESOLUTION}) · {LOCAL_STATE_ALLOWLIST.length} local keys, wiped
-        on logout
+        on logout · BLE codes rotate every {BLE_ROTATION_PERIOD_S / 60} min
       </Text>
     </View>
   );

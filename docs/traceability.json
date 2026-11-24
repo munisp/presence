@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 197,
+    "implemented": 200,
     "partial": 10,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 33,
+    "client": 30,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -44,11 +44,11 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 38,
+      "implemented": 41,
       "partial": 1,
       "gap-p0": 0,
       "phase-gated": 1,
-      "client": 4,
+      "client": 1,
       "organisational": 0,
       "external-evidence": 0,
       "superseded": 0
@@ -1887,9 +1887,9 @@
       "evidence": [
         "db/migrations/0012_taxonomy_cms.sql",
         "docs/api/openapi.yaml",
+        "services/edge/src/clientConfig.ts",
         "services/edge/src/routes/taxonomy.ts",
-        "services/edge/src/taxonomy.ts",
-        "services/edge/test/taxonomy.test.ts"
+        "services/edge/src/taxonomy.ts"
       ],
       "note": "taxonomy_releases carries a monotonic version from the taxonomy_release_version sequence (assigned at publish only, UNIQUE), full provenance (author, reviewer, published_by, rolled_back_by + per-transition timestamps) and a diff summary jsonb counted per operation class; the pre-publish snapshot is stored on the release as the rollback basis. Exposed on the release list/detail console endpoints."
     },
@@ -1994,23 +1994,32 @@
     },
     "TR-31": {
       "family": "TR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [
-        "docs/security/sdk-allowlist.json"
+        "docs/security/sdk-allowlist.json",
+        "tests/test_batch35.py"
       ],
-      "note": "BLE rotating derived codes <=15 min, never a stable identifier."
+      "note": "client/src/presence/bleCodes.ts: BLE attestation codes are derived, never stable \u2014 code = HMAC-SHA256(presence session id, 'presence-ble-v1'|windowIndex) truncated to 128 bits over a 900 s window (the SRS cap is 15 min; rotationPeriodWithinLimit pins it). The advertisement carries exactly one field \u2014 the derived code \u2014 and advertisementDiscardsIdentifiers pins that no session/device/user id can ever ride along; receivers verify the current window with at most one lookback (boundary clock skew) and reject older or future codes. Pure-TS SHA-256/HMAC (client/src/presence/sha256.ts, RFC 4231-pinned, cross-checked against node:crypto) \u2014 zero added dependencies, Hermes-safe."
     },
     "TR-32": {
       "family": "TR",
-      "status": "client",
-      "evidence": [],
-      "note": "Graceful degradation on denied Bluetooth/location/push permissions."
+      "status": "implemented",
+      "evidence": [
+        "tests/test_batch35.py"
+      ],
+      "note": "client/src/presence/permissions.ts: resolveCapabilities maps bluetooth/location/push denials to a degraded-but-never-dead profile. The floors are architectural: manual-checkin is always present (FR-99/FR-100 check-in tokens need no OS permission), push-denied falls back to the in-app Centrifugo realtime channel (TECH-06), and consent/chat are server-driven (FR-29). assertNoDeadEnds proves every core journey step (check-in, discover, connect, chat) keeps a satisfier across all eight permission combinations; each denial carries a user-facing impact + recovery hint."
     },
     "TR-33": {
       "family": "TR",
-      "status": "client",
-      "evidence": [],
-      "note": "Certificate pinning removable by configuration (MAY)."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "services/edge/src/app.ts",
+        "services/edge/src/clientConfig.ts",
+        "services/edge/test/clientConfig.test.ts",
+        "tests/test_batch35.py"
+      ],
+      "note": "client/src/presence/certPinning.ts + GET /v1/client/config (services/edge/src/clientConfig.ts, unauthenticated bootstrap): the pin set resolves from remote config (CLIENT_TLS_PINS / CLIENT_CONFIG_VERSION env) with a monotonic configVersion (TR-20 discipline \u2014 older configs refused) and a 24 h cache TTL. Removal = clear pins server-side + bump version; clients flip on next resolve with no app update. Every failure mode fails OPEN to the OS trust store (fetch errors, enabled-with-empty-pins, malformed pins) \u2014 availability outranks pinning, the SRS anti-bricking clause as code. pinChainMatches intersects the presented chain with the active pin set when pinned."
     },
     "TR-34": {
       "family": "TR",
@@ -2292,6 +2301,7 @@
         "docs/security/sdk-allowlist.json",
         "scripts/check_sdk_allowlist.py",
         "tests/test_batch34.py",
+        "tests/test_batch35.py",
         "tests/test_sdk_allowlist.py"
       ],
       "note": "Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) \u2014 an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit."

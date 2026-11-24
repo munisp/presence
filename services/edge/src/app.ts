@@ -3,6 +3,7 @@
 import fastifyRateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { authenticate, registerAuth, withModerator } from "./auth.js";
+import { registerClientConfigRoute } from "./clientConfig.js";
 import { EdgeContext } from "./context.js";
 import { registerErrorContract } from "./errors.js";
 import { registerIdempotency } from "./idempotency.js";
@@ -93,6 +94,11 @@ export async function buildApp(ctx: EdgeContext) {
   app.decorate("edgeCtx", ctx);
 
   app.get("/healthz", async () => ({ ok: true }));
+
+  // TR-33: client security config (unauthenticated bootstrap — the client
+  // reads its TLS pinning policy before login; the payload is operational,
+  // never user data). Registered outside the authed scope on purpose.
+  registerClientConfigRoute(app);
 
   // NFR-33: Prometheus scrape endpoint — outside the authed scope and not
   // under /v1 (it is operational, not API; it stays out of openapi.yaml).

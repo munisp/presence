@@ -66,6 +66,15 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: KEYCLOAK_ADMIN_CLIENT_ID, optional: true } }
             - name: KEYCLOAK_ADMIN_CLIENT_SECRET
               valueFrom: { secretKeyRef: { name: presence-secrets, key: KEYCLOAK_ADMIN_CLIENT_SECRET, optional: true } }
+            # TR-33: TLS pinning policy served at GET /v1/client/config. Pins
+            # are PUBLIC sha256/SPKI fingerprints (no secret material), so they
+            # live as plain env. Empty pins = pinning disabled. Rotating or
+            # REMOVING pins = edit the value + bump CLIENT_CONFIG_VERSION —
+            # no app update, installed clients can never be bricked by a pin.
+            - name: CLIENT_CONFIG_VERSION
+              value: "1"   # monotonic; bump on every change (TR-20 discipline)
+            - name: CLIENT_TLS_PINS
+              value: ""   # comma-separated sha256/SPKI base64 pins; empty disables pinning
           readinessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 10 }
           resources:   # INF-05: 3 x 2 vCPU / 4 GB

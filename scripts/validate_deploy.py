@@ -24,6 +24,8 @@ Asserts (with requirement ids):
          revocation constant matches.
   FR-56  push payloads carry type+ref only; push credentials live only in
          the managed secret store.
+  TECH-18 the Go presence/venue/consent service cores exist, are stdlib-only,
+         and are exercised by the go-services CI job (gofmt, vet, tests).
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -286,6 +288,24 @@ def main() -> int:
         "FR-56 push creds come from the managed secret store only",
         "APNS_KEY_P8" in (K8S / "external-secrets.yaml").read_text()
         and "FCM_ACCESS_TOKEN" in (K8S / "external-secrets.yaml").read_text(),
+    )
+
+    # ---------------- TECH-18 (batch 30) ----------------
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    go_modules = ["presence-go", "venue-go", "consent-go"]
+    check(
+        "TECH-18 Go service cores exist (presence/venue/consent)",
+        all((ROOT / "services" / m / "go.mod").exists() for m in go_modules)
+        and all((ROOT / "services" / m / "README.md").exists() for m in go_modules),
+    )
+    check(
+        "TECH-18 Go cores are stdlib-only (no external requires)",
+        all("require" not in (ROOT / "services" / m / "go.mod").read_text() for m in go_modules),
+    )
+    check(
+        "TECH-18 go-services CI job runs gofmt, vet and tests for all cores",
+        "go-services:" in ci and ci.count("go vet ./... && go test ./...") >= 3
+        and "gofmt" in ci,
     )
 
     print()

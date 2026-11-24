@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 185,
-    "partial": 19,
+    "implemented": 186,
+    "partial": 18,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -74,8 +74,8 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 16,
-      "partial": 3,
+      "implemented": 17,
+      "partial": 2,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 3,
@@ -652,7 +652,8 @@
         "docs/api/openapi.yaml",
         "services/edge/src/budget.ts",
         "services/edge/src/routes/scan.ts",
-        "services/edge/test/budget.test.ts"
+        "services/edge/test/budget.test.ts",
+        "services/presence-go/README.md"
       ],
       "note": "budget.ts ladder (sparse <25: 3/hr; busy <100: 2/hr; crowd: 1/day) enforced in scan.ts via budget:scan:{uid} Valkey counters; separate from the SEC-20 abuse ceiling."
     },
@@ -664,7 +665,7 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0019_reporting_compliance.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/consent.ts"
+        "services/consent-go/README.md"
       ],
       "note": "DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested."
     },
@@ -696,8 +697,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/lifecycle.ts",
-        "services/edge/src/routes/account.ts"
+        "services/consent-go/README.md",
+        "services/edge/src/lifecycle.ts"
       ],
       "note": "Silent decline: POST /consent/:id/decline always answers 204, publishes 'expired'; maskCloseReason maps declined>expired; tested."
     },
@@ -708,8 +709,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/lifecycle.ts",
-        "services/edge/src/main.ts"
+        "services/consent-go/README.md",
+        "services/edge/src/lifecycle.ts"
       ],
       "note": "30-min offer window: expires_at set at first surfacing, renewed per action; lifecycle_tick expires overdue offers; tested."
     },
@@ -720,8 +721,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/lifecycle.ts",
-        "services/edge/src/routes/consent.ts"
+        "services/consent-go/README.md",
+        "services/edge/src/lifecycle.ts"
       ],
       "note": "Blocking: blocks table (no UPDATE/DELETE grants), permanent Valkey blockKey, scan excludes both directions via blocked_users_for; pair closes silently."
     },
@@ -731,6 +732,7 @@
       "evidence": [
         "db/migrations/0001_init.sql",
         "db/migrations/0003_account_deletion.sql",
+        "services/consent-go/README.md",
         "services/edge/src/routes/consent.ts"
       ],
       "note": "Append-only ledger, no-update trigger, actor+timestamp per row; the sole exception is a transaction-local purge mode reachable only from SECURITY DEFINER retention functions (NFR-19/21); tested."
@@ -753,8 +755,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/lifecycle.ts",
-        "services/edge/src/routes/consent.ts"
+        "services/consent-go/README.md",
+        "services/edge/src/lifecycle.ts"
       ],
       "note": "24-h conversation clock: closes_at set on OPEN, /consent/:id/keep from both sides clears it; lifecycle_tick lapses the rest; messages RLS gates on closed_at."
     },
@@ -804,7 +806,7 @@
         "deploy/keycloak/realm-workforce.json",
         "docs/api/openapi.yaml",
         "services/edge/src/routes/venue.ts",
-        "tests/test_venue_registry.py"
+        "services/venue-go/README.md"
       ],
       "note": "venues is now the full registry (migration 0020): partner_status (prospect/active/suspended/offboarded) with venues.active derived by trigger, operating_schedule jsonb shape-checked by operating_schedule_valid() (timezone + weekly day/open/close HH:MM), suspended_at; cells map through the cell_attribution projection (0017). GET /v1/venues/:id/registry serves cells+status+schedule (BR-12), PUT .../schedule replaces it, offboard is venue-ops-only; every mutation is SECURITY DEFINER with an admin_audit row."
     },
@@ -1518,8 +1520,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0019_reporting_compliance.sql",
-        "services/edge/src/lifecycle.ts",
-        "services/edge/src/main.ts"
+        "services/consent-go/README.md",
+        "services/edge/src/lifecycle.ts"
       ],
       "note": "lifecycle_tick deletes messages 24 h after pair close; messages RLS blocks reads on closed pairs immediately."
     },
@@ -2330,6 +2332,7 @@
       "status": "implemented",
       "evidence": [
         "services/match-core/README.md",
+        "services/presence-go/README.md",
         "tests/test_deploy_pipeline.py",
         "tests/test_match_core.py"
       ],
@@ -2797,13 +2800,15 @@
     },
     "TECH-18": {
       "family": "TECH",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "deploy/k8s/match.yaml",
+        "scripts/validate_deploy.py",
+        "services/consent-go/README.md",
         "services/match-core/README.md",
-        "tests/test_match_core.py"
+        "services/presence-go/README.md"
       ],
-      "note": "Rust match core delivered (services/match-core): the full engine \u2014 graph validation, TR-04 closure, TR-06 idf, TR-36 prior, scoring, TR-08/09 reasons, icebreaker \u2014 pinned to 1e-9 against the shared 120-pair golden corpus alongside the TS engine and Python reference, bit-deterministic by sorted-order accumulation, committed Cargo.lock, cargo test wired into CI. The Go presence/venue/consent services remain outstanding; TS stays the documented P0 serving stand-in."
+      "note": "ARC language allocation delivered in full. Rust match core (services/match-core): the full engine \u2014 graph validation, TR-04 closure, TR-06 idf, TR-36 prior, scoring, TR-08/09 reasons, icebreaker \u2014 pinned to 1e-9 against the shared 120-pair golden corpus alongside the TS engine and Python reference, bit-deterministic by sorted-order accumulation, committed Cargo.lock, cargo test wired into CI. Go service cores (services/presence-go, venue-go, consent-go): SEC-20 velocity rules + FR-28 budget ladder + canonical key model (FR-16/23/34/91); BR-13 k-suppression + FR-42 schedule/partner registry + BR-12 dashboard; FR-29 state machine + FR-32/34 masking + lifecycle constants \u2014 stdlib-only ports pinned constant-for-constant to the TS/SQL sources by tests/test_batch30.py, gofmt/vet/test wired into the go-services CI job. TS stays the documented P0 serving stand-in; cutover is a deployment decision that changes no behaviour."
     },
     "TECH-19": {
       "family": "TECH",

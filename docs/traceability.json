@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 200,
-    "partial": 10,
+    "implemented": 203,
+    "partial": 8,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 30,
+    "client": 29,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -44,18 +44,18 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 41,
-      "partial": 1,
+      "implemented": 43,
+      "partial": 0,
       "gap-p0": 0,
       "phase-gated": 1,
-      "client": 1,
+      "client": 0,
       "organisational": 0,
       "external-evidence": 0,
       "superseded": 0
     },
     "SEC": {
-      "implemented": 28,
-      "partial": 1,
+      "implemented": 29,
+      "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 1,
@@ -1886,10 +1886,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0012_taxonomy_cms.sql",
+        "deploy/k8s/edge.yaml",
         "docs/api/openapi.yaml",
         "services/edge/src/clientConfig.ts",
-        "services/edge/src/routes/taxonomy.ts",
-        "services/edge/src/taxonomy.ts"
+        "services/edge/src/routes/taxonomy.ts"
       ],
       "note": "taxonomy_releases carries a monotonic version from the taxonomy_release_version sequence (assigned at publish only, UNIQUE), full provenance (author, reviewer, published_by, rolled_back_by + per-transition timestamps) and a diff summary jsonb counted per operation class; the pre-publish snapshot is stored on the release as the rollback basis. Exposed on the release list/detail console endpoints."
     },
@@ -1945,8 +1945,8 @@
         "docs/api/openapi.yaml",
         "services/edge/src/app.ts",
         "services/edge/src/errors.ts",
-        "services/edge/test/error-contract.test.ts",
-        "tests/test_error_contract.py"
+        "services/edge/src/versioning.ts",
+        "services/edge/test/error-contract.test.ts"
       ],
       "note": "services/edge/src/errors.ts: every error payload carries a stable code '<status>.<slug of the test-pinned message>' and retryable (true only for 429/5xx), attached app-wide via a preSerialization hook; rate-limited routes also carry retryAfterSeconds; setErrorHandler masks ajv validation detail (generic 400), maps the rate-limit 429 with its Retry-After window, and answers a generic retryable 500 \u2014 internal identifiers, validation trees and stack traces never cross the wire; documented as the ErrorEnvelope in openapi.yaml."
     },
@@ -1964,9 +1964,15 @@
     },
     "TR-27": {
       "family": "TR",
-      "status": "client",
-      "evidence": [],
-      "note": "Unsupported-version detection + update prompt."
+      "status": "implemented",
+      "evidence": [
+        "deploy/docker-compose.yml",
+        "deploy/k8s/edge.yaml",
+        "docs/api/openapi.yaml",
+        "scripts/validate_deploy.py",
+        "services/edge/src/app.ts"
+      ],
+      "note": "Three published channels + client verdicts. Server (services/edge/src/versioning.ts): x-api-version rides every response; the bootstrap config carries api.version + api.minClientVersion (CLIENT_MIN_VERSION env, k8s+compose documented); a self-identified build below the floor answers 426 upgrade_required through the TR-25 contract, with /healthz, /metrics and /v1/client/config exempt \u2014 the detection channel itself is never refused. Client (client/src/presence/versioning.ts): evaluateBootstrapVersion at startup, evaluateResponseVersion per response, evaluateDiagramSpec for TR-35 payloads; every unsupported signal converges on the pinned UPDATE_PROMPT copy \u2014 an explicit update path, never a silent failure. Malformed signals fail open: a server bug must not brick installs."
     },
     "TR-28": {
       "family": "TR",
@@ -2013,11 +2019,11 @@
       "family": "TR",
       "status": "implemented",
       "evidence": [
+        "deploy/docker-compose.yml",
+        "deploy/k8s/edge.yaml",
         "docs/api/openapi.yaml",
-        "services/edge/src/app.ts",
-        "services/edge/src/clientConfig.ts",
-        "services/edge/test/clientConfig.test.ts",
-        "tests/test_batch35.py"
+        "scripts/validate_deploy.py",
+        "services/edge/src/app.ts"
       ],
       "note": "client/src/presence/certPinning.ts + GET /v1/client/config (services/edge/src/clientConfig.ts, unauthenticated bootstrap): the pin set resolves from remote config (CLIENT_TLS_PINS / CLIENT_CONFIG_VERSION env) with a monotonic configVersion (TR-20 discipline \u2014 older configs refused) and a 24 h cache TTL. Removal = clear pins server-side + bump version; clients flip on next resolve with no app update. Every failure mode fails OPEN to the OS trust store (fetch errors, enabled-with-empty-pins, malformed pins) \u2014 availability outranks pinning, the SRS anti-bricking clause as code. pinChainMatches intersects the presented chain with the active pin set when pinned."
     },
@@ -2035,9 +2041,15 @@
     },
     "TR-35": {
       "family": "TR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Reason payload is render-complete (TR-08); the versioned diagram spec is a client artifact."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "scripts/validate_deploy.py",
+        "services/edge/src/diagramSpec.ts",
+        "services/edge/src/routes/scan.ts",
+        "tests/test_batch36.py"
+      ],
+      "note": "Versioned diagram spec, renderable from the payload alone. Server (services/edge/src/diagramSpec.ts): DIAGRAM_SPEC_VERSION = 1 is the normative node/edge semantics definition (anchors you/them; one node per reason with normalised contribution share; two edges per reason labelled by the declaring side, kind carries reach semantics), stamped as diagramSpec on every scan result \u2014 client and server agree by construction, and validate_deploy pins the stamping. Client (client/src/presence/matchDiagram.ts): buildMatchDiagram derives the entire diagram from one scan result with zero network code (import-free, pinned); an unknown or absent spec refuses (never a guessed render) and routes to the TR-27 update prompt via evaluateDiagramSpec. The client/edge version equality is cross-pinned in tests/test_batch36.py."
     },
     "TR-36": {
       "family": "TR",
@@ -2302,7 +2314,7 @@
         "scripts/check_sdk_allowlist.py",
         "tests/test_batch34.py",
         "tests/test_batch35.py",
-        "tests/test_sdk_allowlist.py"
+        "tests/test_batch36.py"
       ],
       "note": "Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) \u2014 an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit."
     },
@@ -2457,7 +2469,7 @@
     },
     "SEC-34": {
       "family": "SEC",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "db/migrations/0007_group_surface.sql",
         "docs/api/openapi.yaml",
@@ -2465,7 +2477,7 @@
         "services/edge/src/routes/links.ts",
         "services/edge/test/links.test.ts"
       ],
-      "note": "Code-owned domain allowlist + https-only/credential-free/length-bound validation (links.ts, unit-tested), https CHECK at the data layer, plain-text responses carrying interstitial:true, and a no-fetch guarantee pinned by test_group_surface. Gap: rendering the warning sheet is client work, pending with the RN client."
+      "note": "Both halves landed. Server (links.ts): code-owned domain allowlist + https-only/credential-free/length-bound validation, https CHECK at the data layer, plain-text responses carrying interstitial:true, and a no-server-side-fetch guarantee pinned by test_group_surface. Client (client/src/presence/linkInterstitial.ts): every external link renders as plain text with previews forbidden (preview: 'forbidden' is a type-level constant, and the module is import-free \u2014 the client never fetches the target either); the only path to opening runs through the pinned confirmation interstitial copy (LINK_INTERSTITIAL); non-allowlisted hosts get no open affordance at all \u2014 defense in depth behind the server's write-time 422. The client allowlist mirrors the server's governed list, cross-pinned equal in tests/test_batch36.py."
     },
     "SEC-35": {
       "family": "SEC",

@@ -75,6 +75,13 @@ spec:
               value: "1"   # monotonic; bump on every change (TR-20 discipline)
             - name: CLIENT_TLS_PINS
               value: ""   # comma-separated sha256/SPKI base64 pins; empty disables pinning
+            # TR-27: minimum client protocol version served. Builds below this
+            # floor learn it from GET /v1/client/config (exempt from the 426
+            # floor) and must prompt for an update. Raise only with a
+            # coordinated client rollout — the floor is a kill-switch, not a
+            # target.
+            - name: CLIENT_MIN_VERSION
+              value: "1"
           readinessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 10 }
           resources:   # INF-05: 3 x 2 vCPU / 4 GB

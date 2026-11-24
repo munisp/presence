@@ -5,13 +5,15 @@ import Fastify from "fastify";
 import { test } from "node:test";
 
 import { registerClientConfigRoute, resolveClientConfig } from "../src/clientConfig.js";
+import { API_VERSION } from "../src/versioning.js";
 
 // ---------------------------------------------------------------- resolver --
 
-test("defaults: pinning disabled, version 1", () => {
+test("defaults: pinning disabled, version 1, API posture at floor 1", () => {
   assert.deepEqual(resolveClientConfig({}), {
     configVersion: 1,
     pinning: { enabled: false, pins: [] },
+    api: { version: API_VERSION, minClientVersion: 1 },
   });
 });
 
@@ -29,6 +31,17 @@ test("an unusable version falls back to 1, never NaN or zero", () => {
   assert.equal(resolveClientConfig({ CLIENT_CONFIG_VERSION: "0" }).configVersion, 1);
 });
 
+test("TR-27: the api object carries the floor from CLIENT_MIN_VERSION", () => {
+  assert.deepEqual(resolveClientConfig({ CLIENT_MIN_VERSION: "3" }).api, {
+    version: API_VERSION,
+    minClientVersion: 3,
+  });
+  assert.deepEqual(resolveClientConfig({ CLIENT_MIN_VERSION: "abc" }).api, {
+    version: API_VERSION,
+    minClientVersion: 1,
+  });
+});
+
 // ------------------------------------------------------------------- route --
 
 test("GET /v1/client/config answers without any credentials", async () => {
@@ -36,20 +49,25 @@ test("GET /v1/client/config answers without any credentials", async () => {
   registerClientConfigRoute(app);
   const prevPins = process.env.CLIENT_TLS_PINS;
   const prevVersion = process.env.CLIENT_CONFIG_VERSION;
+  const prevFloor = process.env.CLIENT_MIN_VERSION;
   try {
     process.env.CLIENT_TLS_PINS = "pinX,pinY";
     process.env.CLIENT_CONFIG_VERSION = "42";
+    process.env.CLIENT_MIN_VERSION = "2";
     const res = await app.inject({ method: "GET", url: "/v1/client/config" });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.json(), {
       configVersion: 42,
       pinning: { enabled: true, pins: ["pinX", "pinY"] },
+      api: { version: API_VERSION, minClientVersion: 2 },
     });
   } finally {
     if (prevPins === undefined) delete process.env.CLIENT_TLS_PINS;
     else process.env.CLIENT_TLS_PINS = prevPins;
     if (prevVersion === undefined) delete process.env.CLIENT_CONFIG_VERSION;
     else process.env.CLIENT_CONFIG_VERSION = prevVersion;
+    if (prevFloor === undefined) delete process.env.CLIENT_MIN_VERSION;
+    else process.env.CLIENT_MIN_VERSION = prevFloor;
     await app.close();
   }
 });

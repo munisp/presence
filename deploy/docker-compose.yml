@@ -137,6 +137,9 @@ services:
       # editing the value + bumping the version — no app update.
       CLIENT_CONFIG_VERSION: "1"   # monotonic; bump on every change
       CLIENT_TLS_PINS: ""   # comma-separated sha256/SPKI base64 pins
+      # TR-27: minimum client protocol version served; builds below the floor
+      # learn it from the (exempt) bootstrap config and prompt for an update.
+      CLIENT_MIN_VERSION: "1"
     depends_on:
       - match
       - centrifugo

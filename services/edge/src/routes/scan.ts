@@ -19,6 +19,7 @@ import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
 import { matchBudget } from "../budget.js";
 import { EdgeContext, SUPPRESSION_TTL_S, suppressionKey } from "../context.js";
+import { DIAGRAM_SPEC_VERSION } from "../diagramSpec.js";
 import { FloorDeclaration, floorsCompatible } from "../floors.js";
 import { recordTelemetry } from "../telemetry.js";
 import {
@@ -328,6 +329,10 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
           band: r.band,
           reasons: r.reasons,
           icebreaker: r.icebreaker,
+          // TR-35: the diagram spec version rides every result, so client
+          // and server agree on node/edge semantics — a client that does
+          // not know this version refuses to render it (TR-27 prompt).
+          diagramSpec: DIAGRAM_SPEC_VERSION,
           prompts: promptsByUser.get(r.candidateId) ?? [],
           sharedIntent,
           recurrenceDays: next.days,

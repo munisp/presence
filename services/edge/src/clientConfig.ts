@@ -18,17 +18,23 @@
  *   CLIENT_TLS_PINS       — comma-separated sha256/SPKI base64 pins;
  *                           empty means pinning disabled (the default and
  *                           the removal mechanism)
+ *   CLIENT_MIN_VERSION    — TR-27: minimum client protocol version served
+ *                           (see versioning.ts); the bootstrap channel of
+ *                           unsupported-version detection
  */
 
 import { FastifyInstance } from "fastify";
 
+import { API_VERSION, resolveMinClientVersion, VersionEnv } from "./versioning.js";
+
 export interface ClientConfig {
   configVersion: number;
   pinning: { enabled: boolean; pins: string[] };
+  /** TR-27: the server's version posture, evaluated at client startup. */
+  api: { version: number; minClientVersion: number };
 }
 
-export interface ClientConfigEnv {
-  [key: string]: string | undefined;
+export interface ClientConfigEnv extends VersionEnv {
   CLIENT_CONFIG_VERSION?: string | undefined;
   CLIENT_TLS_PINS?: string | undefined;
 }
@@ -41,7 +47,11 @@ export function resolveClientConfig(env: ClientConfigEnv = process.env): ClientC
     .filter((p) => p.length > 0);
   const parsed = Number.parseInt(env.CLIENT_CONFIG_VERSION ?? "1", 10);
   const configVersion = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
-  return { configVersion, pinning: { enabled: pins.length > 0, pins } };
+  return {
+    configVersion,
+    pinning: { enabled: pins.length > 0, pins },
+    api: { version: API_VERSION, minClientVersion: resolveMinClientVersion(env) },
+  };
 }
 
 export function registerClientConfigRoute(app: FastifyInstance): void {
@@ -54,7 +64,7 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
         response: {
           200: {
             type: "object",
-            required: ["configVersion", "pinning"],
+            required: ["configVersion", "pinning", "api"],
             properties: {
               configVersion: { type: "integer" },
               pinning: {
@@ -63,6 +73,14 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
                 properties: {
                   enabled: { type: "boolean" },
                   pins: { type: "array", items: { type: "string" } },
+                },
+              },
+              api: {
+                type: "object",
+                required: ["version", "minClientVersion"],
+                properties: {
+                  version: { type: "integer" },
+                  minClientVersion: { type: "integer" },
                 },
               },
             },

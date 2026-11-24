@@ -21,7 +21,10 @@ info:
     optional Idempotency-Key header (TR-24): while the key is remembered
     (24 h), a replayed request returns the recorded response with
     Idempotency-Replayed: true instead of executing twice; a replay still in
-    flight answers 409.
+    flight answers 409. Every response carries x-api-version, and a client
+    build that identifies itself (x-client-version) below the server's
+    published floor answers 426 upgrade_required (TR-27) — the bootstrap
+    config is exempt so outdated clients can always learn their status.
 servers:
   - url: https://localhost:9443
     description: local compose, via the APISIX gateway over TLS 1.3 (TECH-21, SEC-06)
@@ -42,7 +45,7 @@ paths:
                   ok: { type: boolean }
   /v1/client/config:
     get:
-      summary: Client security and compatibility config (TR-33)
+      summary: Client security and compatibility config (TR-33, TR-27)
       security: []
       description: >-
         Unauthenticated bootstrap config the client reads at startup, before
@@ -53,6 +56,10 @@ paths:
         update, so a pin incident can never brick installed clients (the
         SRS's condition on pinning being allowed at all). SPKI pin
         fingerprints are public values; the payload carries no user data.
+        The api object is the bootstrap channel of TR-27: a client whose
+        protocol version is below minClientVersion (or that does not
+        understand version) must prompt for an update rather than fail
+        silently. This route is exempt from the 426 floor on purpose.
       responses:
         "200":
           description: Current client config.
@@ -60,7 +67,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [configVersion, pinning]
+                required: [configVersion, pinning, api]
                 properties:
                   configVersion: { type: integer, minimum: 1 }
                   pinning:
@@ -71,6 +78,18 @@ paths:
                       pins:
                         type: array
                         items: { type: string }
+                  api:
+                    type: object
+                    required: [version, minClientVersion]
+                    properties:
+                      version:
+                        type: integer
+                        minimum: 1
+                        description: the API major this edge speaks (TR-27)
+                      minClientVersion:
+                        type: integer
+                        minimum: 1
+                        description: minimum client protocol version served (TR-27)
   /v1/presence:
     post:
       summary: Enter or heartbeat presence (FR-14, FR-16, TR-12/14/15)
@@ -740,7 +759,7 @@ paths:
                     maxItems: 3
                     items:
                       type: object
-                      required: [pairId, sessionId, score, band, reasons, icebreaker]
+                      required: [pairId, sessionId, score, band, reasons, icebreaker, diagramSpec]
                       properties:
                         pairId: { type: string, format: uuid, description: the DETECTED pair (FR-29) }
                         sessionId: { type: string, description: candidate's FR-16 presence session id }
@@ -751,6 +770,15 @@ paths:
                           description: ordered by contribution (TR-08)
                           items: { type: object }
                         icebreaker: { type: string }
+                        diagramSpec:
+                          type: integer
+                          minimum: 1
+                          description: >-
+                            TR-35 — the versioned diagram spec this result's
+                            node/edge semantics follow; the match surface must
+                            render from this payload alone, and a client that
+                            does not know the stamped version must prompt for
+                            an update (TR-27) rather than guess.
                         prompts:
                           type: array
                           description: FR-64 structured prompts, screened at write time

@@ -10,6 +10,7 @@ import { registerIdempotency } from "./idempotency.js";
 import { scrubLogArgs } from "./logscrub.js";
 import { httpDuration, httpRequests, metrics, moderationQueueAge, publishFailures } from "./metrics.js";
 import { resolveRequestId } from "./requestid.js";
+import { registerVersionContract } from "./versioning.js";
 import { registerCheckinRoutes } from "./routes/checkin.js";
 import { registerConsentRoutes } from "./routes/consent.js";
 import { registerElevationRoutes } from "./routes/elevation.js";
@@ -83,6 +84,12 @@ export async function buildApp(ctx: EdgeContext) {
   // TR-25: every error payload carries a stable code and a retry hint; the
   // error handler masks validation detail and internals.
   registerErrorContract(app);
+
+  // TR-27: the server publishes its version posture — x-api-version on
+  // every response, and a 426 for builds below CLIENT_MIN_VERSION that
+  // identify themselves (healthz/metrics/client-config are exempt: the
+  // bootstrap config is the detection channel itself).
+  registerVersionContract(app);
 
   // TECH-07: Keycloak consumer-realm RS256 via JWKS when KEYCLOAK_ISSUER is
   // set; HS256 dev secret otherwise (ADR-0003).

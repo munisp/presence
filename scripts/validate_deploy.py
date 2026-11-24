@@ -41,6 +41,9 @@ Asserts (with requirement ids):
   TR-33 the client config route is registered outside the authed scope and
          the pinning env (public SPKI pins + monotonic version) is
          documented in both deploy manifests.
+  TR-27 the edge publishes x-api-version, enforces a 426 client floor with
+         the bootstrap config exempt, and the floor env is documented.
+  TR-35 every scan result is stamped with the versioned diagram spec.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -432,6 +435,29 @@ def main() -> int:
         and "CLIENT_CONFIG_VERSION" in k8s_edge_src
         and "CLIENT_TLS_PINS" in compose_src
         and "CLIENT_CONFIG_VERSION" in compose_src,
+    )
+
+    # ---------------- TR-27 / TR-35 (batch 36) ----------------
+    versioning_src_path = ROOT / "services" / "edge" / "src" / "versioning.ts"
+    versioning_src = versioning_src_path.read_text() if versioning_src_path.exists() else ""
+    check(
+        "TR-27 version contract: x-api-version on every response, 426 floor, bootstrap exempt",
+        'reply.header(API_VERSION_HEADER, String(API_VERSION))' in versioning_src
+        and 'reply.code(426).send({ error: "client version is no longer supported (TR-27)" })' in versioning_src
+        and '"/v1/client/config"' in versioning_src
+        and "registerVersionContract(app)" in edge_app_src
+        and edge_app_src.index("registerVersionContract(app)")
+        < edge_app_src.index("registerClientConfigRoute(app)")
+        and "CLIENT_MIN_VERSION" in k8s_edge_src
+        and "CLIENT_MIN_VERSION" in compose_src,
+    )
+    diagram_spec_src_path = ROOT / "services" / "edge" / "src" / "diagramSpec.ts"
+    diagram_spec_src = diagram_spec_src_path.read_text() if diagram_spec_src_path.exists() else ""
+    scan_route_src = (ROOT / "services" / "edge" / "src" / "routes" / "scan.ts").read_text()
+    check(
+        "TR-35 diagram spec version is stamped on every scan result",
+        "DIAGRAM_SPEC_VERSION = 1" in diagram_spec_src
+        and "diagramSpec: DIAGRAM_SPEC_VERSION" in scan_route_src,
     )
 
     print()

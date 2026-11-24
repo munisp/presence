@@ -15,6 +15,9 @@ every build — development included — is a dev client build.
 | `src/presence/bleCodes.ts` | TR-31: BLE rotating derived codes — HMAC of the presence session id per 900 s window (≤ the 15-minute SRS cap); the advertisement carries only the derived code, never a stable identifier |
 | `src/presence/permissions.ts` | TR-32: clean degradation — denied Bluetooth/location/push maps to a degraded-but-never-dead profile (manual check-in and in-app realtime are unconditional floors) |
 | `src/presence/certPinning.ts` | TR-33: certificate-pinning policy resolved from remote config (`GET /v1/client/config`); removable by server-side configuration without an app update; fails open to OS trust |
+| `src/presence/versioning.ts` | TR-27: unsupported-version detection — bootstrap config + `x-api-version` + 426 all converge on the pinned update prompt; malformed signals fail open, never brick |
+| `src/presence/linkInterstitial.ts` | SEC-34: external links render as plain text with previews forbidden; the only path to opening runs through the pinned confirmation interstitial; the allowlist mirrors the server's governed list |
+| `src/presence/matchDiagram.ts` | TR-35: the versioned match-surface diagram — built from the scan payload alone (no round trip); an unknown `diagramSpec` refuses and routes to the TR-27 update prompt |
 | `src/presence/sha256.ts` | Pure-TS SHA-256/HMAC for TR-31 (Hermes ships no crypto) — RFC 4231-pinned, zero added dependencies |
 | `src/platform/` | Native adapters (SecureStore for TR-30 secrets) |
 | `test/` | `node --test` suites over the pure modules |

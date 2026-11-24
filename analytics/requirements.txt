@@ -1,0 +1,7 @@
+# Analytics lakehouse dependencies (P1, ARC-002 §6).
+# Pinned exactly (SEC-24); installed by the pytest CI job.
+deltalake==1.7.0
+pyarrow==26.0.1
+shapely==2.1.1
+h3==4.5.1
+pyyaml==6.0.3

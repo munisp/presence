@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -q pytest pyyaml jsonschema
+      - run: pip install -q pytest pyyaml jsonschema -r analytics/requirements.txt
       - run: python -m pytest tests/ -q
 
   edge:
@@ -88,6 +88,19 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 scripts/check_sdk_allowlist.py
+
+  # TR-39: every gold table must be registered in the data catalogue with
+  # owner, grain, freshness SLO and retention before any product surface may
+  # use it. Fail-closed on drift either way.
+  gold-catalogue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r analytics/requirements.txt
+      - run: python3 scripts/check_gold_catalogue.py
 
   # TR-21: the 250k-node closure rebuild, timed against a real Postgres on
   # every PR and push to main. Budget: 600 s; a runaway plan change fails.

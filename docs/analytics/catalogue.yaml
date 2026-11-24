@@ -1,0 +1,50 @@
+# TR-39: gold-table catalogue.
+#
+# Every gold table declares an owner, a grain, a freshness SLO and a
+# retention period, and is registered here before any product surface may
+# read it. scripts/check_gold_catalogue.py is the CI gate: it fails the build
+# when a table in analytics/gold.py's GOLD_REGISTRY is missing here, when any
+# required field is empty, when an entry has no producing table, or when a
+# retention exceeds the NFR-23 cap of 25 months.
+version: gold-catalogue/v1
+
+tables:
+  density_cell_hour:
+    owner: venue-analytics
+    grain: one row per (cell, hour) — presence and scan intensity
+    freshness_slo: T+1 day
+    retention_months: 25
+    consumers:
+      - venue density halo calibration (FR-78 surface feed)
+      - TR-14 crowd-threshold calibration
+    notes: >-
+      k-suppressed (K_MIN = 11 distinct actors per cell-hour, SEC-16);
+      GeoParquet export published per TR-43.
+  venue_kpi:
+    owner: venue-analytics
+    grain: one row per (venue, date) — presence, scans, offers, funnel
+    freshness_slo: T+1 day
+    retention_months: 25
+    consumers:
+      - venue KPI mart (BR-13 aggregates complement the live dashboard)
+    notes: >-
+      k-suppressed; venue ids are public entities, actor counts only.
+  consent_funnel:
+    owner: product-analytics
+    grain: one row per (date, transition) — consent state volumes
+    freshness_slo: T+1 day
+    retention_months: 25
+    consumers:
+      - conversion funnel reporting
+    notes: k-suppressed; carries transitions and counts only, never pair identity.
+  cell_attribution:
+    owner: venue-ops
+    grain: one row per H3 cell — venue/floor scope (TR-38)
+    freshness_slo: T+1 day after any geometry publication
+    retention_months: 25
+    consumers:
+      - presence publishing and matching scope (FR-90 venue precedence)
+    notes: >-
+      Computed in the lakehouse as a spatial join and published to the
+      operational store via publish_cell_attribution (migration 0018); never
+      recomputed per request. Geometry-version freshness is enforced at read.

@@ -30,6 +30,7 @@ services:
       - ../db/migrations/0015_recovery.sql:/docker-entrypoint-initdb.d/17_recovery.sql:ro
       - ../db/migrations/0016_age_assurance.sql:/docker-entrypoint-initdb.d/18_age_assurance.sql:ro
       - ../db/migrations/0017_geofence_review.sql:/docker-entrypoint-initdb.d/19_geofence_review.sql:ro
+      - ../db/migrations/0018_analytics_publication.sql:/docker-entrypoint-initdb.d/20_analytics_publication.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

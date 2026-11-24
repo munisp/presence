@@ -37,6 +37,7 @@ import {
 import { isImpossibleTravel } from "../velocity.js";
 import { DISCOVERY_BLOCKED_ERROR, isDiscoveryAllowed, isInvisible } from "./account.js";
 import { ladderForCell, resolutionFor } from "../markets.js";
+import { lookupAttribution } from "../attribution.js";
 
 export const PRESENCE_TTL_S = 900; // FR-14
 
@@ -91,8 +92,8 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     }
 
     const userId = req.userId;
-    const venueId = typeof body.venueId === "string" ? body.venueId : null;
-    const floorId = typeof body.floorId === "string" ? body.floorId : null;
+    let venueId = typeof body.venueId === "string" ? body.venueId : null;
+    let floorId = typeof body.floorId === "string" ? body.floorId : null;
     const presentedSessionId = typeof body.sessionId === "string" ? body.sessionId : null;
 
     // FR-99: a floor attribution is only meaningful with its venue, and only
@@ -127,6 +128,20 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     // FR-18: invisible accounts cannot publish presence.
     if (await isInvisible(ctx, userId)) {
       return reply.code(403).send({ error: "account is invisible (FR-18)" });
+    }
+
+    // FR-90/TR-38: when the client made no explicit venue claim, a published
+    // venue polygon takes precedence over the cell — presence inside it
+    // attributes to the venue geometry. The map is computed in the lakehouse
+    // (spatial join) and consulted here as a version-checked primary-key
+    // lookup, never a per-request spatial query. An explicit venue claim
+    // (check-in path, FR-99) is left untouched.
+    if (venueId === null) {
+      const attributed = await lookupAttribution(ctx, cell);
+      if (attributed) {
+        venueId = attributed.venueId;
+        floorId = attributed.floorId;
+      }
     }
 
     // TR-12/14: coarsen the client cell to the venue's active resolution.

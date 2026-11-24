@@ -46,7 +46,13 @@
  * means no background work (NFR-29/30), the match surface renders
  * inside one 60 fps frame and ambient widgets refresh at most once a
  * minute without waking the radio (NFR-35/36), and dependencies pass
- * the 45 MB / licence / maintenance budget (TECH-16).
+ * the 45 MB / licence / maintenance budget (TECH-16). Identity reveals
+ * always carry the pinned verification badge — on the offer, the table
+ * roster and the booked slot, not only in settings (FR-70) — and the
+ * shell holds WCAG 2.2 AA: palette contrast audited (the note colour
+ * moved when the audit caught it), 200 % dynamic type, reduced motion
+ * honoured, 44 pt targets, and the primary action in the lower 40
+ * percent of the display (NFR-25/26/37).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -88,6 +94,13 @@ import { startupBudgetHonoursNfr04Nfr05 } from "./src/presence/startupBudget.js"
 import { powerBudgetHonoursNfr29, backgroundParityHonoursNfr30 } from "./src/presence/powerBudget.js";
 import { frameBudgetHonoursNfr35, ambientRefreshHonoursNfr36 } from "./src/presence/frameBudget.js";
 import { dependencyBudgetHonoursTech16, BUNDLE_CAP_BYTES } from "./src/presence/dependencyBudget.js";
+import { buildIdentityReveal, revealHonoursFr70 } from "./src/presence/verificationBadge.js";
+import {
+  REACH_REFERENCE_DEVICE,
+  TOUCH_TARGET_MIN_PT,
+  accessibilityHonoursNfr25Nfr26Nfr37,
+  primaryActionInReachZone,
+} from "./src/presence/accessibility.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 const SURFACE_CHECKS = [
@@ -147,6 +160,14 @@ const SURFACE_CHECKS = [
   frameBudgetHonoursNfr35() && ambientRefreshHonoursNfr36(),
   // TECH-16: the dependency ledger fits the 45 MB bundle cap.
   dependencyBudgetHonoursTech16(),
+  // FR-70: verification status rides every identity reveal on the three surfaces.
+  revealHonoursFr70() && buildIdentityReveal("offer", "Ada", "verified") !== null,
+  // NFR-25/26/37: AA palette, 44 pt targets, primary action in the lower 40 %.
+  accessibilityHonoursNfr25Nfr26Nfr37() &&
+    primaryActionInReachZone(
+      REACH_REFERENCE_DEVICE.logicalHeightPt * 0.75,
+      REACH_REFERENCE_DEVICE.logicalHeightPt,
+    ),
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
@@ -174,6 +195,8 @@ export default function App() {
         tables seat six
         {"\n"}budgets: cold start 1.8 s · warm 600 ms · battery &le;2 %/h · background off = no work ·
         bundle &le;{Math.round(BUNDLE_CAP_BYTES / 1024 / 1024)} MB
+        {"\n"}verification badge on every reveal · AA contrast · {TOUCH_TARGET_MIN_PT} pt targets ·
+        primary action in the lower 40 %
       </Text>
     </View>
   );
@@ -189,5 +212,5 @@ const styles = StyleSheet.create({
   },
   title: { color: "#F2F5F7", fontSize: 34, fontWeight: "700" },
   subtitle: { color: "#9FB0BC", fontSize: 16, marginTop: 8 },
-  note: { color: "#5C6B77", fontSize: 12, marginTop: 24, textAlign: "center" },
+  note: { color: "#74879B", fontSize: 12, marginTop: 24, textAlign: "center" },
 });

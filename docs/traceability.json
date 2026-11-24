@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 225,
+    "implemented": 229,
     "partial": 8,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 7,
+    "client": 3,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -24,21 +24,21 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 97,
+      "implemented": 98,
       "partial": 1,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 1,
+      "client": 0,
       "organisational": 1,
       "external-evidence": 0,
       "superseded": 0
     },
     "NFR": {
-      "implemented": 14,
+      "implemented": 17,
       "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 5,
+      "client": 2,
       "organisational": 0,
       "external-evidence": 13,
       "superseded": 0
@@ -912,8 +912,8 @@
         "db/migrations/0021_attestation_push.sql",
         "docs/api/openapi.yaml",
         "docs/security/attestation.md",
-        "services/edge/src/attestation.ts",
-        "services/edge/src/auth.ts"
+        "docs/ux/accessibility-and-reveal.md",
+        "services/edge/src/attestation.ts"
       ],
       "note": "Cryptographic verified enrolment (migration 0021): challenge-bound ECDSA P-256 assertion verified against the presented key, monotonic counter enforced inside register_verified_attestation() (replays never honour the write), FR-07 dedupe semantics preserved with the same neutral 201. The discovery gate is structural: the match service reads profiles only for accounts in the attested_accounts view (verified keys + approved fallbacks) \u2014 an unattested account has no corpus profile and cannot appear in results. Pins: test_batch29.py + edge attestation.test.ts (real P-256 pairs)."
     },
@@ -923,9 +923,9 @@
       "evidence": [
         "db/migrations/0008_moderation.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/accessibility-and-reveal.md",
         "services/edge/src/moderation.ts",
-        "services/edge/src/routes/moderation.ts",
-        "services/edge/test/moderation.test.ts"
+        "services/edge/src/routes/moderation.ts"
       ],
       "note": "trust_score() (db/migrations/0008): deterministic SECURITY DEFINER score \u2014 base 0.50, +0.20 age-verified, +0.10 at 30/180 days, -0.15/actioned report (cap -0.45), +0.05/dismissed (cap +0.15), -0.02/unresolved (cap -0.10), clamped [0,1]; drives the moderation queue ordering and account card."
     },
@@ -1130,11 +1130,13 @@
     },
     "FR-70": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [
+        "docs/ux/accessibility-and-reveal.md",
+        "docs/ux/client-budgets.md",
         "docs/ux/journeys-and-conversations.md"
       ],
-      "note": "Verification status at identity reveal \u2014 client rendering (+ data from FR-51/52)."
+      "note": "client/src/presence/verificationBadge.ts \u2014 the identity-reveal registry is exactly the three SRS surfaces (offer, table-roster, booked-slot; account settings is NOT one); a reveal is built from the FR-51 attestation state alone with the badge label pinned (a surface cannot forge a friendlier status), and unregistered surfaces, blank names and garbage states fail closed to null; the audit flags a label that does not match its state. Pinned by client tests + tests/test_batch43.py."
     },
     "FR-71": {
       "family": "FR",
@@ -1286,6 +1288,7 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/client-budgets.md",
         "tests/test_batch34.py",
         "tests/test_batch37.py",
         "tests/test_batch42.py"
@@ -1296,11 +1299,11 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "docs/ux/discovery-surfaces.md",
         "docs/ux/interaction-surfaces.md",
         "tests/test_batch34.py",
-        "tests/test_batch37.py",
-        "tests/test_batch39.py"
+        "tests/test_batch37.py"
       ],
       "note": "client/src/presence/ambientSurfaces.ts \u2014 the three named surfaces (lockScreenIndicator, liveActivity, homeScreenWidget) are individually opt-in via setAmbientPreference (one surface per flip), defaultAmbientPreferences is all-false, planDisable is pinned to one action with no confirmation step; preferences persist under the allowlisted presence.ambient.prefs key (TR-30 wiped) and parse fails closed to all-off. Pinned by client tests + tests/test_batch40.py."
     },
@@ -1487,7 +1490,11 @@
       "family": "NFR",
       "status": "partial",
       "evidence": [
-        "tests/test_batch42.py"
+        "docs/ux/client-budgets.md",
+        "docs/ux/journeys-and-conversations.md",
+        "tests/test_batch38.py",
+        "tests/test_batch39.py",
+        "tests/test_batch40.py"
       ],
       "note": "client/src/presence/startupBudget.ts \u2014 pinned phase ledger (native-init/js-bundle/secure-store/config-cache/first-render/handoff summing to exactly 1800 ms), deferred work (BLE start, prefetch, flush) banned from the critical path by audit; on-device profiling on the reference mid-tier remains."
     },
@@ -1495,6 +1502,7 @@
       "family": "NFR",
       "status": "partial",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "tests/test_batch42.py"
       ],
       "note": "client/src/presence/startupBudget.ts \u2014 the same ledger's warm column: resume pays nothing for the resident native runtime or JS bundle, sums to exactly 600 ms, no warm phase dearer than its cold twin; on-device profiling remains."
@@ -1654,26 +1662,37 @@
     },
     "NFR-25": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [],
-      "note": "WCAG 2.2 AA (contrast, dynamic type, screen reader, focus, reduced motion)."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/accessibility-and-reveal.md",
+        "docs/ux/client-budgets.md",
+        "docs/ux/journeys-and-conversations.md"
+      ],
+      "note": "client/src/presence/accessibility.ts \u2014 WCAG 2.2 AA as code: relative-luminance contrast (4.5:1 normal / 3:1 large and non-text) audited over the pinned shell palette (the audit caught the note colour at 3.50:1 \u2014 moved to #74879B); dynamic type pinned to the 200 % resize floor (clamped, garbage fails closed to 1); reduced motion is a pinned instant fallback with unreadable preference treated as reduce; screen-reader labelling and focus order audited per control (non-empty label, registered role, unique non-negative focus position). On-device VoiceOver/TalkBack validation is the named residual beyond code. Pinned by client tests + tests/test_batch43.py."
     },
     "NFR-26": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [],
-      "note": "44x44 pt touch targets."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/accessibility-and-reveal.md"
+      ],
+      "note": "client/src/presence/accessibility.ts \u2014 every interactive control declares a touch TARGET (not a glyph size) and the audit requires >= 44 x 44 pt in both dimensions; undersized or non-finite targets are violations. Pinned by client tests + tests/test_batch43.py."
     },
     "NFR-27": {
       "family": "NFR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/accessibility-and-reveal.md",
+        "docs/ux/client-budgets.md"
+      ],
       "note": "English at launch; localisable without code changes; +2 locales in 3 months."
     },
     "NFR-28": {
       "family": "NFR",
       "status": "client",
       "evidence": [
+        "docs/ux/accessibility-and-reveal.md",
+        "docs/ux/client-budgets.md",
         "tests/test_batch34.py"
       ],
       "note": "iOS 16+ / Android 10+ with graceful BLE-floor degradation."
@@ -1682,6 +1701,7 @@
       "family": "NFR",
       "status": "partial",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "tests/test_batch42.py"
       ],
       "note": "client/src/presence/powerBudget.ts \u2014 duty-cycle ledger: fixed consumers (BLE advertise/scan, UI render) plus publish+cell activations computed from the FR-85 cadence (12/h standard, 6/h reduced), both modes inside the 2 %/h ceiling; on-device battery profiling remains."
@@ -1690,6 +1710,7 @@
       "family": "NFR",
       "status": "partial",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "tests/test_batch34.py",
         "tests/test_batch42.py"
       ],
@@ -1746,6 +1767,7 @@
       "family": "NFR",
       "status": "partial",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "docs/ux/discovery-surfaces.md",
         "tests/test_batch42.py"
       ],
@@ -1755,15 +1777,21 @@
       "family": "NFR",
       "status": "implemented",
       "evidence": [
-        "tests/test_batch42.py"
+        "docs/ux/client-budgets.md",
+        "tests/test_batch38.py",
+        "tests/test_batch39.py",
+        "tests/test_batch40.py",
+        "tests/test_batch41.py"
       ],
       "note": "client/src/presence/frameBudget.ts \u2014 ambient refresh gated to at most one per minute (garbage clocks refuse, fail closed); refresh sources pinned to push/app-active only \u2014 poll is absent by construction, so an idle device never wakes the radio; AMBIENT_NETWORK_FETCHES_PER_REFRESH = 0 and an approved refresh carries the SEC-35 contentless payload built locally. Pinned by client tests + tests/test_batch42.py."
     },
     "NFR-37": {
       "family": "NFR",
-      "status": "client",
-      "evidence": [],
-      "note": "Primary action reachable one-handed in the lower 40% of the display."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/accessibility-and-reveal.md"
+      ],
+      "note": "client/src/presence/accessibility.ts \u2014 the primary action passes only when its top edge sits at or below the lower-40% line (fraction 0.6 pinned; 6.1-inch / 844 pt reference device); garbage geometry fails closed. Pinned by client tests + tests/test_batch43.py."
     },
     "TR-01": {
       "family": "TR",
@@ -2092,9 +2120,9 @@
       "evidence": [
         "docs/security/client-auth.md",
         "docs/security/sdk-allowlist.json",
+        "docs/ux/client-budgets.md",
         "docs/ux/discovery-surfaces.md",
-        "docs/ux/interaction-surfaces.md",
-        "tests/test_batch34.py"
+        "docs/ux/interaction-surfaces.md"
       ],
       "note": "client/src/presence/localState.ts: LOCAL_STATE_ALLOWLIST of 4 namespaced keys (session refresh token, device id, notification prefs, taxonomy version); createLocalState is type-safe over allowlisted keys only; clearLocalState wipes every allowlisted key by construction (logout/uninstall); secrets backed by expo-secure-store via the platform adapter, not AsyncStorage."
     },
@@ -2122,8 +2150,8 @@
         "deploy/docker-compose.yml",
         "deploy/k8s/edge.yaml",
         "docs/api/openapi.yaml",
-        "scripts/validate_deploy.py",
-        "services/edge/src/app.ts"
+        "docs/ux/client-budgets.md",
+        "scripts/validate_deploy.py"
       ],
       "note": "client/src/presence/certPinning.ts + GET /v1/client/config (services/edge/src/clientConfig.ts, unauthenticated bootstrap): the pin set resolves from remote config (CLIENT_TLS_PINS / CLIENT_CONFIG_VERSION env) with a monotonic configVersion (TR-20 discipline \u2014 older configs refused) and a 24 h cache TTL. Removal = clear pins server-side + bump version; clients flip on next resolve with no app update. Every failure mode fails OPEN to the OS trust store (fetch errors, enabled-with-empty-pins, malformed pins) \u2014 availability outranks pinning, the SRS anti-bricking clause as code. pinChainMatches intersects the presented chain with the active pin set when pinned."
     },
@@ -2412,9 +2440,9 @@
       "evidence": [
         "docs/security/client-auth.md",
         "docs/security/sdk-allowlist.json",
+        "docs/ux/client-budgets.md",
         "scripts/check_sdk_allowlist.py",
-        "tests/test_batch34.py",
-        "tests/test_batch35.py"
+        "tests/test_batch34.py"
       ],
       "note": "Third-party SDK allowlist enforced in CI: docs/security/sdk-allowlist.json is the governed list (name/ecosystem/version constraint/justification/data-access/approver per entry) and scripts/check_sdk_allowlist.py is a fail-closed gate over every client dependency manifest (npm, pub, CocoaPods, Maven) \u2014 an unlisted SDK or a constraint violation fails the build. The sdk-allowlist CI job runs it on every PR and push; with no client/ tree yet the gate passes and holds any manifest to the list from its first commit."
     },
@@ -2487,6 +2515,7 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "tests/test_batch42.py"
       ],
       "note": ".github/workflows/ci.yml dependencies job \u2014 license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR."
@@ -2585,11 +2614,11 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "docs/ux/discovery-surfaces.md",
         "docs/ux/interaction-surfaces.md",
         "tests/test_batch38.py",
-        "tests/test_batch39.py",
-        "tests/test_batch40.py"
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/ambientSurfaces.ts \u2014 contentless by construction: AmbientPayload carries exactly {kind, active} (a kind tag + one presence-active boolean), so no identity, reason text, participant count or location field can exist in the type; ambientPayloadViolations still audits every payload against AMBIENT_PAYLOAD_KEYS and the AMBIENT_FORBIDDEN_FIELDS list (identity/handle/photo/reason/count/cell/venue/distance/map\u2026) before anything reaches the OS ambient layer. Pinned by client tests + tests/test_batch40.py."
     },
@@ -2881,6 +2910,8 @@
       "family": "TECH",
       "status": "client",
       "evidence": [
+        "docs/ux/accessibility-and-reveal.md",
+        "docs/ux/client-budgets.md",
         "docs/ux/journeys-and-conversations.md",
         "services/edge/src/screening.ts",
         "tests/test_batch42.py"
@@ -2960,8 +2991,11 @@
       "family": "TECH",
       "status": "implemented",
       "evidence": [
+        "docs/ux/client-budgets.md",
         "docs/ux/journeys-and-conversations.md",
-        "tests/test_batch42.py"
+        "tests/test_batch38.py",
+        "tests/test_batch39.py",
+        "tests/test_batch40.py"
       ],
       "note": "client/src/presence/dependencyBudget.ts \u2014 45 MB bundle cap with one size allocation per runtime dependency (31 MB allocated, cross-pinned to package.json); the licence allowlist mirrors the SEC-25 CI set with a prohibited-marker screen in front (GPL/AGPL/LGPL/SSPL/Commons Clause refuse \u2014 the TECH-08 libsignal discipline); the admission gate refuses in pinned order (size, SEC-18 membership, deprecated, licence, cap); the SEC-18 sdk-allowlist CI gate enforces membership. Pinned by client tests + tests/test_batch42.py."
     },

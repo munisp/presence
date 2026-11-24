@@ -43,6 +43,20 @@ spec:
               value: http://otel-collector.monitoring:4318
             - name: DEPLOY_ENV
               value: production   # per environment
+            # FR-56: push pipeline credentials — the pipeline is dormant when
+            # the store leaves these unset (APNs needs all four; FCM the pair).
+            - name: APNS_TEAM_ID
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: APNS_TEAM_ID, optional: true } }
+            - name: APNS_KEY_ID
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: APNS_KEY_ID, optional: true } }
+            - name: APNS_KEY_P8
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: APNS_KEY_P8, optional: true } }
+            - name: APNS_TOPIC
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: APNS_TOPIC, optional: true } }
+            - name: FCM_PROJECT_ID
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: FCM_PROJECT_ID, optional: true } }
+            - name: FCM_ACCESS_TOKEN
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: FCM_ACCESS_TOKEN, optional: true } }
           readinessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 10 }
           resources:   # INF-05: 3 x 2 vCPU / 4 GB

@@ -20,6 +20,10 @@ Asserts (with requirement ids):
   TR-03 the presence namespace is annotated for Linkerd injection (ADR-0010).
   SEC-28 no Secret manifests are committed; the ExternalSecret covers every
          secretKeyRef key the workloads reference.
+  SEC-02 the revocation drill exists with its 60-second budget cap; the edge
+         revocation constant matches.
+  FR-56  push payloads carry type+ref only; push credentials live only in
+         the managed secret store.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -257,6 +261,31 @@ def main() -> int:
     check(
         "SEC-28 ExternalSecret targets presence-secrets",
         ext["spec"]["target"]["name"] == "presence-secrets",
+    )
+
+    # ---------------- SEC-02 / FR-56 (batch 29) ----------------
+    drill = ROOT / "scripts" / "revocation_drill.py"
+    drill_src = drill.read_text() if drill.exists() else ""
+    check("SEC-02 revocation drill exists", drill.exists())
+    check(
+        "SEC-02 drill budget capped at 60 seconds",
+        'DRILL_BUDGET_S", "60"' in drill_src and "BUDGET_S > 60" in drill_src,
+    )
+    rev = ROOT / "services" / "edge" / "src" / "revocation.ts"
+    check(
+        "SEC-02 edge revocation budget is 60 seconds",
+        rev.exists() and "REVOCATION_PROPAGATION_S = 60" in rev.read_text(),
+    )
+    push = ROOT / "services" / "edge" / "src" / "push.ts"
+    push_src = push.read_text() if push.exists() else ""
+    check(
+        "FR-56 push payload carries only type and ref",
+        'PUSH_PAYLOAD_KEYS = ["type", "ref"]' in push_src,
+    )
+    check(
+        "FR-56 push creds come from the managed secret store only",
+        "APNS_KEY_P8" in (K8S / "external-secrets.yaml").read_text()
+        and "FCM_ACCESS_TOKEN" in (K8S / "external-secrets.yaml").read_text(),
     )
 
     print()

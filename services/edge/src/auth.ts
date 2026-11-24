@@ -20,6 +20,8 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fastifyJwt from "@fastify/jwt";
 import jwksRsa from "jwks-rsa";
 import Postgres from "pg";
+import { EdgeContext } from "./context.js";
+import { isDeviceAccessRevoked } from "./revocation.js";
 import { recordSecurityEvent } from "./security.js";
 
 export interface AuthedRequest extends FastifyRequest {
@@ -84,6 +86,18 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply): Pr
     (req as AuthedRequest).tokenPayload = payload;
   } catch {
     await reply.code(401).send({ error: "invalid or missing token" });
+    return;
+  }
+  // SEC-02: tokens are short-lived (5-minute realm tokens) AND revocable
+  // within 60 seconds — passive expiry alone cannot meet that budget, so a
+  // request presenting a revoked device id (x-device-id) is denied here,
+  // against the Valkey denylist written by the revocation path.
+  const deviceId = req.headers["x-device-id"];
+  if (typeof deviceId === "string" && deviceId.length > 0) {
+    const ctx = (req.server as unknown as { edgeCtx?: EdgeContext }).edgeCtx;
+    if (ctx && (await isDeviceAccessRevoked(ctx, deviceId))) {
+      await reply.code(401).send({ error: "session revoked" });
+    }
   }
 }
 

@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 181,
-    "partial": 23,
+    "implemented": 185,
+    "partial": 19,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 75,
-      "partial": 9,
+      "implemented": 77,
+      "partial": 7,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 15,
@@ -54,8 +54,8 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 24,
-      "partial": 5,
+      "implemented": 26,
+      "partial": 3,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 1,
@@ -415,10 +415,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0010_devices.sql",
+        "db/migrations/0021_attestation_push.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/devices.ts",
-        "services/edge/src/routes/devices.ts",
-        "services/edge/src/routes/moderation.ts"
+        "docs/security/attestation.md",
+        "services/edge/src/attestation.ts"
       ],
       "note": "register_attestation_key() SECURITY DEFINER enrols/refreshes/detects atomically: a cross-account collision keeps the key with its original account, inserts attestation_duplicates and writes admin_audit_log('moderation.duplicate.detected','impersonation'); the enrolment route returns the same neutral 201 regardless \u2014 the console-only registry (RLS app_moderator) surfaces collisions on the moderation account card as keyHashPrefix + both accounts + detected_at. P0 uses the assertion SHA-256 as the key stand-in until cryptographic App Attest verification lands (FR-51 idiom)."
     },
@@ -888,12 +888,15 @@
     },
     "FR-51": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "db/migrations/0021_attestation_push.sql",
         "docs/api/openapi.yaml",
+        "docs/security/attestation.md",
+        "services/edge/src/attestation.ts",
         "services/edge/src/auth.ts"
       ],
-      "note": "Attestation assertion header required on presence write; cryptographic verification + discovery gating pending."
+      "note": "Cryptographic verified enrolment (migration 0021): challenge-bound ECDSA P-256 assertion verified against the presented key, monotonic counter enforced inside register_verified_attestation() (replays never honour the write), FR-07 dedupe semantics preserved with the same neutral 201. The discovery gate is structural: the match service reads profiles only for accounts in the attested_accounts view (verified keys + approved fallbacks) \u2014 an unattested account has no corpus profile and cannot appear in results. Pins: test_batch29.py + edge attestation.test.ts (real P-256 pairs)."
     },
     "FR-52": {
       "family": "FR",
@@ -945,9 +948,15 @@
     },
     "FR-56": {
       "family": "FR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Realtime events carry only a type on an opaque pair channel; APNs/FCM push pipeline not built."
+      "status": "implemented",
+      "evidence": [
+        "db/migrations/0021_attestation_push.sql",
+        "deploy/k8s/edge.yaml",
+        "deploy/k8s/external-secrets.yaml",
+        "docs/api/openapi.yaml",
+        "docs/security/attestation.md"
+      ],
+      "note": "Push pipeline shipped (edge push.ts): buildPushPayload derives exactly {type, ref} from notification events \u2014 an allowlisted opaque identifier only, never profile content/reason/handle/location, with assertMinimalPayload as the send-side gate. APNs background push + FCM data-only providers, env-gated (dormant without credentials, k8s optional secretKeyRefs via the SEC-28 store); dead tokens dropped via drop_push_token(). Device tokens registered per device (PUT /v1/devices/:deviceId/push-token, owner-RLS; migration 0021). Dispatch rides notifyUser after the realtime publish, inheriting the FR-57/58 gates. Pins: test_batch29.py + edge push.test.ts."
     },
     "FR-57": {
       "family": "FR",
@@ -2107,12 +2116,15 @@
     },
     "SEC-02": {
       "family": "SEC",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "deploy/keycloak/README.md",
-        "services/edge/src/auth.ts"
+        "docs/api/openapi.yaml",
+        "docs/security/attestation.md",
+        "scripts/revocation_drill.py",
+        "scripts/validate_deploy.py"
       ],
-      "note": "5-minute realm access tokens configured; device binding (attestation) and the 60-second revocation drill pending."
+      "note": "5-minute consumer-realm access tokens (existing), plus active server-side revocation meeting the 60-second budget: deleting a device writes the Valkey denylist (revoked:dev:{id}) before the route replies, and the authenticate hook denies any request presenting that x-device-id \u2014 passive expiry is never the mechanism. The end-to-end propagation contract is exercised by scripts/revocation_drill.py (budget capped at 60 s; validate_deploy-pinned). Pins: test_batch29.py + edge revocation.test.ts."
     },
     "SEC-03": {
       "family": "SEC",
@@ -2262,12 +2274,15 @@
     },
     "SEC-19": {
       "family": "SEC",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "db/migrations/0021_attestation_push.sql",
         "docs/api/openapi.yaml",
+        "docs/security/attestation.md",
+        "services/edge/src/attestation.ts",
         "services/edge/src/auth.ts"
       ],
-      "note": "Assertion header required on presence write; cryptographic verification + documented fallback pending."
+      "note": "Attestation before discovery with a documented fallback (docs/security/attestation.md): single-use 120 s challenges, signature verification, monotonic counter, verified_at registry; the corpus gates on attested_accounts (match profile read joins the view). Fallback: moderator-approved, audited, one-open-per-account, revocable waivers (attestation_fallbacks + approve/revoke definers under the moderator GUC; console routes POST/DELETE /v1/moderation/attestation-fallbacks/:userId). Legacy unverified enrolment stays accepted but discovery-ineligible until verified. Pins: test_batch29.py."
     },
     "SEC-20": {
       "family": "SEC",

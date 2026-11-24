@@ -591,4 +591,36 @@ export function registerModerationRoutes(app: FastifyInstance, ctx: EdgeContext)
       })),
     });
   });
+
+  // SEC-19: the documented attestation fallback. A moderator approves a
+  // waiver for an account whose device genuinely cannot attest; the waiver
+  // is one-open-per-account, audited (admin_audit inside the definer) and
+  // revocable. docs/security/attestation.md documents the review procedure.
+  app.post(
+    "/v1/moderation/attestation-fallbacks/:userId",
+    { preHandler: [requireModerator] },
+    async (req, reply) => {
+      const { userId } = req.params as { userId: string };
+      const actor = req.userId;
+      const rows = await withModerator(ctx.pg, async (c) =>
+        c.query("SELECT approve_attestation_fallback($1::uuid, $2) AS id", [userId, actor]),
+      );
+      return reply.code(201).send({ fallbackId: rows.rows[0].id, userId });
+    },
+  );
+
+  app.delete(
+    "/v1/moderation/attestation-fallbacks/:userId",
+    { preHandler: [requireModerator] },
+    async (req, reply) => {
+      const { userId } = req.params as { userId: string };
+      const rows = await withModerator(ctx.pg, async (c) =>
+        c.query("SELECT revoke_attestation_fallback($1::uuid, $2) AS revoked", [userId, req.userId]),
+      );
+      if (rows.rows[0].revoked !== true) {
+        return reply.code(404).send({ error: "no open attestation fallback" });
+      }
+      return reply.send({ ok: true });
+    },
+  );
 }

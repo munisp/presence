@@ -161,4 +161,4 @@ def test_openapi_documents_device_paths() -> None:
     assert "/v1/devices/{deviceId}:" in OPENAPI
     post = OPENAPI.split("/v1/devices:")[1].split("/v1/devices/{deviceId}:")[0]
     assert "x-app-attest-assertion" in post
-    assert "Enrol a device (FR-05, FR-07)" in post
+    assert "Enrol a device (FR-05, FR-07, FR-51/SEC-19)" in post

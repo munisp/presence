@@ -13,6 +13,7 @@
  */
 
 import { EdgeContext, publishRealtime } from "./context.js";
+import { PushProvider, buildPushPayload, dispatchPush, pushProvidersFromEnv } from "./push.js";
 
 export const NOTIFICATION_CATEGORIES = [
   "matches",
@@ -154,7 +155,25 @@ export function shouldNotify(
  * Publish one notification event to a user's realtime channel, gated by
  * their stored preferences. Returns true when the event was published.
  * Load-cheap: one indexed row read per notification.
+ *
+ * FR-56: the same event drives the push pipeline — the APNs/FCM payload is
+ * the minimal { type, ref } derived by buildPushPayload, dispatched after
+ * the realtime publish. Events without an opaque identifier (and all
+ * payloads in credential-less dev stacks) simply get no push.
  */
+let pushProviders: readonly PushProvider[] | null = null;
+
+/** Lazily read the env-gated provider list once per process. */
+function pushProviderList(): readonly PushProvider[] {
+  if (pushProviders === null) pushProviders = pushProvidersFromEnv();
+  return pushProviders;
+}
+
+/** Test hook: inject providers (and reset between tests). */
+export function setPushProvidersForTest(providers: readonly PushProvider[] | null): void {
+  pushProviders = providers;
+}
+
 export async function notifyUser(
   ctx: EdgeContext,
   userId: string,
@@ -168,5 +187,11 @@ export async function notifyUser(
   const stored = row.rows[0]?.notification_prefs;
   if (!shouldNotify(stored, category)) return false;
   await publishRealtime(ctx, `user:${userId}`, event);
+  const payload = buildPushPayload(event);
+  if (payload !== null) {
+    dispatchPush(ctx, pushProviderList(), userId, payload).catch((err) =>
+      console.error("push dispatch failed", err),
+    );
+  }
   return true;
 }

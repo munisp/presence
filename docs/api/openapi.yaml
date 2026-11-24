@@ -190,22 +190,41 @@ paths:
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       responses:
         "200": { description: Cleared (or none was set). }
+  /v1/devices/attestation-challenge:
+    post:
+      summary: Mint a verified-enrolment challenge (FR-51/SEC-19)
+      description: >-
+        Single-use 256-bit challenge, 120-second TTL. The verified enrolment
+        signs sha256(challenge:userId) with the platform attestation key and
+        presents it in the enrolment body's `attestation` object; the
+        registry enforces a monotonic counter. Protocol and the documented
+        fallback: docs/security/attestation.md.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses:
+        "200": { description: Challenge minted. }
   /v1/devices:
     post:
-      summary: Enrol a device (FR-05, FR-07)
+      summary: Enrol a device (FR-05, FR-07, FR-51/SEC-19)
       description: >-
         Attestation-gated enrolment. At most three devices stay enrolled
         concurrently; a fourth is refused (FR-05) and the account's other
         sessions are notified. The attestation key hash is registered for
         duplicate-account detection — a collision is recorded silently and
         the response stays neutral either way (FR-07). Re-enrolling an
-        already-enrolled device refreshes it.
+        already-enrolled device refreshes it. With the optional
+        `attestation` object the key is cryptographically verified
+        (challenge-bound signature, monotonic counter) and the account
+        becomes discovery-eligible (FR-51); without it the enrolment is
+        accepted but unverified and the account cannot appear in results
+        until it verifies.
       parameters:
         - name: x-app-attest-assertion
           in: header
-          required: true
+          required: false
           schema: { type: string }
-          description: App Attest / Play Integrity assertion (FR-51/SEC-19).
+          description: >-
+            App Attest / Play Integrity assertion. Required when the body
+            carries no `attestation` object (FR-51/SEC-19).
         - { $ref: "#/components/parameters/IdempotencyKey" }
       requestBody:
         required: false
@@ -216,20 +235,32 @@ paths:
               additionalProperties: false
               properties:
                 label: { type: string }
+                attestation:
+                  type: object
+                  additionalProperties: false
+                  required: [platform, publicKey, counter, signature]
+                  properties:
+                    platform: { type: string, enum: [app_attest, play_integrity] }
+                    publicKey: { type: string, description: base64 SPKI (P-256) }
+                    counter: { type: integer, minimum: 0 }
+                    signature: { type: string, description: base64 ECDSA P-256 over sha256(challenge:userId) }
       responses:
         "201": { description: Device enrolled (or refreshed). }
         "400": { $ref: "#/components/responses/SchemaViolation" }
-        "401": { description: Missing app-attestation assertion. }
+        "401": { description: Missing app-attestation assertion, or the verified assertion failed. }
         "409": { description: Device limit reached; revoke a device first (FR-05). }
-        "422": { description: Label fails validation or screening. }
+        "422": { description: Label or attestation object fails validation. }
     get:
       summary: My enrolled devices (FR-05)
       responses:
         "200": { description: Own device list, enrolment order. }
   /v1/devices/{deviceId}:
     delete:
-      summary: Revoke one of my devices (FR-05)
-      description: Idempotent; a foreign or already-revoked id is a no-op.
+      summary: Revoke one of my devices (FR-05, SEC-02)
+      description: >-
+        Idempotent; a foreign or already-revoked id is a no-op. Revocation
+        denies the device's sessions immediately — the denylist write
+        precedes the response, meeting the 60-second SEC-02 budget.
       parameters:
         - name: deviceId
           in: path
@@ -238,6 +269,66 @@ paths:
         - { $ref: "#/components/parameters/IdempotencyKey" }
       responses:
         "200": { description: Revoked (or nothing to revoke). }
+  /v1/devices/{deviceId}/push-token:
+    put:
+      summary: Register the device's push token (FR-56)
+      description: >-
+        One current APNs/FCM token per device, owner-managed. Push payloads
+        carry only a notification type and an opaque identifier — never
+        profile content, reason text, handles or location.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [platform, token]
+              properties:
+                platform: { type: string, enum: [ios, android] }
+                token: { type: string, maxLength: 512 }
+      responses:
+        "200": { description: Token registered. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Device not found (or revoked). }
+        "409": { description: Token already registered on another device. }
+        "422": { description: Token is not a plausible push token. }
+  /v1/moderation/attestation-fallbacks/{userId}:
+    post:
+      summary: Approve an attestation fallback waiver (SEC-19)
+      description: >-
+        Moderator only. One open waiver per account; the waiver makes the
+        account discovery-eligible without a verified key, is written to
+        admin_audit, and is revocable. Procedure:
+        docs/security/attestation.md.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201": { description: Waiver approved (idempotent). }
+        "403": { description: Moderator role required. }
+    delete:
+      summary: Revoke an attestation fallback waiver (SEC-19)
+      description: Moderator only; audited. The account leaves discovery within one corpus refresh.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Waiver revoked. }
+        "403": { description: Moderator role required. }
+        "404": { description: No open waiver for this account. }
   /v1/devices/mock-location-refusal:
     post:
       summary: Record a client mock-location refusal (SEC-36)

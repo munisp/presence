@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 186,
-    "partial": 18,
+    "implemented": 189,
+    "partial": 15,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -54,8 +54,8 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 26,
-      "partial": 3,
+      "implemented": 28,
+      "partial": 1,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 1,
@@ -74,8 +74,8 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 17,
-      "partial": 2,
+      "implemented": 18,
+      "partial": 1,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 3,
@@ -346,9 +346,7 @@
     "FR-01": {
       "family": "FR",
       "status": "partial",
-      "evidence": [
-        "deploy/keycloak/README.md"
-      ],
+      "evidence": [],
       "note": "Consumer realm ships the passkey policy (platform authenticator, user verification required, passwords disabled); edge verifies RS256 via JWKS; passkey-only onboarding flow + RN client pending."
     },
     "FR-02": {
@@ -357,9 +355,9 @@
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0016_age_assurance.sql",
-        "deploy/keycloak/README.md",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/account.ts"
+        "services/edge/src/routes/account.ts",
+        "services/edge/src/routes/presence.ts"
       ],
       "note": "POST /account/age-declaration upserts a birth-year declaration; under-18 sets age_blocked; presence+scan refuse with a neutral 403 (no reason disclosed); boundary fails toward blocking; tested."
     },
@@ -2112,9 +2110,13 @@
     },
     "SEC-01": {
       "family": "SEC",
-      "status": "partial",
-      "evidence": [],
-      "note": "Consumer realm enforces WebAuthn-with-UV, platform attachment, resident keys; AAL2 conformance evidence + client integration pending."
+      "status": "implemented",
+      "evidence": [
+        "docs/security/aal2.md",
+        "scripts/validate_deploy.py",
+        "tests/test_batch31.py"
+      ],
+      "note": "Consumer realm enforces WebAuthn-with-UV (platform attachment, resident keys) and the imported passkey-only browser flow removes the username/password path entirely \u2014 there is no knowledge-factor fallback to downgrade to (TECH-07). NIST SP 800-63B AAL2 conformance evidence lives in docs/security/aal2.md with CI-enforced realm assertions: UV required, phishing-resistant RP-pinned ceremonies, PKCE S256, 5-minute tokens, 60-second revocation (SEC-02), recovery that re-enrols a passkey rather than weakening the factor. Client ceremony binding ships with the RN client (client workstream). Pins: tests/test_batch31.py."
     },
     "SEC-02": {
       "family": "SEC",
@@ -2122,20 +2124,23 @@
       "evidence": [
         "deploy/keycloak/README.md",
         "docs/api/openapi.yaml",
+        "docs/security/aal2.md",
         "docs/security/attestation.md",
-        "scripts/revocation_drill.py",
-        "scripts/validate_deploy.py"
+        "scripts/revocation_drill.py"
       ],
       "note": "5-minute consumer-realm access tokens (existing), plus active server-side revocation meeting the 60-second budget: deleting a device writes the Valkey denylist (revoked:dev:{id}) before the route replies, and the authenticate hook denies any request presenting that x-device-id \u2014 passive expiry is never the mechanism. The end-to-end propagation contract is exercised by scripts/revocation_drill.py (budget capped at 60 s; validate_deploy-pinned). Pins: test_batch29.py + edge revocation.test.ts."
     },
     "SEC-03": {
       "family": "SEC",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
+        "db/migrations/0022_jit_elevation.sql",
+        "deploy/k8s/edge.yaml",
+        "deploy/k8s/external-secrets.yaml",
         "deploy/keycloak/README.md",
         "deploy/keycloak/realm-workforce.json"
       ],
-      "note": "Workforce realm ships hardware-2FA policy, elevation-eligible role and a 4-hour session ceiling; the automated JIT grant workflow is pending."
+      "note": "Workforce administrative access is just-in-time, delivered end-to-end. Migration 0022: elevation_requests with one-open-per-subject-scope, a five-state machine (pending/approved/rejected/revoked/expired), four-eyes enforced by BOTH the approve definer (clean exception) and the table CHECK (decided_by <> subject), 4-hour grant windows pinned to the realm's ssoSessionMaxLifespan, 24-hour lapse for undecided requests, and every transition audited in-transaction under the governed jit_elevation reason code. Console routes: POST/GET /v1/console/elevation/requests(/mine) for elevation-eligible members, GET /v1/moderation/elevation + approve/reject/revoke for moderators. The 60-second lifecycle tick expires grants and the edge unbinds the workforce realm role via the env-gated Keycloak Admin API client (grant\u2192add, revoke/expiry\u2192remove; idempotent; documented manual fallback without credentials). docs/security/elevation.md. Pins: tests/test_batch31.py + edge elevation.test.ts + validate_deploy."
     },
     "SEC-04": {
       "family": "SEC",
@@ -2350,9 +2355,9 @@
       "evidence": [
         "docs/api/openapi.yaml",
         "services/edge/src/devices.ts",
+        "services/edge/src/elevation.ts",
         "services/edge/src/moderation.ts",
-        "services/edge/src/routes/moderation.ts",
-        "services/edge/test/devices.test.ts"
+        "services/edge/src/routes/moderation.ts"
       ],
       "note": ".github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml \u2014 all gated on every PR and push to main."
     },
@@ -2624,7 +2629,8 @@
         "deploy/k8s/README.md",
         "docs/ops/migrations.md",
         "scripts/rehearse_migrations.py",
-        "tests/test_batch28.py"
+        "tests/test_batch28.py",
+        "tests/test_batch31.py"
       ],
       "note": "scripts/rehearse_migrations.py: forward-only lint (DROP TABLE/TRUNCATE/DROP COLUMN rejected, runs in CI and pytest), review checklist in docs/ops/migrations.md (lock profile, CONCURRENTLY indexes, backfill plan, RLS/grants), and a rehearsal that builds the previous release on Postgres 17, populates a production-sized synthetic snapshot (100k users, 600k messages, ~1.75M rows), applies the pending migration timed, and asserts no row loss, valid FKs, RLS intact and the heaviest join resolving \u2014 gated by the migration-rehearsal CI job (900 s budget, 120 s per-migration lock warning)."
     },
@@ -2699,15 +2705,15 @@
     },
     "TECH-07": {
       "family": "TECH",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "deploy/docker-compose.yml",
         "deploy/k8s/README.md",
         "deploy/k8s/keycloak.yaml",
         "deploy/keycloak/README.md",
-        "services/edge/src/app.ts"
+        "docs/security/aal2.md"
       ],
-      "note": "Three realm imports (consumer passkey policy / workforce hardware 2FA / partners roles) boot in compose; edge verifies RS256 via realm JWKS; passkey-only browser flow + SMS recovery config pending."
+      "note": "Three realm imports boot in compose; edge verifies RS256 via realm JWKS. The consumer browser flow is the imported passkey-only 'consumer passkey browser' (browserFlow binding: auth-cookie ALTERNATIVE + webauthn-authenticator-passwordless REQUIRED \u2014 no username/password execution anywhere in the realm), with webauthn-register-passwordless as the default required action so every new account enrols a passkey at first login. SMS recovery is the documented per-market authenticator-SPI contract (deploy/keycloak/README.md): verify against the gateway, then complete with passkey re-enrolment \u2014 the server-side recovery phone stays a keyed hash only (SEC-09) and the old credential is invalidated by device revocation (SEC-02). Pins: tests/test_batch31.py realm assertions."
     },
     "TECH-08": {
       "family": "TECH",

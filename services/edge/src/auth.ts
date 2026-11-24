@@ -124,7 +124,7 @@ export async function requireVenueOps(req: FastifyRequest, reply: FastifyReply):
   await requireWorkforceRole(req, reply, "venue-ops");
 }
 
-async function requireWorkforceRole(req: FastifyRequest, reply: FastifyReply, role: string): Promise<void> {
+export async function requireWorkforceRole(req: FastifyRequest, reply: FastifyReply, role: string): Promise<void> {
   const payload = ((req as AuthedRequest).tokenPayload ?? {}) as {
     iss?: string;
     realm_access?: { roles?: unknown };

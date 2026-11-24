@@ -26,12 +26,17 @@ Asserts (with requirement ids):
          the managed secret store.
   TECH-18 the Go presence/venue/consent service cores exist, are stdlib-only,
          and are exercised by the go-services CI job (gofmt, vet, tests).
+  SEC-03 the JIT elevation migration is mounted, four-eyes is enforced in
+         the storage layer, and the Keycloak role binding is env-gated.
+  SEC-01/TECH-07 the consumer realm browser flow is passkey-only (no
+         username/password execution) with AAL2 + elevation evidence docs.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -306,6 +311,39 @@ def main() -> int:
         "TECH-18 go-services CI job runs gofmt, vet and tests for all cores",
         "go-services:" in ci and ci.count("go vet ./... && go test ./...") >= 3
         and "gofmt" in ci,
+    )
+
+    # ---------------- SEC-03 / SEC-01 / TECH-07 (batch 31) ----------------
+    jit = ROOT / "db" / "migrations" / "0022_jit_elevation.sql"
+    jit_src = jit.read_text() if jit.exists() else ""
+    k8s_readme = (K8S / "README.md").read_text()
+    check(
+        "SEC-03 JIT elevation migration exists and is mounted in the k8s release",
+        jit.exists() and "24_jit_elevation.sql=db/migrations/0022_jit_elevation.sql" in k8s_readme,
+    )
+    check(
+        "SEC-03 four-eyes is enforced in the storage layer and the definer",
+        "CHECK (decided_by IS NULL OR decided_by <> subject)" in jit_src
+        and "four-eyes: approver must differ from requester" in jit_src
+        and "interval '4 hours'" in jit_src,
+    )
+    app_ts = (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+    edge_yaml = (K8S / "edge.yaml").read_text()
+    check(
+        "SEC-03 elevation routes registered; Keycloak role binding env-gated from the store",
+        "registerElevationRoutes" in app_ts
+        and "key: KEYCLOAK_ADMIN_CLIENT_ID, optional: true" in edge_yaml
+        and "key: KEYCLOAK_ADMIN_CLIENT_SECRET, optional: true" in edge_yaml,
+    )
+    consumer = json.loads(
+        (ROOT / "deploy" / "keycloak" / "realm-consumer.json").read_text()
+    )
+    check(
+        "SEC-01/TECH-07 consumer realm is passkey-only with AAL2 + elevation evidence docs",
+        consumer.get("browserFlow") == "consumer passkey browser"
+        and "auth-username-password-form" not in json.dumps(consumer)
+        and (ROOT / "docs" / "security" / "aal2.md").exists()
+        and (ROOT / "docs" / "security" / "elevation.md").exists(),
     )
 
     print()

@@ -57,6 +57,15 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: FCM_PROJECT_ID, optional: true } }
             - name: FCM_ACCESS_TOKEN
               valueFrom: { secretKeyRef: { name: presence-secrets, key: FCM_ACCESS_TOKEN, optional: true } }
+            # SEC-03: the JIT elevation role binding. Without the client
+            # credentials the binding is a documented no-op and operators
+            # bind manually (deploy/keycloak/README.md).
+            - name: KEYCLOAK_ADMIN_BASE_URL
+              value: http://keycloak:8080   # in-cluster; per environment
+            - name: KEYCLOAK_ADMIN_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: KEYCLOAK_ADMIN_CLIENT_ID, optional: true } }
+            - name: KEYCLOAK_ADMIN_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: KEYCLOAK_ADMIN_CLIENT_SECRET, optional: true } }
           readinessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /healthz, port: 4000 }, periodSeconds: 10 }
           resources:   # INF-05: 3 x 2 vCPU / 4 GB

@@ -34,6 +34,7 @@ services:
       - ../db/migrations/0019_reporting_compliance.sql:/docker-entrypoint-initdb.d/21_reporting_compliance.sql:ro
       - ../db/migrations/0020_venue_registry.sql:/docker-entrypoint-initdb.d/22_venue_registry.sql:ro
       - ../db/migrations/0021_attestation_push.sql:/docker-entrypoint-initdb.d/23_attestation_push.sql:ro
+      - ../db/migrations/0022_jit_elevation.sql:/docker-entrypoint-initdb.d/24_jit_elevation.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

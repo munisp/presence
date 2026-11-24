@@ -11,6 +11,7 @@ import { httpDuration, httpRequests, metrics, moderationQueueAge, publishFailure
 import { resolveRequestId } from "./requestid.js";
 import { registerCheckinRoutes } from "./routes/checkin.js";
 import { registerConsentRoutes } from "./routes/consent.js";
+import { registerElevationRoutes } from "./routes/elevation.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerGeofenceRoutes } from "./routes/geofence.js";
@@ -138,6 +139,7 @@ export async function buildApp(ctx: EdgeContext) {
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);
     registerModerationRoutes(authed, ctx);
+    registerElevationRoutes(authed, ctx);
     registerRoomRoutes(authed, ctx);
     registerIntentRoutes(authed, ctx);
     registerDeviceRoutes(authed, ctx);

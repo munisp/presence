@@ -13,6 +13,8 @@
 
 import Postgres from "pg";
 
+import { KeycloakAdminConfig, bindModeratorRole, keycloakAdminFromEnv } from "./keycloakAdmin.js";
+
 export const OFFER_TTL_MS = 30 * 60 * 1000;               // FR-33
 export const CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000;   // FR-37
 export const PURGE_AFTER_CLOSE_MS = 24 * 60 * 60 * 1000;  // NFR-20
@@ -44,13 +46,17 @@ export function isOfferLive(state: string, closedAt: unknown, expiresAt: unknown
 }
 
 /** Run one lifecycle tick (expiry → lapse → purge → retention). Returns the row counts. */
-export async function lifecycleTick(pg: Postgres.Pool): Promise<{
+export async function lifecycleTick(
+  pg: Postgres.Pool,
+  admin: KeycloakAdminConfig | null = null,
+): Promise<{
   offersExpired: number;
   conversationsLapsed: number;
   envelopesPurged: number;
   offersPurged: number;
   ledgersAnonymised: number;
   reportsPurged: number;
+  elevationsExpired: number;
 }> {
   const r = await pg.query("SELECT * FROM lifecycle_tick()");
   // NFR-22: reports and their moderation decisions are disposed of after 12
@@ -58,6 +64,14 @@ export async function lifecycleTick(pg: Postgres.Pool): Promise<{
   // 60-second tick path is untouched, and the disposal is audited into
   // security_audit (SEC-30).
   const rr = await pg.query("SELECT reports_retention_tick() AS purged");
+  // SEC-03: JIT elevation grants expire inside the workforce realm's 4-hour
+  // session ceiling. The definer flips and audits them and returns the
+  // subjects so the edge can unbind the Keycloak realm role — fire-and-
+  // forget, the Postgres record is authoritative (keycloakAdmin.ts).
+  const ex = await pg.query("SELECT subject FROM expire_elevations()");
+  for (const row of ex.rows as Array<{ subject: string }>) {
+    void bindModeratorRole(admin, "revoke", row.subject);
+  }
   const row = r.rows[0];
   return {
     offersExpired: row.offers_expired,
@@ -66,13 +80,18 @@ export async function lifecycleTick(pg: Postgres.Pool): Promise<{
     offersPurged: row.offers_purged,
     ledgersAnonymised: row.ledgers_anonymised,
     reportsPurged: rr.rows[0].purged,
+    elevationsExpired: ex.rows.length,
   };
 }
 
 /** Drive the tick once a minute. Returns a stop function (for tests/shutdown). */
-export function startLifecycleJob(pg: Postgres.Pool, intervalMs = LIFECYCLE_TICK_MS): () => void {
+export function startLifecycleJob(
+  pg: Postgres.Pool,
+  intervalMs = LIFECYCLE_TICK_MS,
+  admin: KeycloakAdminConfig | null = keycloakAdminFromEnv(),
+): () => void {
   const timer = setInterval(() => {
-    lifecycleTick(pg).catch((err) => console.error("lifecycle tick failed", err));
+    lifecycleTick(pg, admin).catch((err) => console.error("lifecycle tick failed", err));
   }, intervalMs);
   timer.unref();
   return () => clearInterval(timer);

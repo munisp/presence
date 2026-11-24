@@ -329,6 +329,99 @@ paths:
         "200": { description: Waiver revoked. }
         "403": { description: Moderator role required. }
         "404": { description: No open waiver for this account. }
+  /v1/console/elevation/requests:
+    post:
+      summary: Request just-in-time elevation (SEC-03)
+      description: >-
+        Workforce realm + elevation-eligible role. One open request per
+        subject and scope; re-requesting is idempotent. The justification
+        is screened like any other free text. Approval is four-eyes: a
+        DIFFERENT moderator must decide, and the grant lives at most 4
+        hours (pinned to the realm session ceiling). docs/security/elevation.md.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [justification]
+              additionalProperties: false
+              properties:
+                scope: { type: string, enum: [moderation] }
+                # Bounds (10–500 chars) are enforced by the edge parser so
+                # they can return a 422 with an explanation.
+                justification: { type: string }
+      responses:
+        "201": { description: Request recorded (or the open request returned). }
+        "403": { description: Elevation-eligible role required. }
+        "422": { description: Scope or justification invalid, or screening failed. }
+  /v1/console/elevation/requests/mine:
+    get:
+      summary: My elevation requests (SEC-03)
+      description: Workforce realm + elevation-eligible role; the requester's own requests, newest first.
+      responses:
+        "200": { description: The requester's elevation requests. }
+        "403": { description: Elevation-eligible role required. }
+  /v1/moderation/elevation:
+    get:
+      summary: The elevation queue (SEC-03)
+      description: Moderator only. Pending requests oldest-first, then the most recent decisions.
+      responses:
+        "200": { description: Pending requests followed by recent decisions. }
+        "403": { description: Moderator role required. }
+  /v1/moderation/elevation/{requestId}/approve:
+    post:
+      summary: Approve an elevation request, four-eyes (SEC-03)
+      description: >-
+        Moderator only; the approver must differ from the requester
+        (enforced by the definer AND the table CHECK). The grant window is
+        4 hours from the decision; the edge binds the workforce realm role
+        for exactly that window. Audited.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Grant approved; expiresAt returned. }
+        "403": { description: Moderator role required. }
+        "404": { description: Elevation request not found. }
+        "409": { description: Not pending, or four-eyes violation. }
+  /v1/moderation/elevation/{requestId}/reject:
+    post:
+      summary: Reject an elevation request (SEC-03)
+      description: Moderator only; closes the pending request without a grant. Audited.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Request rejected. }
+        "403": { description: Moderator role required. }
+        "404": { description: Elevation request not found. }
+        "409": { description: Request is not pending. }
+  /v1/moderation/elevation/{requestId}/revoke:
+    post:
+      summary: Revoke a live elevation grant (SEC-03)
+      description: >-
+        Moderator only; ends the grant early and unbinds the realm role in
+        the same request. Audited.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Grant revoked. }
+        "403": { description: Moderator role required. }
+        "404": { description: Elevation request not found. }
+        "409": { description: Grant is not active. }
   /v1/devices/mock-location-refusal:
     post:
       summary: Record a client mock-location refusal (SEC-36)

@@ -404,7 +404,9 @@ def test_traceability_reclassifies_the_batch() -> None:
         assert match.group(1).strip() == "implemented", requirement
 
 
-def test_traceability_counts_after_batch_40() -> None:
-    assert "| implemented | 219 |" in TRACEABILITY
-    assert "| partial | 7 |" in TRACEABILITY
+def test_traceability_counts_after_batch_41() -> None:
+    # Batch 41 closed the four journey partials (FR-03/08/41/48)
+    # partial → implemented: 219 → 223, 7 → 3.
+    assert "| implemented | 223 |" in TRACEABILITY
+    assert "| partial | 3 |" in TRACEABILITY
     assert "| client | 14 |" in TRACEABILITY

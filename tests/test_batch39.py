@@ -333,9 +333,11 @@ def test_traceability_reclassifies_the_batch() -> None:
     assert "presenceHalo.ts" in fr77.group(3)
 
 
-def test_traceability_counts_after_batch_40() -> None:
+def test_traceability_counts_after_batch_41() -> None:
     # Batch 40 reclassified six interaction-surface requirements
     # (FR-81/82/83/84/86/SEC-35) client → implemented: 213 → 219.
-    assert "| implemented | 219 |" in TRACEABILITY
-    assert "| partial | 7 |" in TRACEABILITY
+    # Batch 41 closed the four journey partials (FR-03/08/41/48)
+    # partial → implemented: 219 → 223, 7 → 3.
+    assert "| implemented | 223 |" in TRACEABILITY
+    assert "| partial | 3 |" in TRACEABILITY
     assert "| client | 14 |" in TRACEABILITY

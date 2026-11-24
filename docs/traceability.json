@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 219,
-    "partial": 7,
+    "implemented": 223,
+    "partial": 3,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 14,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 93,
-      "partial": 5,
+      "implemented": 97,
+      "partial": 1,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 1,
@@ -369,15 +369,15 @@
     },
     "FR-03": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0019_reporting_compliance.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/account.ts",
-        "tests/test_reporting_compliance.py"
+        "docs/ux/interaction-surfaces.md",
+        "services/edge/src/routes/account.ts"
       ],
-      "note": "DELETE /v1/account erases in one authenticated call; the <=3-tap journey is client UX, pending with the RN client."
+      "note": "DELETE /v1/account erases in one authenticated call; the client journey is pinned in journeyContracts.ts \u2014 three steps (settings -> account -> confirm) inside the three-tap budget ending in that call, with no support-contact step (budget and no-support proofs test-pinned, App-shell guard)."
     },
     "FR-04": {
       "family": "FR",
@@ -428,15 +428,15 @@
     },
     "FR-08": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "db/migrations/0006_profile_safety.sql",
         "db/migrations/0011_linking.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/linking.ts",
-        "services/edge/src/profile.ts"
+        "docs/ux/interaction-surfaces.md",
+        "services/edge/src/linking.ts"
       ],
-      "note": "PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Gap: the searchable <=3-level picker UI is client work (RN milestone)."
+      "note": "PUT/GET /v1/profile/interests replace the set server-side: 3-20 unique taxonomy nodes validated, weights in (0,1], sensitive rejected at write time (TR-22). Client journeyContracts.ts mirrors the 3..20 bounds (cross-pinned to profile.ts INTEREST_MIN/MAX), pins the <=3-level first interaction, and makes the FR-08/FR-11 acceptance executable: below three declarations the publish is blocked with the pinned explanation and the picker offer (constellationPicker.ts reaches three inside its interaction budget); garbage counts fail closed to blocked."
     },
     "FR-09": {
       "family": "FR",
@@ -675,7 +675,7 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0019_reporting_compliance.sql",
         "docs/api/openapi.yaml",
-        "services/consent-go/README.md"
+        "docs/ux/interaction-surfaces.md"
       ],
       "note": "DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested."
     },
@@ -800,13 +800,14 @@
     },
     "FR-41": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "db/migrations/0006_profile_safety.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/interaction-surfaces.md",
         "services/edge/src/routes/messages.ts"
       ],
-      "note": "DELETE /v1/pairs/:pairId/messages/:messageId \u2014 sender-only (RESTRICTIVE policy + column-limited grant), 24-h window blanks the envelope and tombstones; 410 after. Gap: local delete UX is client work."
+      "note": "DELETE /v1/pairs/:pairId/messages/:messageId \u2014 sender-only (RESTRICTIVE policy + column-limited grant), 24-h window blanks the envelope and tombstones; 410 after. Client journeyContracts.ts mirrors the window and the pinned 410 sentence (revocation offered only for the user's own messages inside the window; garbage and future timestamps fail closed) and pins the local-delete honesty note; conversationThread.ts wires the per-message revoke plan, renders the 410 notice past the window, and plans local deletion."
     },
     "FR-42": {
       "family": "FR",
@@ -851,8 +852,8 @@
         "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
         "docs/ux/discovery-surfaces.md",
-        "services/edge/src/rooms.ts",
-        "services/edge/src/routes/rooms.ts"
+        "docs/ux/interaction-surfaces.md",
+        "services/edge/src/rooms.ts"
       ],
       "note": "Room content rules: opaque roomKey (sha256 venue:node), topic, kSuppressed member count, member-only GET with uniform 404, opt-in join/leave; notes carry no author field \u2014 opting in is what publishes; everything lives in Valkey with presence-aligned TTL (900s), no room table in Postgres (test-pinned)."
     },
@@ -876,9 +877,11 @@
     },
     "FR-48": {
       "family": "FR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Venue check-in codes live via FR-99/FR-100 signed per-floor tokens; venue-side code printing/distribution ops remain with the client workstream."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/interaction-surfaces.md"
+      ],
+      "note": "Venue check-in codes live via FR-99/FR-100 signed per-floor tokens: the venue mints at POST /v1/venues/:venueId/checkin-tokens (printed as the per-floor QR/NFC code \u2014 the displayable artefact) and the user presents at POST /v1/presence/checkin for (venueId, floorId) attribution. Client journeyContracts.ts pins the higher-than-cell confidence ordering (FR-89: indoors the cell is the fallback, never the default), the fail-closed code journey, and the tie to the FR-88 refusal's pinned alternative (publishGate.ts)."
     },
     "FR-49": {
       "family": "FR",
@@ -1081,8 +1084,8 @@
         "db/migrations/0007_group_surface.sql",
         "docs/api/openapi.yaml",
         "docs/ux/discovery-surfaces.md",
-        "services/edge/src/groups.ts",
-        "services/edge/src/routes/tables.ts"
+        "docs/ux/interaction-surfaces.md",
+        "services/edge/src/groups.ts"
       ],
       "note": "group_tables + group_table_members with member-only RLS; create/join require live venue presence; the six-seat cap is a data-layer trigger (SEC-33), re-join idempotent; self-serve leave, host remove, last-member-out closes."
     },
@@ -1231,7 +1234,11 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
-        "docs/ux/discovery-surfaces.md"
+        "docs/ux/discovery-surfaces.md",
+        "docs/ux/interaction-surfaces.md",
+        "tests/test_batch38.py",
+        "tests/test_batch39.py",
+        "tests/test_batch40.py"
       ],
       "note": "client/src/presence/constellationPicker.ts \u2014 PICKER_MODES pinned to constellation + search (spatial alongside text); every ConstellationNode is selectable at any depth (the selectable:true literal type), so interactionsToDeclare is pinned at 3 against MAX_PICKER_INTERACTIONS 4 with exactly one spare; auditInteractionSequence re-checks real sequences at runtime; renderPopularity returns null below POPULARITY_K_FLOOR 11 (cross-pinned to edge aggregate K_MIN) so a raw small count never renders. Pinned by client tests + tests/test_batch40.py."
     },
@@ -1239,21 +1246,28 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
-        "docs/ux/discovery-surfaces.md"
+        "docs/ux/discovery-surfaces.md",
+        "docs/ux/interaction-surfaces.md",
+        "tests/test_batch40.py"
       ],
       "note": "client/src/presence/holdToWave.ts \u2014 WAVE_PRESS_MIN_MS 400: waveProgress ramps 0..1 with quartered haptic stages (monotonic non-decreasing, garbage fails closed); evaluatePress returns 'wave' only at or beyond the threshold on-control \u2014 early release cancels, moving off the control cancels at any duration, and tapCannotWave proves no sub-threshold tap can ever fire. Pinned by client tests + tests/test_batch40.py."
     },
     "FR-83": {
       "family": "FR",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/interaction-surfaces.md",
+        "tests/test_batch40.py"
+      ],
       "note": "client/src/presence/haptics.ts \u2014 CONSENT_TRANSITIONS pins the five legal FR-29 transitions (cross-pinned to services/consent-go/statemachine.go); each has a distinct haptic signature (hapticsAreDistinct proves pairwise difference) plus a named audio cue and spoken announcement (audibleWithoutHaptics) so every state change survives haptics-off and eyes-free; unknown transitions fail closed to no feedback. Pinned by client tests + tests/test_batch40.py."
     },
     "FR-84": {
       "family": "FR",
       "status": "implemented",
       "evidence": [
-        "docs/ux/discovery-surfaces.md"
+        "docs/ux/discovery-surfaces.md",
+        "docs/ux/interaction-surfaces.md",
+        "tests/test_batch40.py"
       ],
       "note": "client/src/presence/closeOffer.ts \u2014 COLOCATION_CLOSE_OFFER_MIN_MS 15 min, open conversation required, broken clocks fail closed; the offer carries the pinned CLOSE_OFFER_BASIS ('if you've met\u2026'); accepting closes thread + notifications, declining returns the conversation snapshot byte-identical (declineLeavesIntact) and is never re-asked (due \u2192 shown \u2192 declined|accepted, no return). Pinned by client tests + tests/test_batch40.py."
     },
@@ -1271,7 +1285,11 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
-        "docs/ux/discovery-surfaces.md"
+        "docs/ux/discovery-surfaces.md",
+        "docs/ux/interaction-surfaces.md",
+        "tests/test_batch34.py",
+        "tests/test_batch37.py",
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/ambientSurfaces.ts \u2014 the three named surfaces (lockScreenIndicator, liveActivity, homeScreenWidget) are individually opt-in via setAmbientPreference (one surface per flip), defaultAmbientPreferences is all-false, planDisable is pinned to one action with no confirmation step; preferences persist under the allowlisted presence.ambient.prefs key (TR-30 wiped) and parse fails closed to all-off. Pinned by client tests + tests/test_batch40.py."
     },
@@ -1280,6 +1298,7 @@
       "status": "implemented",
       "evidence": [
         "docs/ux/discovery-surfaces.md",
+        "docs/ux/interaction-surfaces.md",
         "tests/test_batch39.py"
       ],
       "note": "client/src/presence/surfaceIntegrity.ts \u2014 the single PROHIBITED_ENGAGEMENT_PATTERNS registry (infinite/auto-loading scroll, typing indicators, read receipts, streaks, daily-login rewards, like/view counts, photo-at-match) every surface descriptor is audited against via descriptorViolations; the discovery surfaces (matchSurface, presenceHalo, offerWindow, discoverySkeleton) pass the guard by construction with pinned affordance lists, and the conversation surfaces inherit the same registry. Server-side the patterns remain structural (no endpoint serves the data). Pinned by client tests + tests/test_batch39.py."
@@ -2046,8 +2065,8 @@
         "docs/security/client-auth.md",
         "docs/security/sdk-allowlist.json",
         "docs/ux/discovery-surfaces.md",
-        "tests/test_batch34.py",
-        "tests/test_batch38.py"
+        "docs/ux/interaction-surfaces.md",
+        "tests/test_batch34.py"
       ],
       "note": "client/src/presence/localState.ts: LOCAL_STATE_ALLOWLIST of 4 namespaced keys (session refresh token, device id, notification prefs, taxonomy version); createLocalState is type-safe over allowlisted keys only; clearLocalState wipes every allowlisted key by construction (logout/uninstall); secrets backed by expo-secure-store via the platform adapter, not AsyncStorage."
     },
@@ -2536,7 +2555,11 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
-        "docs/ux/discovery-surfaces.md"
+        "docs/ux/discovery-surfaces.md",
+        "docs/ux/interaction-surfaces.md",
+        "tests/test_batch38.py",
+        "tests/test_batch39.py",
+        "tests/test_batch40.py"
       ],
       "note": "client/src/presence/ambientSurfaces.ts \u2014 contentless by construction: AmbientPayload carries exactly {kind, active} (a kind tag + one presence-active boolean), so no identity, reason text, participant count or location field can exist in the type; ambientPayloadViolations still audits every payload against AMBIENT_PAYLOAD_KEYS and the AMBIENT_FORBIDDEN_FIELDS list (identity/handle/photo/reason/count/cell/venue/distance/map\u2026) before anything reaches the OS ambient layer. Pinned by client tests + tests/test_batch40.py."
     },

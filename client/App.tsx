@@ -29,7 +29,17 @@
  * every consent transition has a distinct haptic plus an audio/spoken
  * channel (FR-83), the co-location close offer asks once and declining
  * changes nothing (FR-84), and ambient surfaces are individually
- * opt-in, off by default, and contentless (FR-86, SEC-35).
+ * opt-in, off by default, and contentless (FR-86, SEC-35). The journey
+ * contracts hold end to end: account deletion is three taps inside the
+ * app with no support contact (FR-03), presence refuses to publish with
+ * fewer than three interests and offers the picker (FR-08), own
+ * messages are revocable for 24 hours and conversations delete locally
+ * (FR-41), and venue check-in outranks cell matching indoors (FR-48,
+ * FR-89). The conversation surfaces inherit the same discipline: the
+ * thread has no typing indicator or read receipt by construction
+ * (FR-87), the RoomBoard renders k-suppressed notes with no authors
+ * (FR-45/46), and the TableCard shows time, place, head count and one
+ * generated prompt behind a six-seat join (FR-66/67, SEC-33).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -59,6 +69,14 @@ import {
   defaultAmbientPreferences,
   AMBIENT_SURFACES,
 } from "./src/presence/ambientSurfaces.js";
+import {
+  checkinHonoursFr48,
+  planAccountDelete,
+  presenceReadiness,
+} from "./src/presence/journeyContracts.js";
+import { threadHonoursFr87 } from "./src/presence/conversationThread.js";
+import { renderCrowd, roomBoardHonoursFr87 } from "./src/presence/roomBoard.js";
+import { planJoin, tableCardHonoursFr87 } from "./src/presence/tableCard.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 const SURFACE_CHECKS = [
@@ -86,6 +104,30 @@ const SURFACE_CHECKS = [
   // FR-86/SEC-35: ambient surfaces default off and the payload is contentless.
   AMBIENT_SURFACES.every((surface) => defaultAmbientPreferences()[surface] === false) &&
     ambientHonoursSec35(buildAmbientPayload(true)),
+  // FR-03: account deletion fits the three-tap budget, no support contact.
+  planAccountDelete().withinBudget && planAccountDelete().needsNoSupport,
+  // FR-08: two declared interests block the publish; check-in outranks cell (FR-48).
+  !presenceReadiness(2).publish && presenceReadiness(3).publish && checkinHonoursFr48(),
+  // FR-87: the conversation thread carries no typing indicator or read receipt.
+  threadHonoursFr87({
+    pairId: "pair-0",
+    messages: [],
+    sentCount: 0,
+    closeOffer: { conversationOpen: true, coLocatedMs: 0, offerState: "not-due" },
+    snapshot: { conversationOpen: true, notificationsEnabled: true },
+  }),
+  // FR-45: the RoomBoard renders a k-suppressed crowd with no authors.
+  roomBoardHonoursFr87({ topic: "", members: null, suppressed: true, k: 11, notes: [] }) &&
+    renderCrowd({ topic: "", members: null, suppressed: true, k: 11, notes: [] }) === null,
+  // FR-66/SEC-33: the TableCard joins while open and refuses the seventh seat.
+  planJoin(true, 5).action === "join" && planJoin(true, 6).action === "refuse" &&
+    tableCardHonoursFr87({
+      tableId: "t0",
+      time: "",
+      place: "",
+      headCount: 0,
+      prompt: { nodeId: "n", label: "", memberCount: 2, members: ["a", "b"], generated: true },
+    }),
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
@@ -107,6 +149,10 @@ export default function App() {
         {DEFAULT_EXPIRY_PRESENTATION} · surface guards {SURFACES_OK ? "green" : "BROKEN"}
         {"\n"}wave needs {WAVE_PRESS_MIN_MS} ms held · close offer after{" "}
         {COLOCATION_CLOSE_OFFER_MIN_MS / 60000} min co-located · ambient surfaces opt-in, contentless
+        {"\n"}delete account in 3 taps · &lt;3 interests blocks publish · revoke own messages 24 h ·
+        venue check-in &gt; cell indoors
+        {"\n"}thread: no typing indicator, no read receipts · room notes k-suppressed, authorless ·
+        tables seat six
       </Text>
     </View>
   );

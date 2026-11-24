@@ -21,11 +21,9 @@ the shared prohibition registry in `surfaceIntegrity.ts`.
 
 The conversation surfaces — the chat thread itself and the client
 rendering of RoomBoard (FR-45) and TableCard (FR-66/67) inside the
-shared skeleton's result region. Their content contracts are already
-server-side; when they land they inherit the same FR-87 registry, and
-that is where the typing-indicator and read-receipt bans bind.
-
-Also not here: the journey contracts (FR-03, FR-08, FR-41, FR-48) —
-the ≤3-tap end-to-end journeys that wire the picker, the wave gesture,
-and the conversation flows into complete paths. The interaction
-contracts above are the building blocks those journeys compose.
+shared skeleton's result region — and the journey contracts (FR-03,
+FR-08, FR-41, FR-48) landed in the next batch; see
+`docs/ux/journeys-and-conversations.md`. They inherit the same FR-87
+registry, and the conversation thread is where the typing-indicator
+and read-receipt bans bind. The interaction contracts above are the
+building blocks those journeys compose.

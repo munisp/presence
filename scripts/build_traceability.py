@@ -330,8 +330,8 @@ CLASSIFICATION.update({
 CLASSIFICATION.update({
     # ---------------- INF ----------------
     "INF-01": ("external-evidence", "Single primary region + same-jurisdiction warm standby — production topology."),
-    "INF-02": ("partial", "Local compose exists; integration/staging/production environments not provisioned."),
-    "INF-03": ("partial", "Synthetic distributional data generator exists (eval harness); environment separation pending INF-02."),
+    "INF-02": ("implemented", "Three environment overlays (deploy/k8s/overlays/{integration,staging,production}) build on the flat base with identity, data-policy and footprint patches only. deploy.yml lands every merge in integration; .github/workflows/promote.yml promotes staging/production from signed digests — staging resolves the digest integration is actually running, production requires explicit digests plus the staging soak gate, both re-verify the cosign OIDC signature and are environment-gated like INF-15's deploy pipeline."),
+    "INF-03": ("implemented", "Synthetic-only separation is machine-enforced: integration/staging namespaces carry presence.dev/data-policy: synthetic-only (production carries production), non-prod overlays pin their own DEPLOY_ENV and cap footprint, promotion moves artefacts never data, and scripts/check_env_separation.py gates it all in CI alongside the synthetic generator (eval harness) and docs/ops/environments.md."),
     "INF-04": ("implemented", "Compose + migrations + ADRs + full K8s manifests (deploy/k8s: workloads, gateway, HPA, NetworkPolicy, canary) are code; scripts/validate_deploy.py asserts the invariants."),
     "INF-05": ("external-evidence", "API/match sizing 3x 2 vCPU/4 GB — production."),
     "INF-06": ("external-evidence", "Valkey 1 primary + 1 replica, 4 GB — production."),
@@ -339,7 +339,7 @@ CLASSIFICATION.update({
     "INF-08": ("external-evidence", "Centrifugo 2 nodes x 2 vCPU — production."),
     "INF-09": ("superseded", "ClickHouse superseded by the OpenSearch-only decision (ADR-0006 / TECH-21)."),
     "INF-10": ("implemented", "autoscaling/v2 HPAs on edge + match: external p95 metric (120 ms target, 3-min window) with CPU fallback; scaleDown capped at 1 pod per 600 s; asserted by scripts/validate_deploy.py."),
-    "INF-11": ("partial", "TLS termination, HSTS and CSP configured at APISIX (validated); OCSP stapling is delegated to the cert-manager issuance chain and needs production evidence."),
+    "INF-11": ("implemented", "TLS termination, HSTS and CSP configured at APISIX (validated); the gateway now staples the CA's OCSP attestation itself (ssl_stapling + ssl_stapling_verify + trusted chain + in-cluster resolver in apisix.yaml), scripts/check_tls_posture.py asserts the directives statically in CI and collects live stapling evidence (--host openssl s_client -status, 30 s budget) per docs/ops/tls.md."),
     "INF-12": ("implemented", "K8s: only APISIX reaches edge, only edge reaches match, everything else ClusterIP/headless; default-deny-all NetworkPolicy; asserted by scripts/validate_deploy.py."),
     "INF-13": ("external-evidence", "Edge DDoS mitigation + pre-launch test."),
     "INF-14": ("implemented", "Default-deny egress + per-workload egress allowlists (DNS only otherwise) in deploy/k8s/networkpolicy.yaml; asserted by scripts/validate_deploy.py."),

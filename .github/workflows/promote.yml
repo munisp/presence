@@ -1,0 +1,156 @@
+# INF-02: environment promotion — staging and production rollouts.
+#
+# Promotion moves ARTEFACTS, never data (INF-03): the same signed digests
+# that integration already runs are re-verified with cosign and pinned into
+# the target environment's overlay. Production additionally enforces the
+# staging soak gate — staging must already be running exactly the digests
+# being promoted — and both environments sit behind GitHub environment
+# protection (approval rules), which is also the audit record of who
+# promoted what, when.
+#
+# Like deploy.yml, every job is dormant until its environment is wired:
+# STAGING_DEPLOY_ENABLED / PRODUCTION_DEPLOY_ENABLED repo variables plus the
+# matching KUBECONFIG secrets. The workflow file itself is the promotion
+# contract and is exercised statically in CI (validate_deploy + pytest).
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment to promote into
+        type: choice
+        options: [staging, production]
+        required: true
+      digest-edge:
+        description: >-
+          edge digest (sha256:…). Required for production; for staging the
+          digest currently live in integration is used when omitted.
+        required: false
+      digest-match:
+        description: >-
+          match digest (sha256:…). Required for production; for staging the
+          digest currently live in integration is used when omitted.
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  promote-staging:
+    if: inputs.target == 'staging' && vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-kustomize@v2
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # Staging defaults to whatever integration is actually running — the
+      # promoted artefact is the artefact that was observed live, never a
+      # re-build.
+      - name: Resolve digests from integration (when not pinned explicitly)
+        env:
+          INTEGRATION_KUBECONFIG: ${{ secrets.INTEGRATION_KUBECONFIG }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$INTEGRATION_KUBECONFIG" > "$HOME/.kube/config-integration"
+          chmod 600 "$HOME/.kube/config-integration"
+          K="kubectl --kubeconfig=$HOME/.kube/config-integration"
+          EDGE_DIGEST='${{ inputs.digest-edge }}'
+          MATCH_DIGEST='${{ inputs.digest-match }}'
+          if [ -z "$EDGE_DIGEST" ]; then
+            EDGE_DIGEST=$($K -n presence get deploy edge -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d@ -f2)
+          fi
+          if [ -z "$MATCH_DIGEST" ]; then
+            MATCH_DIGEST=$($K -n presence get deploy match -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d@ -f2)
+          fi
+          echo "EDGE_DIGEST=$EDGE_DIGEST" >> "$GITHUB_ENV"
+          echo "MATCH_DIGEST=$MATCH_DIGEST" >> "$GITHUB_ENV"
+
+      # The digest must verify against the merge pipeline's OIDC identity —
+      # unsigned or foreign artefacts never promote (SEC-24).
+      - name: Re-verify the signed digests
+        run: |
+          for PAIR in "edge:$EDGE_DIGEST" "match:$MATCH_DIGEST"; do
+            IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/${PAIR%%:*}@${PAIR##*:}"
+            cosign verify \
+              --certificate-identity-regexp \
+                "https://github.com/${{ github.repository }}/.github/workflows/deploy.yml" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$IMAGE" > /dev/null
+          done
+
+      - name: Pin and roll out to staging
+        env:
+          STAGING_KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
+        run: |
+          printf '%s' "$STAGING_KUBECONFIG" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          cd deploy/k8s/overlays/staging
+          kustomize edit set image \
+            presence/edge="${{ env.REGISTRY }}/${{ github.repository }}/edge@$EDGE_DIGEST" \
+            presence/match="${{ env.REGISTRY }}/${{ github.repository }}/match@$MATCH_DIGEST"
+          kubectl apply -k .
+          kubectl -n presence rollout status deployment/edge --timeout=300s
+          kubectl -n presence rollout status deployment/match --timeout=300s
+
+  promote-production:
+    if: inputs.target == 'production' && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-kustomize@v2
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # Production promotion is explicit-only: no silent defaults.
+      - name: Require explicit digests
+        run: |
+          test -n '${{ inputs.digest-edge }}'  || { echo 'digest-edge is required for production'; exit 1; }
+          test -n '${{ inputs.digest-match }}' || { echo 'digest-match is required for production'; exit 1; }
+
+      # Soak gate: staging must already be running EXACTLY these digests.
+      # A digest that has not soaked in staging cannot enter production.
+      - name: Verify the staging soak gate
+        env:
+          STAGING_KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$STAGING_KUBECONFIG" > "$HOME/.kube/config-staging"
+          chmod 600 "$HOME/.kube/config-staging"
+          K="kubectl --kubeconfig=$HOME/.kube/config-staging"
+          EDGE_LIVE=$($K -n presence get deploy edge -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d@ -f2)
+          MATCH_LIVE=$($K -n presence get deploy match -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d@ -f2)
+          [ "$EDGE_LIVE" = '${{ inputs.digest-edge }}' ]   || { echo "soak gate: staging edge runs $EDGE_LIVE, not ${{ inputs.digest-edge }}"; exit 1; }
+          [ "$MATCH_LIVE" = '${{ inputs.digest-match }}' ] || { echo "soak gate: staging match runs $MATCH_LIVE, not ${{ inputs.digest-match }}"; exit 1; }
+
+      - name: Re-verify the signed digests
+        run: |
+          for PAIR in "edge:${{ inputs.digest-edge }}" "match:${{ inputs.digest-match }}"; do
+            IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/${PAIR%%:*}@${PAIR##*:}"
+            cosign verify \
+              --certificate-identity-regexp \
+                "https://github.com/${{ github.repository }}/.github/workflows/deploy.yml" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$IMAGE" > /dev/null
+          done
+
+      - name: Pin and roll out to production
+        env:
+          PRODUCTION_KUBECONFIG: ${{ secrets.PRODUCTION_KUBECONFIG }}
+        run: |
+          printf '%s' "$PRODUCTION_KUBECONFIG" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          cd deploy/k8s/overlays/production
+          kustomize edit set image \
+            presence/edge="${{ env.REGISTRY }}/${{ github.repository }}/edge@${{ inputs.digest-edge }}" \
+            presence/match="${{ env.REGISTRY }}/${{ github.repository }}/match@${{ inputs.digest-match }}"
+          kubectl apply -k .
+          kubectl -n presence rollout status deployment/edge --timeout=600s
+          kubectl -n presence rollout status deployment/match --timeout=600s

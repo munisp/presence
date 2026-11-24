@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 189,
-    "partial": 15,
+    "implemented": 192,
+    "partial": 12,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -64,8 +64,8 @@
       "superseded": 0
     },
     "INF": {
-      "implemented": 7,
-      "partial": 3,
+      "implemented": 10,
+      "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
@@ -2336,10 +2336,11 @@
       "family": "SEC",
       "status": "implemented",
       "evidence": [
+        "docs/ops/environments.md",
         "services/match-core/README.md",
         "services/presence-go/README.md",
-        "tests/test_deploy_pipeline.py",
-        "tests/test_match_core.py"
+        "tests/test_batch32.py",
+        "tests/test_deploy_pipeline.py"
       ],
       "note": "Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) \u2014 signed provenance is a per-merge artefact, verified in the same job."
     },
@@ -2491,17 +2492,27 @@
     },
     "INF-02": {
       "family": "INF",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "deploy/k8s/README.md"
+        "deploy/k8s/README.md",
+        "deploy/k8s/overlays/integration/kustomization.yaml",
+        "deploy/k8s/overlays/production/kustomization.yaml",
+        "deploy/k8s/overlays/staging/kustomization.yaml",
+        "docs/ops/environments.md"
       ],
-      "note": "Local compose exists; integration/staging/production environments not provisioned."
+      "note": "Three environment overlays (deploy/k8s/overlays/{integration,staging,production}) build on the flat base with identity, data-policy and footprint patches only. deploy.yml lands every merge in integration; .github/workflows/promote.yml promotes staging/production from signed digests \u2014 staging resolves the digest integration is actually running, production requires explicit digests plus the staging soak gate, both re-verify the cosign OIDC signature and are environment-gated like INF-15's deploy pipeline."
     },
     "INF-03": {
       "family": "INF",
-      "status": "partial",
-      "evidence": [],
-      "note": "Synthetic distributional data generator exists (eval harness); environment separation pending INF-02."
+      "status": "implemented",
+      "evidence": [
+        "deploy/k8s/README.md",
+        "deploy/k8s/overlays/integration/kustomization.yaml",
+        "deploy/k8s/overlays/production/kustomization.yaml",
+        "deploy/k8s/overlays/staging/kustomization.yaml",
+        "docs/ops/environments.md"
+      ],
+      "note": "Synthetic-only separation is machine-enforced: integration/staging namespaces carry presence.dev/data-policy: synthetic-only (production carries production), non-prod overlays pin their own DEPLOY_ENV and cap footprint, promotion moves artefacts never data, and scripts/check_env_separation.py gates it all in CI alongside the synthetic generator (eval harness) and docs/ops/environments.md."
     },
     "INF-04": {
       "family": "INF",
@@ -2564,14 +2575,15 @@
     },
     "INF-11": {
       "family": "INF",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "deploy/apisix/apisix.yaml",
         "deploy/k8s/README.md",
         "deploy/k8s/apisix.yaml",
-        "scripts/validate_deploy.py"
+        "docs/ops/tls.md",
+        "scripts/check_tls_posture.py"
       ],
-      "note": "TLS termination, HSTS and CSP configured at APISIX (validated); OCSP stapling is delegated to the cert-manager issuance chain and needs production evidence."
+      "note": "TLS termination, HSTS and CSP configured at APISIX (validated); the gateway now staples the CA's OCSP attestation itself (ssl_stapling + ssl_stapling_verify + trusted chain + in-cluster resolver in apisix.yaml), scripts/check_tls_posture.py asserts the directives statically in CI and collects live stapling evidence (--host openssl s_client -status, 30 s budget) per docs/ops/tls.md."
     },
     "INF-12": {
       "family": "INF",

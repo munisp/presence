@@ -1,0 +1,66 @@
+# INF-02: integration environment — every merge to main lands here
+# automatically (deploy.yml). Smallest footprint: single replicas, tight HPA
+# ceiling, synthetic data only (INF-03 — the data-policy label is enforced by
+# scripts/check_env_separation.py).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../
+patches:
+  - target: { kind: Namespace, name: presence }
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: presence
+        labels:
+          presence.dev/environment: integration
+          presence.dev/data-policy: synthetic-only   # INF-03
+  - target: { kind: Deployment, name: edge }
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: edge
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: edge
+                env:
+                  - name: DEPLOY_ENV
+                    value: integration
+  - target: { kind: Deployment, name: match }
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: match
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: match
+                env:
+                  - name: DEPLOY_ENV
+                    value: integration
+  - target: { kind: HorizontalPodAutoscaler, name: edge }
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: edge
+      spec:
+        minReplicas: 1
+        maxReplicas: 4
+  - target: { kind: HorizontalPodAutoscaler, name: match }
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: match
+      spec:
+        minReplicas: 1
+        maxReplicas: 4

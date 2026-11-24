@@ -1,0 +1,47 @@
+# INF-02: production environment — the only environment holding real user
+# data (INF-03). Reached only through promote.yml: explicit digests, the
+# staging soak gate (staging must already run exactly these digests), a
+# cosign re-verification, and the GitHub environment approval. Scale and
+# HPA inherit the base; this overlay pins identity and policy.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../
+patches:
+  - target: { kind: Namespace, name: presence }
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: presence
+        labels:
+          presence.dev/environment: production
+          presence.dev/data-policy: production       # INF-03: real user data lives here only
+  - target: { kind: Deployment, name: edge }
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: edge
+      spec:
+        template:
+          spec:
+            containers:
+              - name: edge
+                env:
+                  - name: DEPLOY_ENV
+                    value: production
+  - target: { kind: Deployment, name: match }
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: match
+      spec:
+        template:
+          spec:
+            containers:
+              - name: match
+                env:
+                  - name: DEPLOY_ENV
+                    value: production

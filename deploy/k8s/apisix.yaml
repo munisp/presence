@@ -28,6 +28,15 @@ data:
         ssl_protocols: TLSv1.3        # TR-26: TLS 1.3 only — downgrade is impossible at the listener
         ssl_session_cache: shared:SSL:10m
         ssl_session_timeout: 10m
+        # INF-11: OCSP stapling at the gateway — clients receive the CA's
+        # revocation attestation inside the handshake and never query the CA
+        # themselves. The chain is cert-manager's tls.crt (leaf +
+        # intermediates); the responder lookup stays on cluster DNS.
+        ssl_stapling: on
+        ssl_stapling_verify: on
+        ssl_trusted_certificate: /usr/local/apisix/conf/ssl/tls.crt
+        resolver: kube-dns.kube-system.svc.cluster.local valid=300s
+        resolver_timeout: 5s
     plugins:
       - prometheus
       - request-id
@@ -118,7 +127,7 @@ spec:
           configMap: { name: apisix }
         - name: tls
           secret:
-            secretName: apisix-tls   # issued by cert-manager; OCSP stapling is delegated to the issuance chain (short-lived certs)
+            secretName: apisix-tls   # cert-manager issued; the gateway staples the CA's OCSP attestation from this chain (INF-11)
 ---
 # Sole public entry point (TECH-21). Everything else in the namespace is
 # ClusterIP/headless and unreachable from outside (INF-12).

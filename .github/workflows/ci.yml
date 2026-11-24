@@ -51,6 +51,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -q pyyaml
       - run: python3 scripts/validate_deploy.py
+      - run: python3 scripts/check_env_separation.py   # INF-03 separation gate
+      - run: python3 scripts/check_tls_posture.py      # INF-11 static TLS/OCSP gate
 
   # SEC-26: secret scanning on every PR.
   secrets:

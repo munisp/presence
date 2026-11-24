@@ -125,7 +125,7 @@ jobs:
           chmod 600 "$HOME/.kube/config"
       - name: Pin the signed digests and roll out
         run: |
-          cd deploy/k8s
+          cd deploy/k8s/overlays/integration
           kustomize edit set image \
             presence/edge="${{ env.REGISTRY }}/${{ github.repository }}/edge@${{ needs.artefacts.outputs.edge-digest }}" \
             presence/match="${{ env.REGISTRY }}/${{ github.repository }}/match@${{ needs.artefacts.outputs.match-digest }}"

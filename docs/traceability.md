@@ -8,8 +8,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 
 | Status | Count | Meaning |
 |---|---|---|
-| implemented | 189 | working in the repo with tests or structural evidence |
-| partial | 15 | meaningful part implemented; named gap remains |
+| implemented | 192 | working in the repo with tests or structural evidence |
+| partial | 12 | meaningful part implemented; named gap remains |
 | gap-p0 | 0 | ARC-P0 product scope, code not yet built |
 | phase-gated | 1 | ARC P1+ component; correctly deferred per TR-40 / ARC-002 §9 |
 | client | 36 | requires the React Native client workstream |
@@ -26,7 +26,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | NFR | 13 | 0 | 0 | 0 | 11 | 0 | 13 | 0 | 37 |
 | TR | 36 | 1 | 0 | 1 | 6 | 0 | 0 | 0 | 44 |
 | SEC | 28 | 1 | 0 | 0 | 1 | 5 | 3 | 0 | 38 |
-| INF | 7 | 3 | 0 | 0 | 0 | 1 | 8 | 1 | 20 |
+| INF | 10 | 0 | 0 | 0 | 0 | 1 | 8 | 1 | 20 |
 | TECH | 18 | 1 | 0 | 0 | 3 | 1 | 0 | 1 | 24 |
 | ACC | 0 | 1 | 0 | 0 | 0 | 4 | 5 | 0 | 10 |
 
@@ -291,7 +291,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | SEC-21 | implemented | `db/migrations/0009_rooms.sql`<br>`docs/api/openapi.yaml`<br>`services/edge/src/routes/messages.ts`<br>`services/edge/src/routes/rooms.ts`<br>`services/edge/src/screening.ts` | screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested. |
 | SEC-22 | implemented | `services/edge/src/routes/scan.ts`<br>`services/match/src/scan.ts`<br>`services/match/src/server.ts`<br>`services/match/test/rotation.test.ts` | No list endpoints; results capped at 3; tie-break rotates per scan via edge-supplied seed (sha256(seed:userId)); unseeded legacy order retained only for tooling/tests. |
 | SEC-23 | external-evidence | — | OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch. |
-| SEC-24 | implemented | `services/match-core/README.md`<br>`services/presence-go/README.md`<br>`tests/test_deploy_pipeline.py`<br>`tests/test_match_core.py` | Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) — signed provenance is a per-merge artefact, verified in the same job. |
+| SEC-24 | implemented | `docs/ops/environments.md`<br>`services/match-core/README.md`<br>`services/presence-go/README.md`<br>`tests/test_batch32.py`<br>`tests/test_deploy_pipeline.py` | Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) — signed provenance is a per-merge artefact, verified in the same job. |
 | SEC-25 | implemented | — | .github/workflows/ci.yml dependencies job — license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR. |
 | SEC-26 | implemented | `docs/api/openapi.yaml`<br>`services/edge/src/devices.ts`<br>`services/edge/src/elevation.ts`<br>`services/edge/src/moderation.ts`<br>`services/edge/src/routes/moderation.ts` | .github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main. |
 | SEC-27 | organisational | — | Independent pen test before launch and annually. |
@@ -312,8 +312,8 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | ID | Status | Evidence | Basis |
 |---|---|---|---|
 | INF-01 | external-evidence | `deploy/k8s/prometheusrules.yaml`<br>`docs/runbook.md` | Single primary region + same-jurisdiction warm standby — production topology. |
-| INF-02 | partial | `deploy/k8s/README.md` | Local compose exists; integration/staging/production environments not provisioned. |
-| INF-03 | partial | — | Synthetic distributional data generator exists (eval harness); environment separation pending INF-02. |
+| INF-02 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/overlays/integration/kustomization.yaml`<br>`deploy/k8s/overlays/production/kustomization.yaml`<br>`deploy/k8s/overlays/staging/kustomization.yaml`<br>`docs/ops/environments.md` | Three environment overlays (deploy/k8s/overlays/{integration,staging,production}) build on the flat base with identity, data-policy and footprint patches only. deploy.yml lands every merge in integration; .github/workflows/promote.yml promotes staging/production from signed digests — staging resolves the digest integration is actually running, production requires explicit digests plus the staging soak gate, both re-verify the cosign OIDC signature and are environment-gated like INF-15's deploy pipeline. |
+| INF-03 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/overlays/integration/kustomization.yaml`<br>`deploy/k8s/overlays/production/kustomization.yaml`<br>`deploy/k8s/overlays/staging/kustomization.yaml`<br>`docs/ops/environments.md` | Synthetic-only separation is machine-enforced: integration/staging namespaces carry presence.dev/data-policy: synthetic-only (production carries production), non-prod overlays pin their own DEPLOY_ENV and cap footprint, promotion moves artefacts never data, and scripts/check_env_separation.py gates it all in CI alongside the synthetic generator (eval harness) and docs/ops/environments.md. |
 | INF-04 | implemented | `deploy/k8s/README.md` | Compose + migrations + ADRs + full K8s manifests (deploy/k8s: workloads, gateway, HPA, NetworkPolicy, canary) are code; scripts/validate_deploy.py asserts the invariants. |
 | INF-05 | external-evidence | `deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | API/match sizing 3x 2 vCPU/4 GB — production. |
 | INF-06 | external-evidence | `deploy/k8s/README.md`<br>`deploy/k8s/valkey.yaml` | Valkey 1 primary + 1 replica, 4 GB — production. |
@@ -321,7 +321,7 @@ Total requirements: **306** (283 MUST · 22 SHOULD · 1 MAY per Appendix A).
 | INF-08 | external-evidence | — | Centrifugo 2 nodes x 2 vCPU — production. |
 | INF-09 | superseded | — | ClickHouse superseded by the OpenSearch-only decision (ADR-0006 / TECH-21). |
 | INF-10 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/canary.yaml`<br>`deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml` | autoscaling/v2 HPAs on edge + match: external p95 metric (120 ms target, 3-min window) with CPU fallback; scaleDown capped at 1 pod per 600 s; asserted by scripts/validate_deploy.py. |
-| INF-11 | partial | `deploy/apisix/apisix.yaml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`scripts/validate_deploy.py` | TLS termination, HSTS and CSP configured at APISIX (validated); OCSP stapling is delegated to the cert-manager issuance chain and needs production evidence. |
+| INF-11 | implemented | `deploy/apisix/apisix.yaml`<br>`deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`docs/ops/tls.md`<br>`scripts/check_tls_posture.py` | TLS termination, HSTS and CSP configured at APISIX (validated); the gateway now staples the CA's OCSP attestation itself (ssl_stapling + ssl_stapling_verify + trusted chain + in-cluster resolver in apisix.yaml), scripts/check_tls_posture.py asserts the directives statically in CI and collects live stapling evidence (--host openssl s_client -status, 30 s budget) per docs/ops/tls.md. |
 | INF-12 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/apisix.yaml`<br>`deploy/k8s/edge.yaml`<br>`deploy/k8s/match.yaml`<br>`deploy/k8s/namespace.yaml` | K8s: only APISIX reaches edge, only edge reaches match, everything else ClusterIP/headless; default-deny-all NetworkPolicy; asserted by scripts/validate_deploy.py. |
 | INF-13 | external-evidence | — | Edge DDoS mitigation + pre-launch test. |
 | INF-14 | implemented | `deploy/k8s/README.md`<br>`deploy/k8s/namespace.yaml`<br>`deploy/k8s/networkpolicy.yaml`<br>`docs/adr/0010-east-west-mtls-linkerd.md`<br>`scripts/validate_deploy.py` | Default-deny egress + per-workload egress allowlists (DNS only otherwise) in deploy/k8s/networkpolicy.yaml; asserted by scripts/validate_deploy.py. |

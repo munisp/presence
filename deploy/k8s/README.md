@@ -80,13 +80,40 @@ kubectl apply -f deploy/k8s/observability.yaml
 #    Grafana is internal-only: kubectl -n monitoring port-forward svc/grafana 3000:3000
 ```
 
+## Environments and promotion (INF-02/INF-03)
+
+This directory is the **base**; the three environments live in
+`overlays/{integration,staging,production}` and only patch identity, data
+policy, and (non-prod) footprint — never the base resources:
+
+| Environment | Reached by | Replicas / HPA | Data policy |
+|---|---|---|---|
+| integration | every merge to `main` (deploy.yml) | 1 / max 4 | synthetic-only |
+| staging | `promote.yml` → target `staging` | 2 / max 8 | synthetic-only |
+| production | `promote.yml` → target `production` | base (3 / max 20) | production |
+
+```bash
+kubectl apply -k deploy/k8s/overlays/integration   # or staging / production
+```
+
+Promotion moves **artefacts, never data** (INF-03): `promote.yml` re-verifies
+the cosign signature of the exact digests integration is running, pins them
+into the target overlay with `kustomize edit set image`, and for production
+enforces the staging soak gate (staging must already run those digests).
+Integration and staging namespaces are labelled
+`presence.dev/data-policy: synthetic-only`; real user data exists in
+production only. `scripts/check_env_separation.py` runs in CI so the policy
+cannot quietly rot; the full matrix is in `docs/ops/environments.md`.
+
 ## Requirement coverage
 
 | Requirement | Where |
 |---|---|
 | TR-26 TLS 1.3 + HTTP/2, no downgrade | `apisix.yaml` (`ssl_protocols: TLSv1.3`, `enable_http2`) |
 | INF-10 HPA p95>120 ms / 3 min, scale-in ≤1/10 min | `edge.yaml`, `match.yaml` (autoscaling/v2 `behavior`) |
-| INF-11 TLS at edge, HSTS, CSP | `apisix.yaml` (TLS termination + `response-rewrite` headers); OCSP stapling delegated to the cert-manager issuance chain |
+| INF-11 TLS at edge, HSTS, CSP, OCSP stapling | `apisix.yaml` (TLS termination + `response-rewrite` headers + `ssl_stapling` directives); evidence collector `scripts/check_tls_posture.py`, runbook `docs/ops/tls.md` |
+| INF-02 environment promotion | `overlays/{integration,staging,production}` + `.github/workflows/promote.yml` (cosign re-verify, staging soak gate) |
+| INF-03 data separation | namespace `data-policy` labels in the overlays; `scripts/check_env_separation.py` CI gate; matrix in `docs/ops/environments.md` |
 | INF-12 origin lockdown | `networkpolicy.yaml` (only APISIX reaches edge; only edge reaches match) |
 | INF-14 egress allowlist | `networkpolicy.yaml` (default-deny + per-workload allowlists, DNS only otherwise) |
 | INF-16 canary 5%/10 min + auto rollback | `canary.yaml` (Flagger on the APISIX provider) |

@@ -30,6 +30,12 @@ Asserts (with requirement ids):
          the storage layer, and the Keycloak role binding is env-gated.
   SEC-01/TECH-07 the consumer realm browser flow is passkey-only (no
          username/password execution) with AAL2 + elevation evidence docs.
+  INF-02 three environment overlays build on the flat base; deploy lands in
+         integration and promotion is gated, cosign-verified, soak-checked.
+  INF-03 non-prod overlays are labelled synthetic-only and pin their own
+         DEPLOY_ENV; promotion moves artefacts, never data.
+  INF-11 the gateway staples OCSP (stapling + verify + trusted chain +
+         resolver) with the evidence collector and runbook.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -344,6 +350,46 @@ def main() -> int:
         and "auth-username-password-form" not in json.dumps(consumer)
         and (ROOT / "docs" / "security" / "aal2.md").exists()
         and (ROOT / "docs" / "security" / "elevation.md").exists(),
+    )
+
+    # ---------------- INF-02 / INF-03 / INF-11 (batch 32) ----------------
+    overlays = {
+        env: (K8S / "overlays" / env / "kustomization.yaml")
+        for env in ("integration", "staging", "production")
+    }
+    check(
+        "INF-02 three environment overlays exist and build on the flat base",
+        all(p.exists() and "- ../../" in p.read_text() for p in overlays.values()),
+    )
+    check(
+        "INF-03 non-prod overlays are synthetic-only and pin their own DEPLOY_ENV",
+        all(
+            "presence.dev/data-policy: synthetic-only" in overlays[env].read_text()
+            and f"value: {env}" in overlays[env].read_text()
+            and "value: production" not in overlays[env].read_text()
+            for env in ("integration", "staging")
+        )
+        and "presence.dev/data-policy: production" in overlays["production"].read_text(),
+    )
+    promote = (ROOT / ".github" / "workflows" / "promote.yml").read_text()
+    deploy_yml = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    check(
+        "INF-02 deploy lands in integration; promotion is gated, signed, soak-checked",
+        "cd deploy/k8s/overlays/integration" in deploy_yml
+        and "vars.STAGING_DEPLOY_ENABLED == 'true'" in promote
+        and "vars.PRODUCTION_DEPLOY_ENABLED == 'true'" in promote
+        and promote.count("cosign verify") >= 2
+        and "soak gate" in promote,
+    )
+    apisix_src = (K8S / "apisix.yaml").read_text()
+    tls_check = ROOT / "scripts" / "check_tls_posture.py"
+    check(
+        "INF-11 gateway staples OCSP; evidence collector and runbook exist",
+        "ssl_stapling: on" in apisix_src
+        and "ssl_stapling_verify: on" in apisix_src
+        and tls_check.exists()
+        and "OCSP Response Status: successful" in tls_check.read_text()
+        and (ROOT / "docs" / "ops" / "tls.md").exists(),
     )
 
     print()

@@ -15,7 +15,8 @@
 
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
-import { EdgeContext, publishRealtime } from "../context.js";
+import { EdgeContext } from "../context.js";
+import { notifyUser } from "../notifications.js";
 import {
   DEVICE_LABEL_MAX_LEN,
   attestationKeyHash,
@@ -86,7 +87,8 @@ export function registerDeviceRoutes(app: FastifyInstance, ctx: EdgeContext): vo
 
         // FR-05: enrolment notice on the user's own channel — the label is
         // the only device detail; the fingerprint never leaves the server.
-        await publishRealtime(ctx, `user:${userId}`, {
+        // FR-58: this is an own-account safety notice — always delivered.
+        await notifyUser(ctx, userId, "safety", {
           type: "device_enrolled",
           deviceId: enrolled.device_id,
           label: parsed.label,

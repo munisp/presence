@@ -92,6 +92,21 @@ class InterestGraph:
     def __iter__(self):
         return iter(self._nodes.values())
 
+    def resolve(self, nid: str) -> str:
+        """TR-19: resolve a possibly-deprecated id to its live successor.
+
+        Ids are immutable — a deprecated node keeps its id and redirects;
+        the CMS prohibits chains (a redirect target must be live), and the
+        hop cap is defence in depth against a bad release, nothing more.
+        """
+        cur = nid
+        for _ in range(4):
+            node = self._nodes[cur]
+            if node.redirect is None:
+                return cur
+            cur = node.redirect
+        return cur
+
     # ---------------------------------------------------------- hierarchy ---
 
     def ancestors(self, nid: str, max_depth: int = EXPANSION_DEPTH):
@@ -140,3 +155,20 @@ class InterestGraph:
         for anc, hops in self.ancestors(nid):
             out[anc] = weight * (DECAY ** hops)
         return out
+
+
+def resolve_profile(profile: dict[str, float], graph: InterestGraph) -> dict[str, float]:
+    """TR-19: resolve declarations through deprecation redirects.
+
+    Weights max-combine when two declared ids land on the same live node; a
+    node the taxonomy no longer knows is skipped rather than raising — the
+    scan path must survive a profile written against an older release.
+    Insertion order is preserved (golden-parity contract).
+    """
+    out: dict[str, float] = {}
+    for nid, w in profile.items():
+        if nid not in graph:
+            continue
+        resolved = graph.resolve(nid)
+        out[resolved] = max(out.get(resolved, 0.0), w)
+    return out

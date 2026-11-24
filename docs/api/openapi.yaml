@@ -502,7 +502,14 @@ paths:
                 type: object
                 required: [state, results]
                 properties:
-                  state: { type: string, enum: [ok, quiet] }
+                  state:
+                    type: string
+                    enum: [ok, quiet, paused]
+                    description: >-
+                      NFR-14: paused is the graceful-degradation state — the
+                      matcher was unavailable, discovery is paused and the
+                      client shows 'discovery paused' rather than an error;
+                      results is empty and presence itself is unaffected.
                   results:
                     type: array
                     maxItems: 3
@@ -2784,15 +2791,28 @@ components:
     SchemaViolation:
       description: >-
         TR-23 strict-schema rejection — a required field is missing or an
-        unknown field was supplied (additionalProperties: false).
+        unknown field was supplied (additionalProperties: false). The body
+        follows the TR-25 error envelope; validation detail stays server-side.
       content:
         application/json:
-          schema:
-            type: object
-            properties:
-              statusCode: { type: integer, example: 400 }
-              error: { type: string, example: Bad Request }
-              message: { type: string }
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      description: >-
+        TR-25: every error response carries a stable machine-readable code, a
+        human message, and a retry hint. The code is "<status>.<slug of the
+        message>" and stays stable as long as the message text is stable.
+        retryable is true only for 429 and 5xx; rate-limited responses also
+        carry retryAfterSeconds. Error responses never leak internal
+        identifiers or stack traces — validation detail and exception
+        messages stay server-side.
+      type: object
+      required: [error, code, retryable]
+      properties:
+        error: { type: string, example: pair not found }
+        code: { type: string, example: "404.pair_not_found" }
+        retryable: { type: boolean }
+        retryAfterSeconds: { type: integer, description: present on rate-limited (429) responses }
   securitySchemes:
     bearerAuth:
       type: http

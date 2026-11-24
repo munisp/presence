@@ -60,16 +60,23 @@ export function registerProfileRoutes(app: FastifyInstance, ctx: EdgeContext): v
       }
       const nodeIds = interests.map((i) => i.nodeId);
       const rows = await ctx.pg.query(
-        "SELECT node_id, sensitive FROM taxonomy_nodes WHERE node_id = ANY($1::text[])",
+        "SELECT node_id, sensitive, redirect_to FROM taxonomy_nodes WHERE node_id = ANY($1::text[])",
         [nodeIds],
       );
-      const found = new Map(rows.rows.map((r) => [r.node_id as string, r.sensitive as boolean]));
+      const found = new Map(
+        rows.rows.map((r) => [r.node_id as string, { sensitive: r.sensitive as boolean, redirectTo: r.redirect_to as string | null }]),
+      );
       for (const i of interests) {
-        const sensitive = found.get(i.nodeId);
-        if (sensitive === undefined) {
+        const node = found.get(i.nodeId);
+        if (node === undefined) {
           return reply.code(422).send({ error: `unknown taxonomy node: ${i.nodeId}` });
         }
-        if (sensitive) {
+        if (node.redirectTo !== null) {
+          // TR-19: deprecation is a redirect — the editor follows it to the
+          // live successor rather than storing a dead id.
+          return reply.code(422).send({ error: "that interest has moved", redirectTo: node.redirectTo });
+        }
+        if (node.sensitive) {
           // TR-22/FR-10: sensitive nodes never enter a profile.
           return reply.code(422).send({ error: "that interest cannot be declared" });
         }

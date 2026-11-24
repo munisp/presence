@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 164,
-    "partial": 40,
+    "implemented": 170,
+    "partial": 34,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 36,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 72,
-      "partial": 12,
+      "implemented": 74,
+      "partial": 10,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 15,
@@ -34,8 +34,8 @@
       "superseded": 0
     },
     "NFR": {
-      "implemented": 10,
-      "partial": 3,
+      "implemented": 12,
+      "partial": 1,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 11,
@@ -44,8 +44,8 @@
       "superseded": 0
     },
     "TR": {
-      "implemented": 32,
-      "partial": 5,
+      "implemented": 34,
+      "partial": 3,
       "gap-p0": 0,
       "phase-gated": 1,
       "client": 6,
@@ -577,12 +577,15 @@
     },
     "FR-22": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "services/match/src/scan.ts",
-        "services/match/src/server.ts"
+        "services/match/src/server.ts",
+        "services/match/test/rotation.test.ts",
+        "services/match/test/tr19.test.ts",
+        "tests/test_error_contract.py"
       ],
-      "note": "MMR (lambda 0.7) over reason-node Jaccard; a hard no-shared-primary-reason guarantee is not enforced."
+      "note": "Hard guarantee in the ranker: MMR (lambda 0.7) still orders the pool, but a candidate whose primary reason (top-contributing reason node) is already taken is skipped \u2014 no two of the at-most-three results share a primary reason; the list may come back short (FR-20 is an upper bound). Unit-pinned incl. the rotation tests."
     },
     "FR-23": {
       "family": "FR",
@@ -678,7 +681,8 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
-        "docs/api/openapi.yaml"
+        "docs/api/openapi.yaml",
+        "services/edge/src/errors.ts"
       ],
       "note": "One wave per offer via illegal-transition rejection; the wave carries no content."
     },
@@ -953,15 +957,15 @@
     },
     "FR-58": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "db/migrations/0006_profile_safety.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/notifications.ts",
         "services/edge/src/routes/account.ts",
-        "services/edge/test/notifications.test.ts"
+        "services/edge/src/routes/consent.ts"
       ],
-      "note": "GET/PUT /v1/account/notifications over users.notification_prefs: six categories default-on, safety exemption enforced (422 on safety=false). Gap: enforcement lands with the notification dispatcher (no sender yet)."
+      "note": "GET/PUT /v1/account/notifications over users.notification_prefs: six categories default-on, safety exemption enforced (422 on safety=false). Delivery side: shouldNotify()/notifyUser() are the single gate for every realtime user-channel send \u2014 safety notices (device_enrolled, announcement_removed) always pass switch and quiet window; nudge (nudges) and pair-open (matches) events gate on the recipient's prefs; announcements/offers are pulled surfaces (no push path), so their switches are trivially honoured."
     },
     "FR-59": {
       "family": "FR",
@@ -1438,9 +1442,13 @@
     },
     "NFR-14": {
       "family": "NFR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Presence path is independent of the matcher; edge returns 502 today \u2014 graceful 'discovery paused' client state pending."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "services/edge/src/routes/scan.ts",
+        "tests/test_error_contract.py"
+      ],
+      "note": "Graceful degradation in the edge scan route: a matcher error or an unreachable matcher returns the structured { state: 'paused', results: [] } \u2014 the client shows 'discovery paused', never an error; presence is independent of the matcher and unaffected."
     },
     "NFR-15": {
       "family": "NFR",
@@ -1462,9 +1470,13 @@
     },
     "NFR-18": {
       "family": "NFR",
-      "status": "partial",
-      "evidence": [],
-      "note": "15-min TTL enforced; the 45-min grace semantics for index residue are only partially explicit (lazy stale-member filtering)."
+      "status": "implemented",
+      "evidence": [
+        "services/edge/src/routes/presence.ts",
+        "services/match/src/store.ts",
+        "tests/test_error_contract.py"
+      ],
+      "note": "15-min session TTL (900 s) + 45-min index grace: presence:user and the FR-16 session reverse index keep EX 900; the cell/venue index sets carry EX 3600 refreshed per publish, and lapsed members are pruned on the next publish in the cell \u2014 the session's cell stays attributable for the grace window and residue is bounded either way."
     },
     "NFR-19": {
       "family": "NFR",
@@ -1814,11 +1826,15 @@
     },
     "TR-19": {
       "family": "TR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
-        "presence/graph.py"
+        "presence/graph.py",
+        "presence/matching.py",
+        "services/edge/src/routes/profile.ts",
+        "services/match/src/engine.ts",
+        "services/match/test/tr19.test.ts"
       ],
-      "note": "redirect_to column + Python graph support exist; the TS engine does not resolve redirects yet."
+      "note": "Deprecation is a redirect, never a rename: both engines resolve redirect_to (4-hop cap, loops terminate) at profile-vector entry \u2014 resolveProfile/resolve_profile re-home declared weights onto live nodes (max-combine, insertion order preserved \u2192 golden parity holds when no redirects exist); the match store loads the column; the edge interests PUT rejects deprecated nodes with 422 + the redirect target."
     },
     "TR-20": {
       "family": "TR",
@@ -1859,9 +1875,9 @@
       "evidence": [
         "docs/api/openapi.yaml",
         "services/edge/src/app.ts",
+        "services/edge/src/errors.ts",
         "services/edge/src/reports.ts",
-        "services/edge/src/routes/account.ts",
-        "services/edge/src/routes/announcements.ts"
+        "services/edge/src/routes/account.ts"
       ],
       "note": "docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode \u2014 unknown fields hard-400 before the handler runs."
     },
@@ -1879,9 +1895,15 @@
     },
     "TR-25": {
       "family": "TR",
-      "status": "partial",
-      "evidence": [],
-      "note": "Errors carry a message only; stable machine codes + retry hints missing; no internal leaks observed."
+      "status": "implemented",
+      "evidence": [
+        "docs/api/openapi.yaml",
+        "services/edge/src/app.ts",
+        "services/edge/src/errors.ts",
+        "services/edge/test/error-contract.test.ts",
+        "tests/test_error_contract.py"
+      ],
+      "note": "services/edge/src/errors.ts: every error payload carries a stable code '<status>.<slug of the test-pinned message>' and retryable (true only for 429/5xx), attached app-wide via a preSerialization hook; rate-limited routes also carry retryAfterSeconds; setErrorHandler masks ajv validation detail (generic 400), maps the rate-limit 429 with its Retry-After window, and answers a generic retryable 500 \u2014 internal identifiers, validation trees and stack traces never cross the wire; documented as the ErrorEnvelope in openapi.yaml."
     },
     "TR-26": {
       "family": "TR",

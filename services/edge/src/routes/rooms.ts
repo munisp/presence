@@ -180,7 +180,10 @@ export function registerRoomRoutes(app: FastifyInstance, ctx: EdgeContext): void
       "NX",
     );
     if (gate === null) {
-      return reply.code(429).send({ error: "one note per five minutes per room (FR-46)" });
+      return reply.code(429).send({
+        error: "one note per five minutes per room (FR-46)",
+        retryAfterSeconds: ROOM_NOTE_INTERVAL_S,
+      });
     }
 
     // SEC-21: the member's first note in this room is screened; later notes

@@ -4,6 +4,7 @@ import fastifyRateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { authenticate, registerAuth } from "./auth.js";
 import { EdgeContext } from "./context.js";
+import { registerErrorContract } from "./errors.js";
 import { registerIdempotency } from "./idempotency.js";
 import { scrubLogArgs } from "./logscrub.js";
 import { resolveRequestId } from "./requestid.js";
@@ -54,6 +55,10 @@ export async function buildApp(ctx: EdgeContext) {
   app.addHook("onSend", async (req, reply) => {
     reply.header("x-request-id", req.id);
   });
+
+  // TR-25: every error payload carries a stable code and a retry hint; the
+  // error handler masks validation detail and internals.
+  registerErrorContract(app);
 
   // TECH-07: Keycloak consumer-realm RS256 via JWKS when KEYCLOAK_ISSUER is
   // set; HS256 dev secret otherwise (ADR-0003).

@@ -6,7 +6,12 @@
  *
  * Valkey key model (shared with the edge; see docs/presence-model.md):
  *   presence:user:{userId}   JSON {cell, venueId}  — EX 900 (FR-14)
- *   presence:cell:{cellId}   SET of userIds        — filtered at read time
+ *   presence:cell:{cellId}   SET of userIds        — EX 3600, refreshed per
+ *                                                    publish (NFR-18: the
+ *                                                    index outlives the
+ *                                                    15-min session by the
+ *                                                    45-min grace); filtered
+ *                                                    at read time
  */
 
 // Valkey speaks RESP; the client is ioredis (the registry mirror's iovalkey
@@ -42,7 +47,7 @@ export class Store {
   /** Taxonomy is near-static; loaded at boot and on demand after import. */
   async loadGraph(): Promise<InterestGraph> {
     const nodes = await this.pg.query(
-      "SELECT node_id AS nid, label, parent_id AS parent, kind, sensitive FROM taxonomy_nodes",
+      "SELECT node_id AS nid, label, parent_id AS parent, kind, sensitive, redirect_to AS redirect FROM taxonomy_nodes",
     );
     const links = await this.pg.query(
       "SELECT a_id AS a, b_id AS b, kind, weight FROM taxonomy_links",

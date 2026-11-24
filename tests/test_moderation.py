@@ -250,11 +250,11 @@ def test_fr57_nudge_route_is_capped() -> None:
 
 
 def test_fr57_nudge_respects_quiet_window_and_category() -> None:
+    # FR-58: the gate is shouldNotify (category switch + quiet window in one).
     route = CONSENT_ROUTE.split('"/v1/consent/:pairId/nudge"')[1]
     route = route.split('"/v1/consent/:pairId/open"')[0]
-    assert "inQuietWindow" in route
-    assert "getQuietWindow" in route
-    assert "nudges === false" in route
+    assert 'shouldNotify(recipientPrefs, "nudges")' in route
+    assert "notification_prefs" in route
 
 
 def test_fr57_nudge_event_carries_no_actor_identity() -> None:

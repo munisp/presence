@@ -21,7 +21,7 @@ import { withRls } from "../auth.js";
 import { EdgeContext, publishRealtime, ROTATION_TTL_S, rotationKey } from "../context.js";
 import { CloseReason, maskCloseReason } from "../lifecycle.js";
 import { NUDGE_DAILY_MAX } from "../moderation.js";
-import { getQuietWindow, inQuietWindow, mergePrefs } from "../notifications.js";
+import { shouldNotify } from "../notifications.js";
 import { recordTelemetry } from "../telemetry.js";
 import { WAVE_DAILY_MAX } from "../velocity.js";
 
@@ -65,7 +65,10 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
     const daily = await ctx.valkey.incr(`rl:wave:d:${req.userId}`);
     if (daily === 1) await ctx.valkey.expire(`rl:wave:d:${req.userId}`, 86400);
     if (daily > WAVE_DAILY_MAX) {
-      return reply.code(429).send({ error: "daily wave limit reached (SEC-20)" });
+      return reply.code(429).send({
+        error: "daily wave limit reached (SEC-20)",
+        retryAfterSeconds: 86400,
+      });
     }
 
     try {
@@ -119,7 +122,10 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
     const nudges = await ctx.valkey.incr(`nudge:d:${req.userId}`);
     if (nudges === 1) await ctx.valkey.expire(`nudge:d:${req.userId}`, 86400);
     if (nudges > NUDGE_DAILY_MAX) {
-      return reply.code(429).send({ error: "daily nudge limit reached (FR-57)" });
+      return reply.code(429).send({
+        error: "daily nudge limit reached (FR-57)",
+        retryAfterSeconds: 86400,
+      });
     }
 
     try {
@@ -150,9 +156,10 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
         const prefs = await c.query("SELECT notification_prefs FROM users WHERE user_id = $1", [recipient]);
         return { recipient, stored: prefs.rows[0]?.notification_prefs };
       });
-      const recipientPrefs = mergePrefs(out.stored);
-      const silenced = recipientPrefs.nudges === false || inQuietWindow(getQuietWindow(out.stored), new Date());
-      if (!silenced) {
+      const recipientPrefs = out.stored;
+      // FR-58: the recipient's category switch and quiet window gate the
+      // realtime event, not the state change.
+      if (shouldNotify(recipientPrefs, "nudges")) {
         // FR-30: the event carries no actor identity — pre-OPEN the pair
         // channel is the only address, and the payload is just the type.
         await publish(ctx, pairId, { type: "nudged" });
@@ -167,9 +174,9 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
   app.post("/v1/consent/:pairId/open", async (req, reply) => {
     const { pairId } = req.params as { pairId: string };
     try {
-      await withRls(ctx.pg, req.userId, async (c) => {
+      const out = await withRls(ctx.pg, req.userId, async (c) => {
         const cur = await c.query(
-          "SELECT state, closed_at, expires_at FROM matches WHERE pair_id = $1",
+          "SELECT state, closed_at, expires_at, user_lo, user_hi FROM matches WHERE pair_id = $1",
           [pairId],
         );
         if (cur.rows.length === 0) throw Object.assign(new Error("pair not found"), { code: 404 });
@@ -191,8 +198,19 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
             WHERE pair_id = $1 AND closed_at IS NULL`,
           [pairId],
         );
+        // FR-58: the recipient's matches switch gates the realtime notice.
+        const recipient =
+          cur.rows[0].user_lo === req.userId
+            ? (cur.rows[0].user_hi as string)
+            : (cur.rows[0].user_lo as string);
+        const prefs = await c.query("SELECT notification_prefs FROM users WHERE user_id = $1", [recipient]);
+        return { stored: prefs.rows[0]?.notification_prefs };
       });
-      await publish(ctx, pairId, { type: "open" });
+      // FR-58: the state change always happens; only the realtime notice is
+      // gated on the recipient's matches switch and quiet window.
+      if (shouldNotify(out.stored, "matches")) {
+        await publish(ctx, pairId, { type: "open" });
+      }
       recordTelemetry(ctx, "consent.transitioned", { to: "OPEN" });
       return reply.send({ pairId, state: "OPEN" });
     } catch (err) {

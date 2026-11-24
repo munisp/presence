@@ -35,7 +35,7 @@ const SCAN_RATE_MAX = 6;        // FR-24
 const SCAN_RATE_WINDOW = "1 minute";
 
 interface MatchScanResponse {
-  state: "ok" | "quiet";
+  state: "ok" | "quiet" | "paused";
   results: Array<{
     userId: string;
     score: number;
@@ -61,7 +61,10 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
       const hourly = await ctx.valkey.incr(`rl:scan:h:${userId}`);
       if (hourly === 1) await ctx.valkey.expire(`rl:scan:h:${userId}`, 3600);
       if (hourly > SCAN_HOURLY_MAX) {
-        return reply.code(429).send({ error: "hourly scan limit reached (SEC-20)" });
+        return reply.code(429).send({
+          error: "hourly scan limit reached (SEC-20)",
+          retryAfterSeconds: 3600,
+        });
       }
 
       const presence = await ctx.valkey.get(`presence:user:${userId}`);
@@ -85,6 +88,7 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         return reply.code(429).send({
           error: "match budget reached for this window (FR-28)",
           band: budget.band,
+          retryAfterSeconds: budget.windowSeconds,
         });
       }
 
@@ -185,15 +189,28 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
 
       // NFR-31: the edge's trace id propagates to the match service so the
       // scan path is traceable end to end (gateway → edge → match).
-      const res = await fetch(`${ctx.matchServiceUrl}/v1/scan`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-request-id": req.id },
-        body: JSON.stringify({ userId, cell, venue, exclude, tieBreakSeed }),
-      });
-      if (!res.ok) {
-        return reply.code(502).send({ error: "match service unavailable" });
+      // NFR-14: graceful degradation — if the matcher is unreachable or
+      // answers an error, the client sees a structured "discovery paused"
+      // state, never an error. Presence itself is unaffected; the next scan
+      // retries the matcher.
+      let body: MatchScanResponse;
+      try {
+        const res = await fetch(`${ctx.matchServiceUrl}/v1/scan`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-request-id": req.id },
+          body: JSON.stringify({ userId, cell, venue, exclude, tieBreakSeed }),
+        });
+        if (!res.ok) {
+          // NFR-14: matcher answered an error — degrade, never propagate.
+          req.log.warn({ statusCode: res.status }, "matcher unavailable; discovery paused");
+          return reply.send({ state: "paused", results: [] });
+        }
+        body = (await res.json()) as MatchScanResponse;
+      } catch {
+        // NFR-14: matcher unreachable — degrade, never propagate.
+        req.log.warn("matcher unreachable; discovery paused");
+        return reply.send({ state: "paused", results: [] });
       }
-      const body = (await res.json()) as MatchScanResponse;
 
       // FR-29: the first surfacing of a pair records DETECTED in the
       // append-only ledger (idempotent — later scans find the pair exists).

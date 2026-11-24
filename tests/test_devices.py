@@ -79,7 +79,9 @@ def test_fr05_revocation_is_idempotent_and_own_rows_only() -> None:
 
 
 def test_fr05_enrolment_notice_carries_no_fingerprint() -> None:
-    publish = ROUTE.split("publishRealtime(ctx, `user:${userId}`")[1].split(").catch")[0]
+    # FR-58: the notice is an own-account safety event through notifyUser —
+    # always delivered; the payload still carries no fingerprint material.
+    publish = ROUTE.split('notifyUser(ctx, userId, "safety"')[1].split(").catch")[0]
     assert '"device_enrolled"' in publish
     assert "fingerprint" not in publish
     assert "keyHash" not in publish

@@ -35,6 +35,8 @@ export interface GraphNode {
   parent: string | null;
   kind: string;
   sensitive: boolean;
+  /** TR-19: deprecation target — the node's immutable id redirects here. */
+  redirect?: string | null;
 }
 
 export interface GraphLink {
@@ -97,6 +99,23 @@ export class InterestGraph {
 
   has(nid: string): boolean {
     return this.nodes.has(nid);
+  }
+
+  /**
+   * TR-19: resolve a possibly-deprecated id to its live successor. Ids are
+   * immutable — a deprecated node keeps its id and redirects; the CMS
+   * prohibits chains (a redirect target must be live), and the hop cap is
+   * defence in depth against a bad release, nothing more.
+   */
+  resolve(nid: string): string {
+    let cur = nid;
+    for (let hop = 0; hop < 4; hop++) {
+      const n = this.nodes.get(cur);
+      if (!n) throw new Error(`unknown node ${nid}`);
+      if (!n.redirect) return cur;
+      cur = n.redirect;
+    }
+    return cur;
   }
 
   allNodes(): GraphNode[] {
@@ -230,17 +249,19 @@ export class Matcher {
    * Expand a profile into its weighted closure vector (TR-04, max-combine).
    * Semantic links add the linked node at its authored weight (TR-07). Pass
    * withLinks=false for anything feeding document frequency (TR-05).
+   * Declarations resolve through deprecation redirects first (TR-19).
    */
   vector(profile: Profile, withLinks = true): Map<string, number> {
+    const resolved = resolveProfile(profile, this.graph);
     const out = new Map<string, number>();
-    for (const [nid, w] of Object.entries(profile)) {
+    for (const [nid, w] of Object.entries(resolved)) {
       if (this.graph.get(nid).sensitive) continue; // TR-22 / FR-10
       for (const [cNid, cW] of this.graph.closure(nid, w)) {
         out.set(cNid, Math.max(out.get(cNid) ?? 0.0, cW));
       }
     }
     if (withLinks) {
-      for (const [nid, w] of Object.entries(profile)) {
+      for (const [nid, w] of Object.entries(resolved)) {
         if (this.graph.get(nid).sensitive) continue;
         for (const [other, link] of this.graph.linksFrom(nid)) {
           out.set(other, Math.max(out.get(other) ?? 0.0, link.weight * w));
@@ -350,21 +371,40 @@ export class Matcher {
   }
 }
 
-/** The non-sensitive declared nodes of a profile (FR-10). */
+/** The non-sensitive declared nodes of a profile, redirect-resolved (FR-10/TR-19). */
 export function declared(profile: Profile, graph: InterestGraph): string[] {
-  return Object.keys(profile).filter((n) => !graph.get(n).sensitive);
+  return Object.keys(resolveProfile(profile, graph)).filter((n) => !graph.get(n).sensitive);
+}
+
+/**
+ * TR-19: resolve every declaration through its deprecation redirect and
+ * max-combine weights when two declared ids land on the same live node. A
+ * node the taxonomy no longer knows is skipped rather than throwing — the
+ * scan path must survive a profile written against an older release.
+ */
+export function resolveProfile(profile: Profile, graph: InterestGraph): Profile {
+  const out: Profile = {};
+  for (const [nid, w] of Object.entries(profile)) {
+    if (!graph.has(nid)) continue;
+    const resolved = graph.resolve(nid);
+    out[resolved] = Math.max(out[resolved] ?? 0, w);
+  }
+  return out;
 }
 
 /**
  * The count behind the FR-11 discoverability floor (fewer than two
- * non-sensitive interests → not discoverable). Unlike declared(), a node
- * the taxonomy no longer knows is skipped rather than throwing — a stale
- * node cannot vouch for discoverability and must not crash the scan path.
+ * non-sensitive interests → not discoverable). Declarations are resolved
+ * through redirects first (TR-19): a deprecated node counts as its live
+ * successor, two declarations merging into one successor count once, and a
+ * successor that is itself sensitive does not count. Unknown nodes are
+ * skipped rather than throwing — a stale node cannot vouch for
+ * discoverability and must not crash the scan path.
  */
 export function nonSensitiveCount(profile: Profile, graph: InterestGraph): number {
   let n = 0;
-  for (const nid of Object.keys(profile)) {
-    if (graph.has(nid) && !graph.get(nid).sensitive) n += 1;
+  for (const nid of Object.keys(resolveProfile(profile, graph))) {
+    if (!graph.get(nid).sensitive) n += 1;
   }
   return n;
 }

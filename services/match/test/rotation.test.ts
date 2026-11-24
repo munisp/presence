@@ -3,6 +3,11 @@
  * to a stable ordering. With a per-scan seed the order among ties is
  * deterministic for that scan and rotates across scans; without a seed the
  * legacy userId order holds (tooling stays reproducible).
+ *
+ * Since batch 26 the FR-22 guarantee is hard: no two surfaced candidates may
+ * share the same primary reason, so a pool of identical profiles surfaces a
+ * single candidate — the tie-break decides WHICH one, and the seed rotates
+ * that choice.
  */
 
 import assert from "node:assert/strict";
@@ -33,9 +38,11 @@ function tiedCandidates() {
 test("without a seed the legacy userId order applies", () => {
   const { requester, candidates } = tiedCandidates();
   const out = rankScan(requester, candidates, matcher, corpus, { baseThreshold: 0.0 });
+  // FR-22: identical profiles share one primary reason, so exactly one
+  // surfaces — the legacy tie-break makes it the first by userId.
   assert.deepEqual(
     out.map((r) => r.userId),
-    ["aa", "bb", "cc"],
+    ["aa"],
   );
 });
 

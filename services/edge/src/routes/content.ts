@@ -18,7 +18,8 @@
 
 import { FastifyInstance } from "fastify";
 import { withRls } from "../auth.js";
-import { EdgeContext, publishRealtime } from "../context.js";
+import { EdgeContext } from "../context.js";
+import { notifyUser } from "../notifications.js";
 import { REPORT_CATEGORIES, ReportCategory } from "../reports.js";
 
 export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): void {
@@ -214,8 +215,9 @@ export function registerContentRoutes(app: FastifyInstance, ctx: EdgeContext): v
 
         if (removedPublisher) {
           // FR-98: the publisher is told their announcement came down; the
-          // channel carries no reporter information.
-          await publishRealtime(ctx, `user:${removedPublisher}`, {
+          // channel carries no reporter information. FR-58: an own-account
+          // moderation notice — safety category, always delivered.
+          await notifyUser(ctx, removedPublisher as string, "safety", {
             type: "announcement_removed",
             announcementId: body.announcementId,
           }).catch((err) => console.error("centrifugo publish failed", err));

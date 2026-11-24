@@ -122,7 +122,10 @@ export function registerAnnouncementRoutes(app: FastifyInstance, ctx: EdgeContex
     );
     const last = recent.rows[0]?.last as Date | null;
     if (last && Date.now() - new Date(last).getTime() < 24 * 3_600_000) {
-      return reply.code(429).send({ error: "one announcement per 24 hours (FR-95)" });
+      return reply.code(429).send({
+        error: "one announcement per 24 hours (FR-95)",
+        retryAfterSeconds: 86400,
+      });
     }
 
     const ttl = effectiveTtlMinutes(ttlMinutes);

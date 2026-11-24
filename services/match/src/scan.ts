@@ -123,13 +123,21 @@ export function rankScan(
   const maxResults = Math.min(Math.max(venue.maxResults ?? MAX_SCAN_RESULTS, 1), MAX_SCAN_RESULTS);
 
   // FR-22: maximal marginal relevance — pick the best remaining score net of
-  // similarity to what is already in the list.
+  // similarity to what is already in the list — with the spec's hard
+  // guarantee on top: no two returned candidates share the same primary
+  // reason (the top-contributing reason node). MMR stays the ordering; a
+  // pick whose primary is already taken is skipped, and when the pool can no
+  // longer offer a distinct primary the list ends short — FR-20's "at most
+  // three" permits fewer, duplication does not.
   const chosen: typeof eligible = [];
   const pool = [...eligible];
+  const usedPrimaries = new Set<string>();
   while (chosen.length < maxResults && pool.length > 0) {
-    let bestIdx = 0;
+    let bestIdx = -1;
     let bestMmr = -Infinity;
     for (let i = 0; i < pool.length; i++) {
+      const primary = pool[i].match.reasons[0]?.node;
+      if (primary !== undefined && usedPrimaries.has(primary)) continue;
       const redundancy = chosen.length === 0
         ? 0
         : Math.max(...chosen.map((c) => reasonOverlap(c.match, pool[i].match)));
@@ -139,7 +147,11 @@ export function rankScan(
         bestIdx = i;
       }
     }
-    chosen.push(pool.splice(bestIdx, 1)[0]);
+    if (bestIdx === -1) break; // no distinct primary left in the pool
+    const pick = pool.splice(bestIdx, 1)[0];
+    const primary = pick.match.reasons[0]?.node;
+    if (primary !== undefined) usedPrimaries.add(primary);
+    chosen.push(pick);
   }
 
   return chosen.map(({ candidate, match }) => ({

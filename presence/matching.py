@@ -36,7 +36,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from .graph import DECAY, EXPANSION_DEPTH, LINK_WEIGHT_CAP, InterestGraph
+from .graph import DECAY, EXPANSION_DEPTH, LINK_WEIGHT_CAP, InterestGraph, resolve_profile
 
 EXACT_OVERLAP_BONUS = 0.05   # per node declared by both profiles
 MIN_PROFILE = 2              # FR-11: fewer than two interests -> not discoverable
@@ -136,7 +136,9 @@ class Matcher:
         max. Semantic links add the linked node at its authored weight
         (TR-07). Pass with_links=False for anything feeding document
         frequency, which must be computed over link-free closures (TR-05).
+        Declarations resolve through deprecation redirects first (TR-19).
         """
+        profile = resolve_profile(profile, self.graph)
         out: dict[str, float] = {}
         for nid, w in profile.items():
             if self.graph[nid].sensitive:

@@ -6,7 +6,13 @@
  * FR-57: the stored jsonb may also carry a `quiet` window ({start,end}
  * "HH:MM" UTC) during which non-safety realtime notifications — nudges in
  * particular — are suppressed. Equal start/end disables the window.
+ *
+ * Delivery: every realtime notification to a user channel goes through
+ * notifyUser(), which gates on shouldNotify() — safety always passes,
+ * anything else respects the category switch and the quiet window.
  */
+
+import { EdgeContext, publishRealtime } from "./context.js";
 
 export const NOTIFICATION_CATEGORIES = [
   "matches",
@@ -122,4 +128,45 @@ export function applyPrefsPatch(stored: unknown, patch: unknown): PrefsPatchResu
   }
   merged[SAFETY_CATEGORY] = true;
   return { ok: true, prefs: merged };
+}
+
+/**
+ * FR-58: the delivery-side half of the contract. Whether a realtime
+ * notification may leave the server for a given stored prefs blob:
+ *   - safety notices always pass — the user's own-account safety notices are
+ *     exempt from both the switch and the quiet window;
+ *   - any other category is suppressed when its switch is off, or when the
+ *     FR-57 quiet window covers `now`.
+ */
+export function shouldNotify(
+  stored: unknown,
+  category: NotificationCategory,
+  now: Date = new Date(),
+): boolean {
+  if (category === SAFETY_CATEGORY) return true;
+  const prefs = mergePrefs(stored);
+  if (prefs[category] === false) return false;
+  if (inQuietWindow(getQuietWindow(stored), now)) return false;
+  return true;
+}
+
+/**
+ * Publish one notification event to a user's realtime channel, gated by
+ * their stored preferences. Returns true when the event was published.
+ * Load-cheap: one indexed row read per notification.
+ */
+export async function notifyUser(
+  ctx: EdgeContext,
+  userId: string,
+  category: NotificationCategory,
+  event: Record<string, unknown>,
+): Promise<boolean> {
+  const row = await ctx.pg.query(
+    "SELECT notification_prefs FROM users WHERE user_id = $1",
+    [userId],
+  );
+  const stored = row.rows[0]?.notification_prefs;
+  if (!shouldNotify(stored, category)) return false;
+  await publishRealtime(ctx, `user:${userId}`, event);
+  return true;
 }

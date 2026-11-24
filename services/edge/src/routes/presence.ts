@@ -41,6 +41,26 @@ import { ladderForCell, resolutionFor } from "../markets.js";
 import { lookupAttribution } from "../attribution.js";
 
 export const PRESENCE_TTL_S = 900; // FR-14
+/**
+ * NFR-18: a presence session and its cell persist for the 15-minute TTL plus
+ * a 45-minute grace. The per-user entry and session reverse index keep the
+ * 900 s TTL (that is the session); the cell/venue index sets keep entries for
+ * TTL + grace (3 600 s) so a lapsed session's cell stays attributable for the
+ * grace window. Index members whose per-user entry is gone are pruned on the
+ * next publish in the cell, and the sets themselves expire 3 600 s after the
+ * last publish — bounded residue either way.
+ */
+export const PRESENCE_INDEX_GRACE_S = 2700;
+const PRESENCE_INDEX_TTL_S = PRESENCE_TTL_S + PRESENCE_INDEX_GRACE_S;
+
+/** NFR-18: drop index members whose presence entry has already lapsed. */
+async function pruneCellResidue(ctx: EdgeContext, cell: string): Promise<void> {
+  const members = await ctx.valkey.smembers(`presence:cell:${cell}`);
+  for (const member of members) {
+    const live = await ctx.valkey.exists(`presence:user:${member}`);
+    if (!live) await ctx.valkey.srem(`presence:cell:${cell}`, member);
+  }
+}
 
 /** TR-12/14: the storage-resolution ladder moved to per-market
  * configuration (TR-37) — see services/edge/src/markets.ts. The pure
@@ -232,11 +252,23 @@ export function registerPresenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
     };
     const pipe = ctx.valkey.pipeline();
     pipe.set(`presence:user:${userId}`, JSON.stringify(entry), "EX", PRESENCE_TTL_S);
+    // NFR-18: index sets outlive the session by the 45-minute grace window;
+    // the TTL is refreshed on every publish, so residue is bounded by the
+    // last publish + TTL + grace even if the client vanishes.
     pipe.sadd(`presence:cell:${storedCell}`, userId);
-    if (venueId) pipe.sadd(`presence:venue:${venueId}`, userId);
+    pipe.expire(`presence:cell:${storedCell}`, PRESENCE_INDEX_TTL_S);
+    if (venueId) {
+      pipe.sadd(`presence:venue:${venueId}`, userId);
+      pipe.expire(`presence:venue:${venueId}`, PRESENCE_INDEX_TTL_S);
+    }
     // FR-16 reverse index: session id -> account id, same TTL as presence.
     pipe.set(sessionKey(sessionId), userId, "EX", PRESENCE_TTL_S);
     await pipe.exec();
+
+    // NFR-18: sweep lapsed members of this cell's index in the background.
+    pruneCellResidue(ctx, storedCell).catch((err) =>
+      console.error("presence index prune failed", err),
+    );
 
     return reply.send({ ok: true, cell: storedCell, ttl: PRESENCE_TTL_S, sessionId });
     },

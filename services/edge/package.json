@@ -23,7 +23,7 @@
     "fastify": "^5.2.0",
     "h3-js": "^4.2.1",
     "ioredis": "^6.0.0",
-    "jwks-rsa": "^3.2.0",
+    "jwks-rsa": "^4.1.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {

@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 213,
+    "implemented": 219,
     "partial": 7,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 20,
+    "client": 14,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -24,11 +24,11 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 88,
+      "implemented": 93,
       "partial": 5,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 6,
+      "client": 1,
       "organisational": 1,
       "external-evidence": 0,
       "superseded": 0
@@ -54,11 +54,11 @@
       "superseded": 0
     },
     "SEC": {
-      "implemented": 29,
+      "implemented": 30,
       "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 1,
+      "client": 0,
       "organisational": 5,
       "external-evidence": 3,
       "superseded": 0
@@ -719,8 +719,8 @@
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
-        "services/consent-go/README.md",
-        "services/edge/src/lifecycle.ts"
+        "docs/ux/discovery-surfaces.md",
+        "services/consent-go/README.md"
       ],
       "note": "30-min offer window: expires_at set at first surfacing, renewed per action; lifecycle_tick expires overdue offers; tested."
     },
@@ -850,9 +850,9 @@
       "evidence": [
         "db/migrations/0009_rooms.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/discovery-surfaces.md",
         "services/edge/src/rooms.ts",
-        "services/edge/src/routes/rooms.ts",
-        "tests/test_rooms.py"
+        "services/edge/src/routes/rooms.ts"
       ],
       "note": "Room content rules: opaque roomKey (sha256 venue:node), topic, kSuppressed member count, member-only GET with uniform 404, opt-in join/leave; notes carry no author field \u2014 opting in is what publishes; everything lives in Valkey with presence-aligned TTL (900s), no room table in Postgres (test-pinned)."
     },
@@ -1080,9 +1080,9 @@
       "evidence": [
         "db/migrations/0007_group_surface.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/discovery-surfaces.md",
         "services/edge/src/groups.ts",
-        "services/edge/src/routes/tables.ts",
-        "services/edge/test/groups.test.ts"
+        "services/edge/src/routes/tables.ts"
       ],
       "note": "group_tables + group_table_members with member-only RLS; create/join require live venue presence; the six-seat cap is a data-layer trigger (SEC-33), re-join idempotent; self-serve leave, host remove, last-member-out closes."
     },
@@ -1180,13 +1180,20 @@
     "FR-76": {
       "family": "FR",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/discovery-surfaces.md",
+        "tests/test_batch38.py",
+        "tests/test_batch39.py"
+      ],
       "note": "client/src/presence/matchSurface.ts \u2014 the match surface is built ONLY from the TR-35 MatchDiagram (itself derived from one scan result, no round trip): one ConvergingPath per shared node, a headline that names the commonality ('what you have in common'), a fixed {headline, paths} field set no photo/name/handle can occupy, and the matchSurfaceViolations guard scanning against the FR-87 registry + FORBIDDEN_MATCH_IDENTITY_FIELDS. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-77": {
       "family": "FR",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/discovery-surfaces.md",
+        "tests/test_batch39.py"
+      ],
       "note": "Structural: no endpoint exposes maps, bearings, distances, radii, or proximity arrangements. Client side, client/src/presence/surfaceIntegrity.ts pins the PROHIBITED_PROXIMITY_ELEMENTS registry every surface descriptor is audited against, and client/src/presence/presenceHalo.ts renders density with a fixed {intensity, level} field set \u2014 no positional or directional component exists in the type. Pinned by tests/test_batch39.py."
     },
     "FR-78": {
@@ -1194,47 +1201,61 @@
       "status": "implemented",
       "evidence": [
         "docs/analytics/README.md",
-        "docs/analytics/catalogue.yaml"
+        "docs/analytics/catalogue.yaml",
+        "docs/ux/discovery-surfaces.md",
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/presenceHalo.ts \u2014 density as an undirected field: a 0..1 intensity rising monotonically with the k-anonymised aggregate count (HALO_FULL_SCALE 20, clamped), a qualitative level (calm/stirring/lively/buzzing) forbidden from carrying digits so the raw count cannot leak, and invalid counts failing closed to the calmest field. haloHonoursFr77 asserts the descriptor against the FR-77 registry. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-79": {
       "family": "FR",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/discovery-surfaces.md",
+        "tests/test_batch39.py"
+      ],
       "note": "client/src/presence/offerWindow.ts \u2014 expiry as a closing perimeter: a 0..1 fraction monotonic non-increasing over OFFER_WINDOW_MS (mirror of edge OFFER_TTL_MS, pinned equal), DEFAULT_EXPIRY_PRESENTATION 'perimeter', and secondsRemaining physically null unless the user explicitly opted into the numeric form \u2014 the default render never computes a countdown. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-80": {
       "family": "FR",
       "status": "implemented",
       "evidence": [
-        "tests/test_batch34.py"
+        "docs/ux/discovery-surfaces.md",
+        "tests/test_batch34.py",
+        "tests/test_batch37.py",
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/discoverySkeleton.ts \u2014 pairs/rooms/tables share one pinned region list (header/modeSelector/resultRegion/statusTray); only resultContent differs (skeletonSharedAcrossModes guard). Each mode has a pinned one-sentence explanation shown once per user (seen-set under the allowlisted presence.ui.seenExplanations key, TR-30 wiped, parse fails toward explaining again); planModeChange defers any switch while a conversation is open. SKELETON_AFFORDANCES has no load-more \u2014 the result region renders one bounded payload. Pinned by client tests + tests/test_batch39.py."
     },
     "FR-81": {
       "family": "FR",
-      "status": "client",
-      "evidence": [],
-      "note": "Spatial taxonomy picker + <=4-interaction interest selection."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/discovery-surfaces.md"
+      ],
+      "note": "client/src/presence/constellationPicker.ts \u2014 PICKER_MODES pinned to constellation + search (spatial alongside text); every ConstellationNode is selectable at any depth (the selectable:true literal type), so interactionsToDeclare is pinned at 3 against MAX_PICKER_INTERACTIONS 4 with exactly one spare; auditInteractionSequence re-checks real sequences at runtime; renderPopularity returns null below POPULARITY_K_FLOOR 11 (cross-pinned to edge aggregate K_MIN) so a raw small count never renders. Pinned by client tests + tests/test_batch40.py."
     },
     "FR-82": {
       "family": "FR",
-      "status": "client",
-      "evidence": [],
-      "note": "400-ms sustained-press wave with progressive feedback."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/discovery-surfaces.md"
+      ],
+      "note": "client/src/presence/holdToWave.ts \u2014 WAVE_PRESS_MIN_MS 400: waveProgress ramps 0..1 with quartered haptic stages (monotonic non-decreasing, garbage fails closed); evaluatePress returns 'wave' only at or beyond the threshold on-control \u2014 early release cancels, moving off the control cancels at any duration, and tapCannotWave proves no sub-threshold tap can ever fire. Pinned by client tests + tests/test_batch40.py."
     },
     "FR-83": {
       "family": "FR",
-      "status": "client",
+      "status": "implemented",
       "evidence": [],
-      "note": "Distinct haptics per transition + non-visual channel."
+      "note": "client/src/presence/haptics.ts \u2014 CONSENT_TRANSITIONS pins the five legal FR-29 transitions (cross-pinned to services/consent-go/statemachine.go); each has a distinct haptic signature (hapticsAreDistinct proves pairwise difference) plus a named audio cue and spoken announcement (audibleWithoutHaptics) so every state change survives haptics-off and eyes-free; unknown transitions fail closed to no feedback. Pinned by client tests + tests/test_batch40.py."
     },
     "FR-84": {
       "family": "FR",
-      "status": "client",
-      "evidence": [],
-      "note": "Co-located close suggestion after 15 min (SHOULD)."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/discovery-surfaces.md"
+      ],
+      "note": "client/src/presence/closeOffer.ts \u2014 COLOCATION_CLOSE_OFFER_MIN_MS 15 min, open conversation required, broken clocks fail closed; the offer carries the pinned CLOSE_OFFER_BASIS ('if you've met\u2026'); accepting closes thread + notifications, declining returns the conversation snapshot byte-identical (declineLeavesIntact) and is never re-asked (due \u2192 shown \u2192 declined|accepted, no return). Pinned by client tests + tests/test_batch40.py."
     },
     "FR-85": {
       "family": "FR",
@@ -1248,14 +1269,19 @@
     },
     "FR-86": {
       "family": "FR",
-      "status": "client",
-      "evidence": [],
-      "note": "Ambient surfaces individually opt-in, off by default, one-action disable."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/discovery-surfaces.md"
+      ],
+      "note": "client/src/presence/ambientSurfaces.ts \u2014 the three named surfaces (lockScreenIndicator, liveActivity, homeScreenWidget) are individually opt-in via setAmbientPreference (one surface per flip), defaultAmbientPreferences is all-false, planDisable is pinned to one action with no confirmation step; preferences persist under the allowlisted presence.ambient.prefs key (TR-30 wiped) and parse fails closed to all-off. Pinned by client tests + tests/test_batch40.py."
     },
     "FR-87": {
       "family": "FR",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/discovery-surfaces.md",
+        "tests/test_batch39.py"
+      ],
       "note": "client/src/presence/surfaceIntegrity.ts \u2014 the single PROHIBITED_ENGAGEMENT_PATTERNS registry (infinite/auto-loading scroll, typing indicators, read receipts, streaks, daily-login rewards, like/view counts, photo-at-match) every surface descriptor is audited against via descriptorViolations; the discovery surfaces (matchSurface, presenceHalo, offerWindow, discoverySkeleton) pass the guard by construction with pinned affordance lists, and the conversation surfaces inherit the same registry. Server-side the patterns remain structural (no endpoint serves the data). Pinned by client tests + tests/test_batch39.py."
     },
     "FR-88": {
@@ -1675,7 +1701,9 @@
     "NFR-35": {
       "family": "NFR",
       "status": "client",
-      "evidence": [],
+      "evidence": [
+        "docs/ux/discovery-surfaces.md"
+      ],
       "note": "60 fps match surface (>=30 fps floor on weakest supported device)."
     },
     "NFR-36": {
@@ -2017,6 +2045,7 @@
       "evidence": [
         "docs/security/client-auth.md",
         "docs/security/sdk-allowlist.json",
+        "docs/ux/discovery-surfaces.md",
         "tests/test_batch34.py",
         "tests/test_batch38.py"
       ],
@@ -2068,10 +2097,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/discovery-surfaces.md",
         "scripts/validate_deploy.py",
         "services/edge/src/diagramSpec.ts",
-        "services/edge/src/routes/scan.ts",
-        "tests/test_batch36.py"
+        "services/edge/src/routes/scan.ts"
       ],
       "note": "Versioned diagram spec, renderable from the payload alone. Server (services/edge/src/diagramSpec.ts): DIAGRAM_SPEC_VERSION = 1 is the normative node/edge semantics definition (anchors you/them; one node per reason with normalised contribution share; two edges per reason labelled by the declaring side, kind carries reach semantics), stamped as diagramSpec on every scan result \u2014 client and server agree by construction, and validate_deploy pins the stamping. Client (client/src/presence/matchDiagram.ts): buildMatchDiagram derives the entire diagram from one scan result with zero network code (import-free, pinned); an unknown or absent spec refuses (never a guessed render) and routes to the TR-27 update prompt via evaluateDiagramSpec. The client/edge version equality is cross-pinned in tests/test_batch36.py."
     },
@@ -2505,9 +2534,11 @@
     },
     "SEC-35": {
       "family": "SEC",
-      "status": "client",
-      "evidence": [],
-      "note": "Contentless ambient surfaces \u2014 client enforcement."
+      "status": "implemented",
+      "evidence": [
+        "docs/ux/discovery-surfaces.md"
+      ],
+      "note": "client/src/presence/ambientSurfaces.ts \u2014 contentless by construction: AmbientPayload carries exactly {kind, active} (a kind tag + one presence-active boolean), so no identity, reason text, participant count or location field can exist in the type; ambientPayloadViolations still audits every payload against AMBIENT_PAYLOAD_KEYS and the AMBIENT_FORBIDDEN_FIELDS list (identity/handle/photo/reason/count/cell/venue/distance/map\u2026) before anything reaches the OS ambient layer. Pinned by client tests + tests/test_batch40.py."
     },
     "SEC-36": {
       "family": "SEC",

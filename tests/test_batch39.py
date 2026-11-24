@@ -264,13 +264,14 @@ def test_explanations_show_once_and_never_interrupt() -> None:
 
 # ----------------------------------------------------------------- TR-30 ---
 
-def test_local_state_allowlist_grew_to_six_keys() -> None:
+def test_local_state_allowlist_grew_to_seven_keys() -> None:
     assert '"presence.ui.seenExplanations",' in LOCAL_STATE_TS
     assert (
         "// Mode explanations already shown (FR-80) — one sentence, once per user."
         in LOCAL_STATE_TS
     )
-    assert "assert.equal(LOCAL_STATE_ALLOWLIST.length, 6);" in LOCAL_STATE_TEST
+    # Batch 40 added presence.ambient.prefs (FR-86): 6 → 7 keys.
+    assert "assert.equal(LOCAL_STATE_ALLOWLIST.length, 7);" in LOCAL_STATE_TEST
     assert 'LOCAL_STATE_ALLOWLIST.includes("presence.ui.seenExplanations")' in LOCAL_STATE_TEST
 
 
@@ -332,7 +333,9 @@ def test_traceability_reclassifies_the_batch() -> None:
     assert "presenceHalo.ts" in fr77.group(3)
 
 
-def test_traceability_counts_after_batch_39() -> None:
-    assert "| implemented | 213 |" in TRACEABILITY
+def test_traceability_counts_after_batch_40() -> None:
+    # Batch 40 reclassified six interaction-surface requirements
+    # (FR-81/82/83/84/86/SEC-35) client → implemented: 213 → 219.
+    assert "| implemented | 219 |" in TRACEABILITY
     assert "| partial | 7 |" in TRACEABILITY
-    assert "| client | 20 |" in TRACEABILITY
+    assert "| client | 14 |" in TRACEABILITY

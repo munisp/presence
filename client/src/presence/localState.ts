@@ -31,6 +31,8 @@ export const LOCAL_STATE_ALLOWLIST = [
   "presence.powerMode",
   // Mode explanations already shown (FR-80) — one sentence, once per user.
   "presence.ui.seenExplanations",
+  // Ambient-surface opt-ins (FR-86) — off by default, wiped on logout.
+  "presence.ambient.prefs",
 ] as const;
 
 export type LocalStateKey = (typeof LOCAL_STATE_ALLOWLIST)[number];

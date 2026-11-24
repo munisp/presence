@@ -113,8 +113,10 @@ def test_local_state_is_allowlisted_and_wiped() -> None:
         "presence.powerMode",
         # FR-80 (batch 39): the seen-once mode explanations persist locally.
         "presence.ui.seenExplanations",
+        # FR-86 (batch 40): the ambient-surface opt-ins persist locally.
+        "presence.ambient.prefs",
     )]
-    assert len(set(allowlist)) == 6
+    assert len(set(allowlist)) == 7
     # The wipe iterates the allowlist itself — retention and wipe cannot drift.
     assert "LOCAL_STATE_ALLOWLIST.map((key) => backend.deleteItem(key))" in LOCAL_STATE_TS
     assert "createMemoryBackend" in LOCAL_STATE_TS

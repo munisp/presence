@@ -22,7 +22,14 @@
  * ceremony runs in the system browser against the consumer realm over
  * Authorization Code + PKCE (S256), the session refreshes ahead of the
  * five-minute SEC-02 token expiry, and logout withdraws presence before
- * it ends the IdP session and wipes local state (TR-30).
+ * it ends the IdP session and wipes local state (TR-30). The interaction
+ * surfaces are disciplined too: the constellation picker reaches three
+ * interests inside four interactions (FR-81), waving needs a sustained
+ * 400 ms press with a haptic ramp and can never fire on a tap (FR-82),
+ * every consent transition has a distinct haptic plus an audio/spoken
+ * channel (FR-83), the co-location close offer asks once and declining
+ * changes nothing (FR-84), and ambient surfaces are individually
+ * opt-in, off by default, and contentless (FR-86, SEC-35).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -42,6 +49,16 @@ import { showsCommonalityNotIdentity, buildMatchSurface } from "./src/presence/m
 import { DEFAULT_EXPIRY_PRESENTATION } from "./src/presence/offerWindow.js";
 import { haloHonoursFr77, haloFromCount } from "./src/presence/presenceHalo.js";
 import { honoursSurfaceProhibitions } from "./src/presence/surfaceIntegrity.js";
+import { pickerHonoursFr81, buildConstellationPicker } from "./src/presence/constellationPicker.js";
+import { tapCannotWave, WAVE_PRESS_MIN_MS } from "./src/presence/holdToWave.js";
+import { everyTransitionHasFeedback } from "./src/presence/haptics.js";
+import { declineLeavesIntact, applyCloseOfferDecision, COLOCATION_CLOSE_OFFER_MIN_MS } from "./src/presence/closeOffer.js";
+import {
+  ambientHonoursSec35,
+  buildAmbientPayload,
+  defaultAmbientPreferences,
+  AMBIENT_SURFACES,
+} from "./src/presence/ambientSurfaces.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 const SURFACE_CHECKS = [
@@ -55,6 +72,20 @@ const SURFACE_CHECKS = [
   haloHonoursFr77(haloFromCount(0)),
   // FR-87: the skeleton descriptor carries no banned affordance.
   honoursSurfaceProhibitions({ kind: "discovery-skeleton", affordances: [], fields: {} }),
+  // FR-81: the picker offers both modes inside the interaction budget.
+  pickerHonoursFr81(buildConstellationPicker("constellation", [])),
+  // FR-82: no tap duration below the threshold can wave.
+  tapCannotWave(50) && tapCannotWave(WAVE_PRESS_MIN_MS - 1),
+  // FR-83: every consent transition has distinct haptic + audio feedback.
+  everyTransitionHasFeedback(),
+  // FR-84: declining the close offer leaves the conversation intact.
+  declineLeavesIntact(
+    { conversationOpen: true, notificationsEnabled: true },
+    applyCloseOfferDecision("dismiss", { conversationOpen: true, notificationsEnabled: true }),
+  ),
+  // FR-86/SEC-35: ambient surfaces default off and the payload is contentless.
+  AMBIENT_SURFACES.every((surface) => defaultAmbientPreferences()[surface] === false) &&
+    ambientHonoursSec35(buildAmbientPayload(true)),
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
@@ -74,6 +105,8 @@ export default function App() {
         refreshed {REFRESH_MARGIN_S}s early · logout withdraws presence first
         {"\n"}{DISCOVERY_MODES.length} discovery modes, one shared skeleton · expiry closes as a{" "}
         {DEFAULT_EXPIRY_PRESENTATION} · surface guards {SURFACES_OK ? "green" : "BROKEN"}
+        {"\n"}wave needs {WAVE_PRESS_MIN_MS} ms held · close offer after{" "}
+        {COLOCATION_CLOSE_OFFER_MIN_MS / 60000} min co-located · ambient surfaces opt-in, contentless
       </Text>
     </View>
   );

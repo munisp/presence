@@ -3,8 +3,8 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 232,
-    "partial": 8,
+    "implemented": 234,
+    "partial": 6,
     "gap-p0": 0,
     "phase-gated": 1,
     "client": 0,
@@ -14,8 +14,8 @@
   },
   "per_family": {
     "BR": {
-      "implemented": 10,
-      "partial": 1,
+      "implemented": 11,
+      "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
@@ -24,8 +24,8 @@
       "superseded": 0
     },
     "FR": {
-      "implemented": 98,
-      "partial": 1,
+      "implemented": 99,
+      "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
       "client": 0,
@@ -143,18 +143,20 @@
       "family": "BR",
       "status": "organisational",
       "evidence": [
-        "docs/adr/0007-payments-gated-on-br06.md"
+        "docs/adr/0007-payments-gated-on-br06.md",
+        "docs/ux/safety-and-indoor-presence.md"
       ],
       "note": "Five sequenced revenue lines only; payments gated per docs/adr/0007."
     },
     "BR-07": {
       "family": "BR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/safety-and-indoor-presence.md",
         "services/edge/src/context.ts"
       ],
-      "note": "Reports endpoint exists and is ungated; two-tap reachability is client UX (not built); no monetisation gate exists."
+      "note": "Safety is free and two taps away end to end: the report, block, consent-withdrawal and account-deletion endpoints exist and are ungated (no monetisation gate exists), and the client reportFlow.ts contract pins the five SRS-named actions on their wires, the safety-tray entry on every screen, the two-tap budget for any screen x action, and monetisation fields as audit violations."
     },
     "BR-08": {
       "family": "BR",
@@ -884,6 +886,7 @@
       "evidence": [
         "docs/ux/interaction-surfaces.md",
         "docs/ux/journeys-and-conversations.md",
+        "docs/ux/safety-and-indoor-presence.md",
         "tests/test_batch41.py"
       ],
       "note": "Venue check-in codes live via FR-99/FR-100 signed per-floor tokens: the venue mints at POST /v1/venues/:venueId/checkin-tokens (printed as the per-floor QR/NFC code \u2014 the displayable artefact) and the user presents at POST /v1/presence/checkin for (venueId, floorId) attribution. Client journeyContracts.ts pins the higher-than-cell confidence ordering (FR-89: indoors the cell is the fallback, never the default), the fail-closed code journey, and the tie to the FR-88 refusal's pinned alternative (publishGate.ts)."
@@ -1336,12 +1339,13 @@
     },
     "FR-89": {
       "family": "FR",
-      "status": "partial",
+      "status": "implemented",
       "evidence": [
         "docs/ux/journeys-and-conversations.md",
+        "docs/ux/safety-and-indoor-presence.md",
         "tests/test_batch41.py"
       ],
-      "note": "Check-in basis exists (signed tokens + floor attribution, FR-99/FR-100); making check-in the PRIMARY indoor presence path is client/UX work, outstanding."
+      "note": "Check-in is the primary indoor presence path end to end: signed per-floor tokens + floor attribution server-side (FR-99/FR-100), and the client indoorPresence.ts contract resolves the primary action to venue check-in via the FR-48 confidence ordering \u2014 the cell appears indoors only as the explicit fallback with the pinned notice, an empty code still presents check-in first while refusing at the wire, and garbage venue context fails closed."
     },
     "FR-90": {
       "family": "FR",
@@ -1372,6 +1376,7 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/safety-and-indoor-presence.md",
         "tests/test_batch37.py"
       ],
       "note": "client/src/presence/cellStabiliser.ts \u2014 sliding 5-min sample window; the published cell is the mode of the window (deterministic ties: frequency, recency, cell id); movement > 1 h3 grid step publishes fresh immediately, and unmeasurable distance counts as movement, never as same place. Pinned by client tests + tests/test_batch37.py."
@@ -1495,9 +1500,9 @@
       "evidence": [
         "docs/ux/client-budgets.md",
         "docs/ux/journeys-and-conversations.md",
-        "tests/test_batch38.py",
-        "tests/test_batch39.py",
-        "tests/test_batch40.py"
+        "docs/ux/safety-and-indoor-presence.md",
+        "scripts/profile_device_budgets.py",
+        "tests/test_batch38.py"
       ],
       "note": "client/src/presence/startupBudget.ts \u2014 pinned phase ledger (native-init/js-bundle/secure-store/config-cache/first-render/handoff summing to exactly 1800 ms), deferred work (BLE start, prefetch, flush) banned from the critical path by audit; on-device profiling on the reference mid-tier remains."
     },
@@ -1506,6 +1511,7 @@
       "status": "partial",
       "evidence": [
         "docs/ux/client-budgets.md",
+        "scripts/profile_device_budgets.py",
         "tests/test_batch42.py"
       ],
       "note": "client/src/presence/startupBudget.ts \u2014 the same ledger's warm column: resume pays nothing for the resident native runtime or JS bundle, sums to exactly 600 ms, no warm phase dearer than its cold twin; on-device profiling remains."
@@ -1670,8 +1676,8 @@
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
         "docs/ux/journeys-and-conversations.md",
-        "tests/test_batch38.py",
-        "tests/test_batch39.py"
+        "docs/ux/safety-and-indoor-presence.md",
+        "tests/test_batch38.py"
       ],
       "note": "client/src/presence/accessibility.ts \u2014 WCAG 2.2 AA as code: relative-luminance contrast (4.5:1 normal / 3:1 large and non-text) audited over the pinned shell palette (the audit caught the note colour at 3.50:1 \u2014 moved to #74879B); dynamic type pinned to the 200 % resize floor (clamped, garbage fails closed to 1); reduced motion is a pinned instant fallback with unreadable preference treated as reduce; screen-reader labelling and focus order audited per control (non-empty label, registered role, unique non-negative focus position). On-device VoiceOver/TalkBack validation is the named residual beyond code. Pinned by client tests + tests/test_batch43.py."
     },
@@ -1713,6 +1719,7 @@
       "status": "partial",
       "evidence": [
         "docs/ux/client-budgets.md",
+        "scripts/profile_device_budgets.py",
         "tests/test_batch42.py"
       ],
       "note": "client/src/presence/powerBudget.ts \u2014 duty-cycle ledger: fixed consumers (BLE advertise/scan, UI render) plus publish+cell activations computed from the FR-85 cadence (12/h standard, 6/h reduced), both modes inside the 2 %/h ceiling; on-device battery profiling remains."
@@ -1722,6 +1729,7 @@
       "status": "partial",
       "evidence": [
         "docs/ux/client-budgets.md",
+        "scripts/profile_device_budgets.py",
         "tests/test_batch34.py",
         "tests/test_batch42.py"
       ],
@@ -1780,6 +1788,7 @@
       "evidence": [
         "docs/ux/client-budgets.md",
         "docs/ux/discovery-surfaces.md",
+        "scripts/profile_device_budgets.py",
         "tests/test_batch42.py"
       ],
       "note": "client/src/presence/frameBudget.ts \u2014 pinned render ledger (layout/path-geometry/label-measure/paint-commit = 16 ms) fits the 60 fps frame budget AND the 30 ms floor, audited fail-closed; on-device fps profiling remains."
@@ -2121,6 +2130,7 @@
       "status": "implemented",
       "evidence": [
         "docs/security/sdk-allowlist.json",
+        "docs/ux/safety-and-indoor-presence.md",
         "tests/test_batch34.py",
         "tests/test_batch37.py"
       ],

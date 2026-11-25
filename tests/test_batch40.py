@@ -412,6 +412,7 @@ def test_traceability_counts_after_batch_43() -> None:
     # Batch 43: FR-70 + NFR-25/26/37 client → implemented: 225 → 229, 8 → 8, 7 → 3.
     # Batch 44: NFR-27 + NFR-28 client → implemented: 229 → 231, 8 → 8, 3 → 1.
     # Batch 45: TECH-08 client → implemented: 231 → 232, 8 → 8, 1 → 0.
-    assert "| implemented | 232 |" in TRACEABILITY
-    assert "| partial | 8 |" in TRACEABILITY
+    # Batch 46: BR-07 + FR-89 client halves → implemented: 232 → 234, 8 → 6, 0 → 0.
+    assert "| implemented | 234 |" in TRACEABILITY
+    assert "| partial | 6 |" in TRACEABILITY
     assert "| client | 0 |" in TRACEABILITY

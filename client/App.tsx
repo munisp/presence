@@ -61,7 +61,12 @@
  * OpenMLS or vodozemac and refuses libsignal twice over, the wire
  * carries a single opaque envelope, and first-message screening runs in
  * the compose path before encryption because the server cannot see
- * plaintext (TECH-08).
+ * plaintext (TECH-08). Safety is never gated and never far away:
+ * reporting, blocking, consent withdrawal, account deletion and privacy
+ * controls are free by construction and two taps from any screen
+ * (BR-07), and indoors the primary presence path is the venue check-in
+ * against the signed code on display, with the cell as the explicit
+ * fallback (FR-89).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -118,6 +123,8 @@ import {
   resolveBlePlan,
 } from "./src/presence/bleFloor.js";
 import { buildOutboundPayload, e2eCryptoHonoursTech08 } from "./src/presence/e2eCrypto.js";
+import { safetyAccessHonoursBr07 } from "./src/presence/reportFlow.js";
+import { indoorPresenceHonoursFr89 } from "./src/presence/indoorPresence.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 /** NFR-27: English at launch; a locale pack is data dropped in here. */
@@ -195,6 +202,10 @@ const SURFACE_CHECKS = [
     resolveBlePlan({ os: "android", version: ANDROID_FLOOR_API }, "scan-only").tier === "degraded",
   // TECH-08: OpenMLS/vodozemac registry, libsignal refused, ciphertext-only wire.
   e2eCryptoHonoursTech08() && buildOutboundPayload("Y2lwaGVydGV4dA==") !== null,
+  // BR-07: the five safety actions are free and two taps from any screen.
+  safetyAccessHonoursBr07(),
+  // FR-89: indoors, check-in is the primary path and the cell the fallback.
+  indoorPresenceHonoursFr89(),
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
@@ -227,6 +238,8 @@ export default function App() {
         {"\n"}copy registry: English at launch, locales are data · iOS {IOS_FLOOR_MAJOR}+ / API{" "}
         {ANDROID_FLOOR_API}+ floors · BLE degrades, never dead-ends
         {"\n"}messages: MLS envelope only, keys on device · screen before encrypt · libsignal refused
+        {"\n"}safety: report, block, withdraw, delete, privacy — free, two taps from any screen ·
+        indoors, check-in first, cell is the fallback
       </Text>
     </View>
   );

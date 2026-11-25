@@ -34,4 +34,5 @@ anchor; it loosens nothing in the FR-30/FR-87 boundary.
 - **Peer-to-peer payments**: the BR-06 revision is initiated
   (AMD-PAY-01/02) but the TECH-23 deployment gate stands until a
   payments compliance programme is approved; the transfer contracts land
-  in batch 49.
+  in batch 49. Update (batch 49): the contracts landed — see
+  `docs/ux/p2p-transfers.md`; the deployment gate still stands.

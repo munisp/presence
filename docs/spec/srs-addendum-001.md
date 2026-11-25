@@ -35,6 +35,18 @@ This addendum records three amendments. The original 306-requirement ledger is u
 
 **AMD-PAY-02 (TECH-23 unchanged).** Mojaloop and TigerBeetle MUST NOT be deployed until the payments compliance programme is approved. That approval is organisational evidence, not code; batch 49 delivers the in-repo contracts, and the deployment gate stands until the programme exists.
 
+**AMD-PAY-03 (structured transfer object).** A transfer is a structured record and nothing else: an amount in minor units (bigint), a currency, a fee computed by the database, and a state. There is no memo, note, or message field — by construction, not by policy. Free-text payment solicitation stays impossible: FR-96/SEC-37 screening is unchanged and the transfer object gives it nothing to screen.
+
+**AMD-PAY-04 (dual-consent state machine).** A transfer moves only through: `proposed → accepted | declined | cancelled | expired`, `accepted → settled | disputed`, `settled → disputed`, `disputed → resolved`. The recipient alone accepts or declines; the sender alone cancels; either party disputes; moderation alone resolves; the settlement rail alone settles. Legality MUST be enforced by the database (the `record_transfer_event` definer), mirroring the FR-29 trigger discipline — endpoint logic cannot excuse an illegal transition. Every transition lands in the append-only ledger (AMD-PAY-07).
+
+**AMD-PAY-05 (caps and fee).** Safety-first caps are platform constants, not user settings: a per-transfer maximum of 5,000,000 minor units (NGN 50,000.00) and a rolling 24-hour sender cap of 15,000,000 minor units (NGN 150,000.00) over money in motion (proposed, accepted, settled, disputed). The transfer fee is 100 basis points (1.0%), computed by the database at proposal and stored on the row — this is the sixth revenue line admitted by AMD-PAY-01. Loosening any cap requires a further amendment.
+
+**AMD-PAY-06 (eligibility, proved twice).** Both parties MUST be KYC-verified (`kyc_verified_accounts`) and share an OPEN conversation at proposal, with no active `payment_instrument` suspension (FR-55 composability, AMD-KYC-05). Acceptance re-proves KYC for both parties and the OPEN pair — verification at both moments, because a state can move between proposal and acceptance. A proposal expires one hour after creation if not accepted.
+
+**AMD-PAY-07 (append-only ledger).** Every transfer transition MUST be recorded in `transfer_events`, which is append-only for every application path: the application role holds no UPDATE/DELETE grant and a trigger raises on either. Dispute resolutions additionally enter the admin audit log (FR-60). The ledger stores amounts, states and actors — never free text (AMD-PAY-03).
+
+**AMD-PAY-08 (settlement gate made tangible).** The `settled` state is reachable only through the `record_transfer_event` branch gated by the transaction-local `app.transfer_settlement` setting, which no P0 component sets — the branch exists for the future Mojaloop/TigerBeetle callback and is unreachable until TECH-23's organisational gate lifts. P0 therefore records dual-consent transfer agreements with full audit; it moves no money.
+
 ---
 
-*Addendum authored 2026-11-25 alongside batch 48. Verification anchors: `tests/test_batch48.py` pins the migration, the discovery gate, the avatar registry, and this document's amendments.*
+*Addendum authored 2026-11-25 alongside batch 48; AMD-PAY-03..08 added alongside batch 49. Verification anchors: `tests/test_batch48.py` pins the migration, the discovery gate, the avatar registry, and this document's amendments; `tests/test_batch49.py` pins the transfer contracts.*

@@ -93,6 +93,23 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.avatar.choose": "Choose your symbol",
   "ui.avatar.cooldown": "Your symbol can change once a day",
   "ui.avatar.locked": "Your symbol stays while a conversation is open",
+  // SRS Addendum 001 (b49) — P2P transfer surfaces (AMD-PAY).
+  "ui.transfer.title": "Send money",
+  "ui.transfer.fee": "Transfer fee",
+  "ui.transfer.accept": "Accept transfer",
+  "ui.transfer.decline": "Decline transfer",
+  "ui.transfer.cancel": "Cancel transfer",
+  "ui.transfer.dispute": "Report a problem",
+  "ui.transfer.kyc-required": "Both sides must be verified to send money",
+  "ui.transfer.open-required": "Money moves only inside an open conversation",
+  "ui.transfer.state.proposed": "Waiting for acceptance",
+  "ui.transfer.state.accepted": "Accepted",
+  "ui.transfer.state.declined": "Declined",
+  "ui.transfer.state.cancelled": "Cancelled",
+  "ui.transfer.state.expired": "Expired",
+  "ui.transfer.state.settled": "Settled",
+  "ui.transfer.state.disputed": "In dispute",
+  "ui.transfer.state.resolved": "Resolved",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

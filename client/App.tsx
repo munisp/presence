@@ -111,6 +111,7 @@ import { frameBudgetHonoursNfr35, ambientRefreshHonoursNfr36 } from "./src/prese
 import { dependencyBudgetHonoursTech16, BUNDLE_CAP_BYTES } from "./src/presence/dependencyBudget.js";
 import { buildIdentityReveal, revealHonoursFr70 } from "./src/presence/verificationBadge.js";
 import { identityAssuranceHonoursAmendment } from "./src/presence/identityAssurance.js";
+import { transferHonoursAmendment } from "./src/presence/transferCard.js";
 import {
   REACH_REFERENCE_DEVICE,
   TOUCH_TARGET_MIN_PT,
@@ -209,6 +210,10 @@ const SURFACE_CHECKS = [
   // attested AND KYC-verified fail-closed, and the recognition anchor is a
   // curated symbol, never a photo.
   identityAssuranceHonoursAmendment(),
+  // SRS Addendum 001 (b49): the P2P transfer contract — dual consent with
+  // pinned caps and fee, eligibility proved at both moments, and a card
+  // that carries amount, fee, currency and state — never free text.
+  transferHonoursAmendment(),
   // NFR-25/26/37: AA palette, 44 pt targets, primary action in the lower 40 %.
   accessibilityHonoursNfr25Nfr26Nfr37() &&
     primaryActionInReachZone(

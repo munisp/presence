@@ -2259,6 +2259,168 @@ paths:
         "404": { description: Unknown account. }
         "409": { description: Illegal KYC transition (AMD-KYC-03). }
         "422": { description: Decision is not a KYC state. }
+  /v1/transfers:
+    post:
+      summary: Propose a P2P transfer (SRS Addendum 001, AMD-PAY-01/05/06)
+      description: >-
+        Proposes a structured transfer to the other side of an OPEN
+        conversation. The propose_transfer definer decides everything in
+        the database: both parties KYC-verified (AMD-PAY-01/06), no active
+        payment_instrument suspension (AMD-KYC-05 composability), the
+        per-transfer cap of NGN 50,000.00 and the rolling 24 h sender cap
+        of NGN 150,000.00 (AMD-PAY-05), and the 100 bps fee computed and
+        stored on the row. AMD-PAY-03: the transfer object is amount,
+        currency, fee and state — there is no memo or note field, so
+        payment solicitation stays unrepresentable (FR-96/SEC-37
+        unchanged). The proposal expires one hour after creation
+        (AMD-PAY-06).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipient, amountMinor]
+              additionalProperties: false
+              properties:
+                recipient: { type: string, format: uuid }
+                amountMinor: { type: integer }
+      responses:
+        "201": { description: Transfer proposed; the fee and expiry are pinned on the row. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Not KYC-verified, suspended, or no OPEN conversation (AMD-PAY-06). }
+        "422": { description: Invalid amount or over a platform cap (AMD-PAY-05). }
+    get:
+      summary: List the requester's transfers (SRS Addendum 001, AMD-PAY-03/06)
+      description: >-
+        The requester's transfers as sender or recipient, party-scoped by
+        RLS. Stale proposals are lazily expired first — no proposal
+        outlives its one-hour window (AMD-PAY-06). AMD-PAY-03: rows carry
+        amount, currency, fee and state only; there is no free text to
+        return.
+      responses:
+        "200": { description: The requester's transfers, newest first. }
+  /v1/transfers/{transferId}/accept:
+    post:
+      summary: Accept a proposed transfer (SRS Addendum 001, AMD-PAY-04/06)
+      description: >-
+        The recipient's half of the dual consent. The
+        record_transfer_event definer enforces the legal transition in the
+        database and re-proves eligibility at this second moment: both
+        parties still KYC-verified and the pair still OPEN (AMD-PAY-06).
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Transfer accepted; ledgered. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Wrong actor, eligibility lost, or pair no longer open. }
+        "404": { description: Unknown transfer. }
+        "409": { description: Illegal transfer transition (AMD-PAY-04). }
+  /v1/transfers/{transferId}/decline:
+    post:
+      summary: Decline a proposed transfer (SRS Addendum 001, AMD-PAY-04)
+      description: >-
+        The recipient refuses. Always available while proposed — declining
+        needs no second look at eligibility.
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Transfer declined; ledgered. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Only the recipient may decline. }
+        "404": { description: Unknown transfer. }
+        "409": { description: Illegal transfer transition (AMD-PAY-04). }
+  /v1/transfers/{transferId}/cancel:
+    post:
+      summary: Cancel a proposed transfer (SRS Addendum 001, AMD-PAY-04)
+      description: The sender retracts while the proposal is still open.
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Transfer cancelled; ledgered. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Only the sender may cancel. }
+        "404": { description: Unknown transfer. }
+        "409": { description: Illegal transfer transition (AMD-PAY-04). }
+  /v1/transfers/{transferId}/dispute:
+    post:
+      summary: Dispute an accepted or settled transfer (SRS Addendum 001, AMD-PAY-03/04)
+      description: >-
+        Either party disputes. The reason is a closed category — a dispute
+        is structured data, never free text (AMD-PAY-03) — and the
+        transition lands in the append-only ledger (AMD-PAY-07).
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  enum: [not-received, wrong-amount, unauthorised]
+      responses:
+        "200": { description: Dispute recorded; ledgered. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Only a party to the transfer may dispute it. }
+        "404": { description: Unknown transfer. }
+        "409": { description: Illegal transfer transition (AMD-PAY-04). }
+        "422": { description: Reason is outside the closed dispute vocabulary. }
+  /v1/moderation/transfers/{transferId}/resolve:
+    post:
+      summary: Resolve a transfer dispute (SRS Addendum 001, AMD-PAY-04/07)
+      description: >-
+        Workforce resolution of a disputed transfer. The definer enforces
+        the outcome vocabulary (upheld or rejected), writes the ledger row
+        and the admin audit entry (FR-60). Settlement itself is never
+        performed here — the settled state belongs to the payment rail
+        alone (AMD-PAY-08; the TECH-23 deployment gate stands).
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              additionalProperties: false
+              properties:
+                outcome:
+                  type: string
+                  enum: [upheld, rejected]
+      responses:
+        "200": { description: Dispute resolved; ledgered and audited. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown transfer. }
+        "409": { description: Illegal transfer transition (AMD-PAY-04). }
+        "422": { description: Outcome is outside the closed vocabulary. }
   /v1/moderation/reports/{reportId}/resolve:
     post:
       summary: Resolve a report (FR-52, FR-54, FR-55)

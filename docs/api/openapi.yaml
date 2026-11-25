@@ -4249,6 +4249,285 @@ paths:
         "200": { description: Accepted (both) or declined. }
         "202": { description: Recorded — waiting on the other party. }
         "404": { description: Unknown introduction. }
+  /v1/dating/preferences:
+    post:
+      summary: Set or refresh dating preferences (AMD-DATE-01)
+      description: >-
+        The dating profile is a structured, enumerated attribute set —
+        gender, seeking (1-3 genders), goal, age range — and nothing
+        else. No photo (FR-87), no free text (FR-96/SEC-37). The definer
+        proves KYC-verified and adult at write.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gender, seeking, goal, ageMin, ageMax]
+              additionalProperties: false
+              properties:
+                gender: { type: string, enum: [female, male, nonbinary] }
+                seeking:
+                  type: array
+                  minItems: 1
+                  maxItems: 3
+                  uniqueItems: true
+                  items: { type: string, enum: [female, male, nonbinary] }
+                goal: { type: string, enum: [long_term, short_term, friendship, exploring] }
+                ageMin: { type: integer, minimum: 18, maximum: 99 }
+                ageMax: { type: integer, minimum: 18, maximum: 99 }
+      responses:
+        "200": { description: Recorded. }
+        "400": { description: Invalid preferences. }
+        "403": { description: Forbidden, kyc_required or underage. }
+  /v1/dating/profile:
+    get:
+      summary: Read the caller's dating profile (AMD-DATE-01)
+      description: Own profile only (RLS owner read). There is no browse of dating profiles.
+      responses:
+        "200": { description: The caller's profile, or null. }
+  /v1/dating/state:
+    post:
+      summary: Pause or resume dating mode (AMD-DATE-05)
+      description: >-
+        Resuming re-proves KYC and age — both can move while the profile
+        is paused.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              additionalProperties: false
+              properties:
+                state: { type: string, enum: [active, paused] }
+      responses:
+        "200": { description: Updated. }
+        "400": { description: Invalid state. }
+        "403": { description: Forbidden, kyc_required or underage on resume. }
+        "404": { description: No dating profile. }
+  /v1/dating/compatibility:
+    get:
+      summary: Is the caller mutually compatible with this peer? (AMD-DATE-03)
+      description: >-
+        A boolean, computed server-side: both profiles active, both
+        KYC-verified adults, mutual seeking, mutual age range, same goal,
+        no block. The cause is never revealed (FR-34 silence).
+      parameters:
+        - name: peer
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: "{ compatible: boolean }" }
+        "400": { description: Invalid query. }
+  /v1/dating/counterpart:
+    get:
+      summary: Read a counterpart's dating attributes (AMD-DATE-04)
+      description: >-
+        The only cross-user read of dating attributes: gender, seeking,
+        goal and the age range — never a birth year. Revealed only when
+        the pair is mutually compatible AND stands at NUDGED or later.
+      parameters:
+        - name: peer
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: "{ profile: {...} | null }" }
+        "400": { description: Invalid query. }
+  /v1/marketplace/listings:
+    post:
+      summary: Create a draft listing (AMD-MKT-01/04)
+      description: >-
+        A structured record and nothing else: kind, taxonomy category,
+        price in minor units, market. No description, no photo, no free
+        text. Terms are immutable once created — a price change is
+        remove-and-recreate.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, category, priceMinor, market]
+              additionalProperties: false
+              properties:
+                kind: { type: string, enum: [item, service] }
+                category: { type: string, description: taxonomy node id (dotted path, non-sensitive) }
+                priceMinor: { type: integer, minimum: 1, maximum: 5000000 }
+                market: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "201": { description: Created; returns listingId. }
+        "403": { description: Forbidden or kyc_required. }
+        "409": { description: Twelve live listings already. }
+        "422": { description: Invalid kind, category, price or market. }
+    get:
+      summary: Browse live listings (AMD-MKT-04)
+      description: >-
+        Live (listed | held) listings, newest first, at most 50. RLS limits
+        browse to KYC-verified callers; the projection carries no seller
+        identity (FR-30).
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: kind
+          in: query
+          schema: { type: string, enum: [item, service] }
+        - name: market
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "200": { description: Matching live listings. }
+        "400": { description: Invalid query. }
+  /v1/marketplace/listings/mine:
+    get:
+      summary: List the caller's own listings, any state (AMD-MKT-01)
+      responses:
+        "200": { description: Own listings, newest first. }
+  /v1/marketplace/listings/{listingId}/list:
+    post:
+      summary: Publish a draft listing (AMD-MKT-01)
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Listed. }
+        "404": { description: Unknown listing (or not the caller's). }
+        "409": { description: Not a draft. }
+  /v1/marketplace/listings/{listingId}/remove:
+    post:
+      summary: Seller takedown of a draft or listed listing (AMD-MKT-01)
+      description: A held listing cannot be removed out from under an escrow.
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Removed. }
+        "404": { description: Unknown listing (or not the caller's). }
+        "409": { description: Not in a removable state. }
+  /v1/marketplace/listings/{listingId}/purchase:
+    post:
+      summary: Buy a listed listing (AMD-MKT-03)
+      description: >-
+        One atomic transaction: the single-milestone AMD-INN-03 escrow
+        (payee = seller, amount = price), the order row, and the listing's
+        move to held — inside the AMD-PAY-15 settlement gate.
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201": { description: Purchased; returns orderId. }
+        "403": { description: Forbidden or kyc_required. }
+        "404": { description: Unknown listing. }
+        "409": { description: Not listed, own listing, or wallet unavailable. }
+        "422": { description: Insufficient funds. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/marketplace/orders:
+    get:
+      summary: List the caller's orders, either role (AMD-MKT-03)
+      responses:
+        "200": { description: Own orders as buyer or seller, newest first. }
+  /v1/marketplace/orders/{orderId}/confirm:
+    post:
+      summary: Buyer confirms receipt (AMD-MKT-03)
+      description: >-
+        The escrow's milestone releases to the seller, the order completes,
+        the listing sells — one transaction.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Completed. }
+        "404": { description: Unknown order (or not the buyer). }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/marketplace/orders/{orderId}/dispute:
+    post:
+      summary: Either party disputes an active order (AMD-MKT-03)
+      description: The value stays held until moderation resolves.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Disputed. }
+        "404": { description: Unknown order (or not a party). }
+  /v1/moderation/marketplace/listings/{listingId}/remove:
+    post:
+      summary: Moderation takedown of a listing (AMD-MKT-05)
+      description: >-
+        Workforce role. Governed reason code, audited in the admin audit
+        log. A held listing is never removed out from under an escrow.
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reasonCode]
+              additionalProperties: false
+              properties:
+                reasonCode: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "200": { description: Removed. }
+        "400": { description: Reason code required. }
+        "404": { description: Unknown listing. }
+        "409": { description: Not in a removable state. }
+  /v1/moderation/marketplace/orders/{orderId}/resolve:
+    post:
+      summary: Resolve a disputed order (AMD-MKT-03/05)
+      description: >-
+        Workforce role. refund pays the buyer back and relists the
+        listing; release pays the seller and completes the sale.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [refund, release] }
+      responses:
+        "200": { description: Resolved. }
+        "400": { description: Invalid decision. }
+        "404": { description: Unknown order. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
 components:
   parameters:
     pairId:

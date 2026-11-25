@@ -65,6 +65,7 @@ Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -844,6 +845,73 @@ def main() -> int:
         (ROOT / "client" / "src" / "presence" / "duressMode.ts").exists()
         and (ROOT / "client" / "src" / "presence" / "matchPreview.ts").exists()
         and "duress" not in edge_innov_src.lower(),
+    )
+
+    # ---- batch 57: dating mode + marketplace (SRS Addendum 001, AMD-DATE/MKT)
+    dating_path = ROOT / "db" / "migrations" / "0031_dating.sql"
+    dating_src = dating_path.read_text() if dating_path.exists() else ""
+    check(
+        "AMD-DATE-01..05 dating schema: profiles + governed vocabularies, guard, definers",
+        all(f"CREATE TABLE {t} (" in dating_src for t in (
+            "dating_genders", "dating_goals", "dating_profiles"))
+        and all(f"FUNCTION {f}" in dating_src for f in (
+            "set_dating_preferences(", "set_dating_state(", "dating_compatible(",
+            "dating_counterpart(", "dating_filter_candidates("))
+        and "dating_profiles is append-only for the application role (AMD-DATE-05)" in dating_src
+        and dating_src.count("(AMD-DATE-") >= 3,
+    )
+    dating_cols_match = re.search(
+        r"CREATE TABLE dating_profiles \((.*?)\);", dating_src, re.S)
+    dating_cols = dating_cols_match.group(1).lower() if dating_cols_match else None
+    check(
+        "AMD-DATE-01: no photo and no free text anywhere in the dating profile",
+        dating_cols is not None and all(
+            banned not in dating_cols
+            for banned in ("photo", "bio", "description", "freetext",
+                           "free_text", "note", "message")),
+    )
+    marketplace_path = ROOT / "db" / "migrations" / "0032_marketplace.sql"
+    marketplace_src = marketplace_path.read_text() if marketplace_path.exists() else ""
+    check(
+        "AMD-MKT-01..05 marketplace schema: three tables, guards, events append-only",
+        all(f"CREATE TABLE {t} (" in marketplace_src for t in (
+            "marketplace_listings", "marketplace_orders", "marketplace_events"))
+        and "listing terms are immutable (AMD-MKT-01)" in marketplace_src
+        and "order terms are immutable (AMD-MKT-03)" in marketplace_src
+        and "marketplace_events is append-only (AMD-MKT-02)" in marketplace_src
+        and marketplace_src.count("(AMD-MKT-") >= 6,
+    )
+    check(
+        "AMD-MKT-03/04: purchases compose the b56 escrow inside the settlement gate",
+        "FROM create_escrow(v_listing.seller, ARRAY[v_listing.price_minor]) e" in marketplace_src
+        and "release_escrow_milestone(v_order.escrow_id, 1::smallint)" in marketplace_src
+        and marketplace_src.count("app.transfer_settlement") >= 3
+        and "price_minor > 0 AND price_minor <= 5000000" in marketplace_src
+        and "REFERENCES market_config (market_id)" in marketplace_src
+        and "AND n.sensitive" in marketplace_src,
+    )
+    check(
+        "batch-57 migrations ride both initdb mounts as 33/34",
+        "=db/migrations/0031_dating.sql" in k8s_readme_src
+        and "=db/migrations/0032_marketplace.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/33_dating.sql:ro" in compose_src
+        and "/docker-entrypoint-initdb.d/34_marketplace.sql:ro" in compose_src,
+    )
+    check(
+        "AMD-DATE/MKT edge routes registered; the scan route applies the dating filter",
+        "registerDatingRoutes(authed, ctx);" in edge_app_src
+        and "registerMarketplaceRoutes(authed, ctx);" in edge_app_src
+        and "dating_filter_candidates($1::uuid[])"
+        in (ROOT / "services" / "edge" / "src" / "routes" / "scan.ts").read_text(),
+    )
+    check(
+        "AMD-DATE/MKT client contracts exist and cross-pin the edge modules",
+        (ROOT / "client" / "src" / "presence" / "datingPreferences.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "listingCard.ts").exists()
+        and "services/edge/src/dating.ts"
+        in (ROOT / "client" / "test" / "datingPreferences.test.ts").read_text()
+        and "services/edge/src/marketplace.ts"
+        in (ROOT / "client" / "test" / "listingCard.test.ts").read_text(),
     )
 
     print()

@@ -34,6 +34,8 @@ import { registerTransferRoutes } from "./routes/transfers.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerWalletGovernanceRoutes } from "./routes/walletGovernance.js";
 import { registerInnovationRoutes, registerAttestationVerifyRoute } from "./routes/innovations.js";
+import { registerDatingRoutes } from "./routes/dating.js";
+import { registerMarketplaceRoutes } from "./routes/marketplace.js";
 import { registerWalletRailRoutes } from "./routes/walletRail.js";
 import { registerRoomRoutes } from "./routes/rooms.js";
 import { registerScanRoutes } from "./routes/scan.js";
@@ -173,6 +175,11 @@ export async function buildApp(ctx: EdgeContext) {
     // AMD-INN-01..10: innovation routes — after the wallet governance
     // routes; value-moving wires run inside withSettlement.
     registerInnovationRoutes(authed, ctx);
+    // AMD-DATE-01..05: dating mode — no value moves, withRls throughout.
+    registerDatingRoutes(authed, ctx);
+    // AMD-MKT-01..05: marketplace — purchases compose through the b56
+    // escrow definers inside withSettlement.
+    registerMarketplaceRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);

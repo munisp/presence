@@ -213,6 +213,22 @@ export function registerScanRoutes(app: FastifyInstance, ctx: EdgeContext): void
         return reply.send({ state: "paused", results: [] });
       }
 
+      // AMD-DATE-03: when the caller runs dating mode, candidates must pass
+      // the preference-intersection filter before any pair is surfaced —
+      // mutual seeking, mutual age range, same intent, both KYC-verified
+      // adults, no block. The filter is inert for a caller without an
+      // active dating profile, and it never widens discovery.
+      if (body.results.length > 0) {
+        const keep = await withRls(ctx.pg, userId, async (c) => {
+          const r = await c.query(
+            `SELECT peer FROM dating_filter_candidates($1::uuid[])`,
+            [body.results.map((r) => r.userId)],
+          );
+          return new Set(r.rows.map((row) => row.peer as string));
+        });
+        body = { ...body, results: body.results.filter((r) => keep.has(r.userId)) };
+      }
+
       // FR-29: the first surfacing of a pair records DETECTED in the
       // append-only ledger (idempotent — later scans find the pair exists).
       // FR-33: first surfacing also starts the 30-minute offer window.

@@ -379,9 +379,12 @@ def test_openapi_documents_the_innovation_paths():
 def test_every_new_openapi_post_declares_idempotency():
     # Every POST section under the innovation paths references the shared
     # IdempotencyKey parameter — including the unauthenticated verify
-    # oracle, matching the webhook precedent.
+    # oracle, matching the webhook precedent. (The section ends at the
+    # batch-57 dating/marketplace block, which pins its own POSTs in
+    # tests/test_batch57.py.)
     start = OPENAPI.index("  /v1/presence/bond:")
-    section = OPENAPI[start:OPENAPI.index("components:", start)]
+    end = OPENAPI.index("  /v1/dating/preferences:", start)
+    section = OPENAPI[start:end]
     posts = [m.start() for m in re.finditer(r"\n    post:", section)]
     assert len(posts) == 18
     misses = []

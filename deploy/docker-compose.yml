@@ -62,6 +62,8 @@ services:
       - ../db/migrations/0028_wallet_activation.sql:/docker-entrypoint-initdb.d/30_wallet_activation.sql:ro
       - ../db/migrations/0029_rail_hardening.sql:/docker-entrypoint-initdb.d/31_rail_hardening.sql:ro
       - ../db/migrations/0030_innovations.sql:/docker-entrypoint-initdb.d/32_innovations.sql:ro
+      - ../db/migrations/0031_dating.sql:/docker-entrypoint-initdb.d/33_dating.sql:ro
+      - ../db/migrations/0032_marketplace.sql:/docker-entrypoint-initdb.d/34_marketplace.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - ../deploy/postgres/initdb/zz_backup_access.sh:/docker-entrypoint-initdb.d/zz_backup_access.sh:ro
       - pgdata:/var/lib/postgresql/data

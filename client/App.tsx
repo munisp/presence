@@ -112,6 +112,7 @@ import { dependencyBudgetHonoursTech16, BUNDLE_CAP_BYTES } from "./src/presence/
 import { buildIdentityReveal, revealHonoursFr70 } from "./src/presence/verificationBadge.js";
 import { identityAssuranceHonoursAmendment } from "./src/presence/identityAssurance.js";
 import { transferHonoursAmendment } from "./src/presence/transferCard.js";
+import { walletHonoursAmendment } from "./src/presence/walletView.js";
 import {
   REACH_REFERENCE_DEVICE,
   TOUCH_TARGET_MIN_PT,
@@ -214,6 +215,10 @@ const SURFACE_CHECKS = [
   // pinned caps and fee, eligibility proved at both moments, and a card
   // that carries amount, fee, currency and state — never free text.
   transferHonoursAmendment(),
+  // SRS Addendum 001 (b53): the wallet contract — a summary is id,
+  // currency, status and three amounts with exact arithmetic, creation is
+  // verified-only and idempotent, and no client surface moves value.
+  walletHonoursAmendment(),
   // NFR-25/26/37: AA palette, 44 pt targets, primary action in the lower 40 %.
   accessibilityHonoursNfr25Nfr26Nfr37() &&
     primaryActionInReachZone(

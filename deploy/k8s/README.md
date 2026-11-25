@@ -58,6 +58,7 @@ kubectl -n presence create configmap postgres-initdb \
   --from-file=26_kyc_avatars.sql=db/migrations/0024_kyc_avatars.sql \
   --from-file=27_p2p_transfers.sql=db/migrations/0025_p2p_transfers.sql \
   --from-file=28_dsar_transfers.sql=db/migrations/0026_dsar_transfers.sql \
+  --from-file=29_wallets.sql=db/migrations/0027_wallets.sql \
   --from-file=zz_backup_access.sh=deploy/postgres/initdb/zz_backup_access.sh \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n presence create configmap keycloak-realms \

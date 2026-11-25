@@ -643,6 +643,47 @@ def main() -> int:
         doc_path = ROOT / doc
         check(f"batch-52 doc {doc}", doc_path.exists() and needle in doc_path.read_text())
 
+    # ---- batch 53: the wallet contract layer (SRS Addendum 001, AMD-PAY-10..14)
+    wallets_path = ROOT / "db" / "migrations" / "0027_wallets.sql"
+    wallets_src = wallets_path.read_text() if wallets_path.exists() else ""
+    check(
+        "AMD-PAY-10/11 wallet schema: ledger + holds + pinned platform fee wallet",
+        "CREATE TABLE wallets (" in wallets_src
+        and "CREATE TABLE wallet_entries (" in wallets_src
+        and "CREATE TABLE wallet_holds (" in wallets_src
+        and "CHECK (balance_after >= 0)" in wallets_src
+        and "'00000000-0000-0000-0000-00000000fee1'" in wallets_src,
+    )
+    check(
+        "AMD-PAY-13 every value-moving wallet definer is rail-gated",
+        wallets_src.count("current_setting('app.transfer_settlement', true) IS DISTINCT FROM 'on'") >= 4
+        and "CREATE OR REPLACE FUNCTION settle_transfer_funds(" in wallets_src
+        and "PERFORM record_transfer_event(" in wallets_src,
+    )
+    check(
+        "AMD-PAY-11/12 wallet ledgers are append-only with immutable hold terms",
+        "wallet_entries is append-only (AMD-PAY-11)" in wallets_src
+        and "wallet_holds is append-only (AMD-PAY-12)" in wallets_src
+        and "wallet hold terms are immutable (AMD-PAY-12)" in wallets_src,
+    )
+    k8s_readme_src = (K8S / "README.md").read_text()
+    compose_src = (ROOT / "deploy" / "docker-compose.yml").read_text()
+    check(
+        "batch-53 migration rides both initdb mounts as 29_wallets.sql",
+        "=db/migrations/0027_wallets.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/29_wallets.sql:ro" in compose_src,
+    )
+    edge_wallet_routes = ROOT / "services" / "edge" / "src" / "routes" / "wallets.ts"
+    edge_wallet_src = edge_wallet_routes.read_text() if edge_wallet_routes.exists() else ""
+    check(
+        "AMD-PAY-13 no route reaches a value-moving wallet definer",
+        "wallet_move(" not in edge_wallet_src
+        and "settle_transfer_funds(" not in edge_wallet_src
+        and "place_wallet_hold(" not in edge_wallet_src
+        and "set_config('app.transfer_settlement'" not in edge_wallet_src
+        and '"/v1/wallets"' in edge_wallet_src,
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

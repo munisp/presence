@@ -2421,6 +2421,96 @@ paths:
         "404": { description: Unknown transfer. }
         "409": { description: Illegal transfer transition (AMD-PAY-04). }
         "422": { description: Outcome is outside the closed vocabulary. }
+  /v1/wallets:
+    post:
+      summary: Open the caller's wallet (SRS Addendum 001, AMD-PAY-10)
+      description: >-
+        Creates the caller's NGN wallet — one wallet per user per
+        currency, self-serve, idempotent. The create_wallet definer
+        decides: the owner claim must be the caller (the definer bypasses
+        RLS) and the caller must be KYC-verified (AMD-PAY-01 discipline).
+        An unfunded wallet is inert — value moves only through the
+        rail-gated definers (AMD-PAY-13); no route funds, withdraws,
+        holds or settles.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+      responses:
+        "200": { description: Wallet already exists; the existing id is returned. }
+        "201": { description: Wallet created. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Not KYC-verified (AMD-PAY-01/10). }
+        "422": { description: Wallet creation takes no fields (AMD-PAY-10). }
+    get:
+      summary: List the caller's wallets with derived balances (AMD-PAY-11)
+      description: >-
+        The caller's wallets with balance, held and available amounts
+        derived from the append-only ledger and pending holds
+        (wallet_balances). Owner-scoped by RLS; the platform fee wallet
+        is never visible. AMD-PAY-10: rows carry an identifier, a
+        currency, a status and amounts — there is no free text to return.
+      responses:
+        "200": { description: The caller's wallets with derived balances. }
+  /v1/wallets/{walletId}/entries:
+    get:
+      summary: Read a wallet's ledger and holds (SRS Addendum 001, AMD-PAY-11/12)
+      description: >-
+        The append-only entry ledger (newest first) and the hold history
+        for one of the caller's wallets. An id the caller does not own
+        answers 404 — wallet existence is not leaked (FR-30 discipline).
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: The wallet's entries and holds. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Unknown or not-owned wallet. }
+  /v1/moderation/wallets/{walletId}/freeze:
+    post:
+      summary: Freeze a user wallet (SRS Addendum 001, AMD-PAY-13)
+      description: >-
+        Workforce wallet suspension (AMD-KYC-05 composability). The
+        set_wallet_status definer runs inside the app.moderator GUC,
+        refuses to touch the platform wallet, and writes the admin audit
+        entry (FR-60). Value movement is never performed here — the
+        movers belong to the payment rail alone (AMD-PAY-08/13; the
+        TECH-23 deployment gate stands).
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Wallet frozen; audited. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required, or not a user wallet. }
+        "404": { description: Unknown wallet. }
+  /v1/moderation/wallets/{walletId}/unfreeze:
+    post:
+      summary: Unfreeze a user wallet (SRS Addendum 001, AMD-PAY-13)
+      description: >-
+        Lifts a wallet freeze. Same gates and audit discipline as the
+        freeze path.
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Wallet active again; audited. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required, or not a user wallet. }
+        "404": { description: Unknown wallet. }
   /v1/moderation/reports/{reportId}/resolve:
     post:
       summary: Resolve a report (FR-52, FR-54, FR-55)
@@ -2771,7 +2861,9 @@ paths:
         masking applied (declined reads as expired; blocked pairs excluded
         from the pair list). Includes the subject's transfer history with
         event ledgers inline (AMD-PAY-09) — transfer rows remain even on
-        masked pairs, as financial records.
+        masked pairs, as financial records — and the subject's wallet
+        history with the entry ledger and hold history inline (AMD-PAY-14),
+        surviving account deletion tied to the anonymous tombstone.
       responses:
         "200":
           description: The subject record.

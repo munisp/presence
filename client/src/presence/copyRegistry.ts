@@ -110,6 +110,26 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.transfer.state.settled": "Settled",
   "ui.transfer.state.disputed": "In dispute",
   "ui.transfer.state.resolved": "Resolved",
+  // SRS Addendum 001 (b53) — wallet surfaces (AMD-PAY-10..14).
+  "ui.wallet.title": "Wallet",
+  "ui.wallet.balance": "Balance",
+  "ui.wallet.available": "Available",
+  "ui.wallet.held": "Reserved for transfers",
+  "ui.wallet.create": "Open your wallet",
+  "ui.wallet.exists": "Your wallet is ready",
+  "ui.wallet.kyc-required": "Verify your identity to open a wallet",
+  "ui.wallet.status.active": "Active",
+  "ui.wallet.status.frozen": "Frozen",
+  "ui.wallet.status.closed": "Closed",
+  "ui.wallet.entry.fund": "Funds added",
+  "ui.wallet.entry.withdrawal": "Withdrawal",
+  "ui.wallet.entry.transfer_out": "Transfer sent",
+  "ui.wallet.entry.transfer_in": "Transfer received",
+  "ui.wallet.entry.fee_charge": "Transfer fee",
+  "ui.wallet.entry.fee_revenue": "Fee revenue",
+  "ui.wallet.hold.pending": "Reserved",
+  "ui.wallet.hold.posted": "Settled",
+  "ui.wallet.hold.voided": "Released",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

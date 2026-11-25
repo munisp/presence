@@ -2768,7 +2768,10 @@ paths:
       summary: DSAR export (FR-62, SEC-14)
       description: >-
         Everything held on the requester as one JSON document, with FR-32/34
-        masking applied (declined reads as expired; blocked pairs excluded).
+        masking applied (declined reads as expired; blocked pairs excluded
+        from the pair list). Includes the subject's transfer history with
+        event ledgers inline (AMD-PAY-09) — transfer rows remain even on
+        masked pairs, as financial records.
       responses:
         "200":
           description: The subject record.

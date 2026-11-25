@@ -1,10 +1,11 @@
-# P2P transfers — component map (SRS Addendum 001, AMD-PAY-01..08)
+# P2P transfers — component map (SRS Addendum 001, AMD-PAY-01..09)
 
 The owner's premise: every user of the platform is KYC and vetted, so two
 verified people who share an open conversation may move money between
 themselves — through a structured transfer card, with dual consent, small
-caps, and a full ledger. Batch 49 delivers the contracts. It moves no
-money: the settlement rail stays behind the TECH-23 gate (AMD-PAY-08).
+caps, and a full ledger. Batch 49 delivers the contracts; batch 50 adds
+DSAR inclusion (AMD-PAY-09). It moves no money: the settlement rail stays
+behind the TECH-23 gate (AMD-PAY-08).
 
 ## The contract at a glance
 
@@ -14,6 +15,7 @@ money: the settlement rail stays behind the TECH-23 gate (AMD-PAY-08).
 | Database | `propose_transfer` definer | AMD-PAY-05/06: per-transfer cap NGN 50,000.00, rolling 24 h sender cap NGN 150,000.00, 100 bps fee computed and stored, both parties KYC-verified, no `payment_instrument` suspension, an OPEN conversation required. The sender claim must be the caller (`app_user()`), because a SECURITY DEFINER bypasses RLS. |
 | Database | `record_transfer_event` definer | AMD-PAY-04: the eight legal transitions enforced in the database, with roles — the recipient answers, the sender cancels, either party disputes, moderation alone resolves, the rail alone settles. AMD-PAY-06: acceptance re-proves KYC and the OPEN pair. AMD-PAY-08: `settled` requires the transaction-local `app.transfer_settlement` setting no P0 component sets. |
 | Database | `expire_stale_transfers` definer | AMD-PAY-06: no proposal outlives its one-hour window; the list read expires lazily. |
+| Database | `dsar_export` definer (migration 0026) | AMD-PAY-09: DSAR export of transfers — the FR-62 document includes the subject's transfer rows with their event ledgers inline, exported even where the pair itself is masked (a transfer is a financial record, not a conversation artefact). Transfer rows survive account deletion tied to the anonymous tombstone; the append-only discipline has no erasure exception. |
 | Edge | `src/transfers.ts` | The validators and pinned constants: `TRANSFER_TRANSITIONS`, the caps, `computeFeeMinor`, the closed `DISPUTE_REASONS` vocabulary, strict TR-23 body parsers. |
 | Edge | `src/routes/transfers.ts` | Seven wires: `POST/GET /v1/transfers`, `accept`, `decline`, `cancel`, `dispute`, and `POST /v1/moderation/transfers/:transferId/resolve`. Every route maps a definer outcome; none decides anything. |
 | Client | `src/presence/transferCard.ts` | The mirror: byte-identical transition table, dispute vocabulary and constants; `buildTransferCard` accepts exactly the four pinned fields and refuses a wire fee that disagrees with the amendment formula; `planTransfer` mirrors the definer's refusals with exactly one reason; deterministic naira formatting. |
@@ -46,11 +48,9 @@ money: the settlement rail stays behind the TECH-23 gate (AMD-PAY-08).
   layer. A second currency is a further amendment with its own caps.
 - **Chargebacks and refunds**: a rail concern. The dispute path records
   and resolves; it does not reverse money it never moved.
-- **DSAR export of transfers**: the export document (FR-62) does not yet
-  include transfer rows; adding them is a follow-up amendment to the
-  0003-era definer, tracked openly rather than smuggled into this batch.
 
 *Verification anchors: `tests/test_batch49.py` pins the migration, the
 definers, the routes, the client contract, the cross-layer constants and
-this document; `services/edge/test/transfers.test.ts` and
+this document; `tests/test_batch50.py` pins the DSAR inclusion and the
+no-erasure discipline; `services/edge/test/transfers.test.ts` and
 `client/test/transferCard.test.ts` cover the validators.*

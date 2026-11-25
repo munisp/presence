@@ -38,6 +38,7 @@ services:
       - ../db/migrations/0023_geofence_qa.sql:/docker-entrypoint-initdb.d/25_geofence_qa.sql:ro
       - ../db/migrations/0024_kyc_avatars.sql:/docker-entrypoint-initdb.d/26_kyc_avatars.sql:ro
       - ../db/migrations/0025_p2p_transfers.sql:/docker-entrypoint-initdb.d/27_p2p_transfers.sql:ro
+      - ../db/migrations/0026_dsar_transfers.sql:/docker-entrypoint-initdb.d/28_dsar_transfers.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - pgdata:/var/lib/postgresql/data
     ports: ["5432:5432"]

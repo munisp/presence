@@ -44,6 +44,11 @@ Asserts (with requirement ids):
   TR-27 the edge publishes x-api-version, enforces a 426 client floor with
          the bootstrap config exempt, and the floor env is documented.
   TR-35 every scan result is stamped with the versioned diagram spec.
+  NFR-15/16/24, SEC-11, INF-18 the backup/PITR layer ships: WAL archiving at
+         5-minute granularity on the primary, daily encrypted base-backup and
+         35-day retention CronJobs, dual-recipient (dual-authorisation)
+         encryption with only public keys in-cluster, a timed restore
+         rehearsal verifying append-only integrity counts, and a runbook.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -467,6 +472,87 @@ def main() -> int:
         "TR-35 diagram spec version is stamped on every scan result",
         "DIAGRAM_SPEC_VERSION = 1" in diagram_spec_src
         and "diagramSpec: DIAGRAM_SPEC_VERSION" in scan_route_src,
+    )
+
+    # ---------------- NFR-15/16/24, SEC-11, INF-18 (batch 51) ----------------
+    backup_yaml_src = (K8S / "backup.yaml").read_text() if (K8S / "backup.yaml").exists() else ""
+    backup_kinds = {(d["metadata"]["name"], d["kind"]) for d in docs(K8S / "backup.yaml")} if backup_yaml_src else set()
+    check(
+        "INF-18 backup layer ships config, PVC and both CronJobs",
+        {("postgres-backup-config", "ConfigMap"), ("postgres-backups", "PersistentVolumeClaim"),
+         ("postgres-base-backup", "CronJob"), ("postgres-backup-retention", "CronJob")} <= backup_kinds,
+    )
+    check(
+        "INF-18 backup manifest is in the base kustomization",
+        "- backup.yaml" in (K8S / "kustomization.yaml").read_text(),
+    )
+    check(
+        "INF-18 backup CronJobs run daily, unattended, as the postgres user",
+        'schedule: "17 2 * * *"' in backup_yaml_src
+        and 'schedule: "41 3 * * *"' in backup_yaml_src
+        and backup_yaml_src.count("automountServiceAccountToken: false") == 2
+        and backup_yaml_src.count("runAsUser: 70") == 2,
+    )
+    pg_yaml_src = (K8S / "postgres.yaml").read_text()
+    check(
+        "NFR-16/INF-18 WAL archiving on at 5-minute granularity (RPO <= 5 min)",
+        "archive_mode=on" in pg_yaml_src
+        and "archive_command=/usr/local/bin/presence-backup/wal-archive.sh %p %f" in pg_yaml_src
+        and "archive_timeout=300" in pg_yaml_src,
+    )
+    check(
+        "NFR-24 backup volume mounted on the primary",
+        "claimName: postgres-backups" in pg_yaml_src and "mountPath: /backups" in pg_yaml_src,
+    )
+    check(
+        "SEC-11 only public backup recipients exist in-cluster (no private keys)",
+        "configMapKeyRef: { name: postgres-backup-config, key: BACKUP_AGE_RECIPIENT_INNER }" in pg_yaml_src
+        and "AGE-SECRET-KEY" not in "".join(f.read_text() for f in K8S.glob("*.yaml")),
+    )
+    check(
+        "SEC-11 backup replication credential comes from the managed secret store",
+        "key: BACKUP_REPLICATION_PASSWORD" in pg_yaml_src
+        and "secretKey: BACKUP_REPLICATION_PASSWORD" in (K8S / "external-secrets.yaml").read_text(),
+    )
+    scripts_dir = ROOT / "deploy" / "postgres" / "backup"
+    read_script = lambda n: (scripts_dir / n).read_text() if (scripts_dir / n).exists() else ""
+    wal_archive_src, base_backup_src = read_script("wal-archive.sh"), read_script("base-backup.sh")
+    retention_src, rehearse_src = read_script("enforce-retention.sh"), read_script("restore-rehearse.sh")
+    check(
+        "SEC-11 every backup artefact is dual-wrapped (inner then outer recipient)",
+        all('age -r "$INNER"' in s and 'age -r "$OUTER"' in s for s in (wal_archive_src, base_backup_src)),
+    )
+    check(
+        "SEC-11 restore rehearsal requires two distinct operator identities",
+        'cmp -s "$INNER_FILE" "$OUTER_FILE"' in rehearse_src
+        and "BACKUP_REHEARSAL_OPERATOR_IDS" in rehearse_src,
+    )
+    check(
+        "NFR-24 retention floor is 35 days; the newest chain is never deleted",
+        "BACKUP_RETENTION_DAYS:-35" in retention_src
+        and '[ "$DAYS" -ge 35 ]' in retention_src
+        and "tail -n 1" in retention_src,
+    )
+    check(
+        "INF-18 rehearsal verifies append-only integrity counts against the RTO budget",
+        all(t in rehearse_src for t in ("consent_ledger", "admin_audit", "transfers", "transfer_events"))
+        and "RTO_BUDGET_S=3600" in rehearse_src,
+    )
+    runbook_backup = ROOT / "docs" / "ops" / "backup-restore.md"
+    check(
+        "NFR-15/INF-18 backup runbook documents the restore and quarterly drill",
+        runbook_backup.exists() and "quarterly" in runbook_backup.read_text(),
+    )
+    nps_src = (K8S / "networkpolicy.yaml").read_text()
+    check(
+        "INF-14 backup pods reach postgres and nothing else",
+        "app: postgres-backup" in nps_src and "name: postgres-backup-egress" in nps_src,
+    )
+    check(
+        "INF-18 compose ships the same archive args, recipients and backup volume",
+        "archive_timeout=300" in compose_src
+        and "zz_backup_access.sh" in compose_src
+        and "pgbackups:/backups" in compose_src,
     )
 
     print()

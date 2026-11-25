@@ -9,3 +9,6 @@ eval/results.xlsx
 eval/answer-key-reference.csv
 package-lock.json
 deploy/apisix/tls/
+
+# Batch 51: dev-only backup rehearsal keys (SEC-11) are generated, never committed
+deploy/postgres/dev-keys/*.agekey

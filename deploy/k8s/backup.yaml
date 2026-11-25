@@ -1,0 +1,113 @@
+# Backup, PITR and restore-rehearsal layer (batch 51) — the in-repo portion
+# of NFR-15 (RTO <= 60 min), NFR-16 (RPO <= 5 min), NFR-24 (35-day
+# retention), SEC-11 (encrypted backups, separate key, dual-authorisation
+# restore) and INF-18 (PITR 5-min granularity, quarterly timed restore).
+# Classifications stay external-evidence: production evidence comes from the
+# managed-service configuration and the quarterly drill. See
+# docs/ops/backup-restore.md for the runbook.
+#
+# Integration/staging note: the backup PVC is ReadWriteOnce, so the CronJob
+# pods land on the postgres node (single-zone overlays). Production runs the
+# managed equivalent per INF-07 (deploy/k8s/postgres.yaml header).
+
+# SEC-11: PUBLIC recipients only. The matching private keys never enter the
+# cluster — they stay with the two restore operators, so no one with cluster
+# access alone can read a backup. Populate for the environment before apply
+# (the placeholder values below are invalid on purpose).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-backup-config
+  namespace: presence
+  labels: { app: postgres-backup, app.kubernetes.io/part-of: presence }
+data:
+  BACKUP_AGE_RECIPIENT_INNER: "age1replace-with-inner-operator-public-key"
+  BACKUP_AGE_RECIPIENT_OUTER: "age1replace-with-outer-operator-public-key"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: presence
+  labels: { app: postgres-backup, app.kubernetes.io/part-of: presence }
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: { requests: { storage: 100Gi } }
+---
+# Daily encrypted base backup (02:17 UTC — off the hour, away from the
+# retention pass). pg_basebackup streams from the primary as the
+# least-privilege presence_backup role.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-base-backup
+  namespace: presence
+  labels: { app: postgres-backup, app.kubernetes.io/part-of: presence }
+spec:
+  schedule: "17 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: postgres-backup, app.kubernetes.io/part-of: presence }
+        spec:
+          securityContext: { runAsUser: 70, fsGroup: 70 }
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          containers:
+            - name: base-backup
+              image: presence/postgres:p0
+              command: ["/usr/local/bin/presence-backup/base-backup.sh"]
+              env:
+                - name: PGHOST
+                  value: postgres
+                - name: PGDATABASE
+                  value: presence
+                - name: BACKUP_AGE_RECIPIENT_INNER
+                  valueFrom: { configMapKeyRef: { name: postgres-backup-config, key: BACKUP_AGE_RECIPIENT_INNER } }
+                - name: BACKUP_AGE_RECIPIENT_OUTER
+                  valueFrom: { configMapKeyRef: { name: postgres-backup-config, key: BACKUP_AGE_RECIPIENT_OUTER } }
+                - name: BACKUP_REPLICATION_PASSWORD
+                  valueFrom: { secretKeyRef: { name: presence-secrets, key: BACKUP_REPLICATION_PASSWORD } }
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: postgres-backups }
+---
+# Retention pass (03:41 UTC): enforces the 35-day floor (NFR-24) and never
+# deletes the newest restorable chain.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup-retention
+  namespace: presence
+  labels: { app: postgres-backup, app.kubernetes.io/part-of: presence }
+spec:
+  schedule: "41 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: postgres-backup, app.kubernetes.io/part-of: presence }
+        spec:
+          securityContext: { runAsUser: 70, fsGroup: 70 }
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          containers:
+            - name: enforce-retention
+              image: presence/postgres:p0
+              command: ["/usr/local/bin/presence-backup/enforce-retention.sh"]
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: postgres-backups }

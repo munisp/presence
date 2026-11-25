@@ -6,10 +6,29 @@ services:
   postgres:
     build: ./postgres   # postgis + pgvector (FR-09/TECH-09 linking)
     image: presence/postgres:p0
+    # PITR (INF-18/NFR-16): WAL archiving on, a segment forced every 300 s so
+    # the point-in-time window never exceeds 5 minutes; every segment is
+    # dual-encrypted by wal-archive.sh (SEC-11).
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/usr/local/bin/presence-backup/wal-archive.sh %p %f
+      - -c
+      - archive_timeout=300
     environment:
       POSTGRES_USER: presence
       POSTGRES_PASSWORD: presence
       POSTGRES_DB: presence
+      # SEC-11 DEV-ONLY recipients — throwaway local-loop keys; production
+      # recipients come from postgres-backup-config (deploy/k8s/backup.yaml)
+      # and the matching private keys never enter any manifest.
+      BACKUP_AGE_RECIPIENT_INNER: age1dzxr48zxrwvtr2zxvrqna235htq8ws2ze0det3a7th94kah49p9snscufh
+      BACKUP_AGE_RECIPIENT_OUTER: age1953ydc8hnz8cv2wnj5y6cmuzwyf3q99am25yukahpf2tgv0mkeps6ryz32
+      BACKUP_REPLICATION_PASSWORD: presence-backup-dev   # DEV-ONLY, like POSTGRES_PASSWORD above
     volumes:
       - ../db/migrations/0001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - ../db/seed/taxonomy.sql:/docker-entrypoint-initdb.d/02_taxonomy.sql:ro
@@ -40,13 +59,45 @@ services:
       - ../db/migrations/0025_p2p_transfers.sql:/docker-entrypoint-initdb.d/27_p2p_transfers.sql:ro
       - ../db/migrations/0026_dsar_transfers.sql:/docker-entrypoint-initdb.d/28_dsar_transfers.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
+      - ../deploy/postgres/initdb/zz_backup_access.sh:/docker-entrypoint-initdb.d/zz_backup_access.sh:ro
       - pgdata:/var/lib/postgresql/data
+      - pgbackups:/backups
     ports: ["5432:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U presence"]
       interval: 5s
       timeout: 3s
       retries: 12
+
+  # On-demand backup operations (SEC-11, INF-18, NFR-24) — tools profile, not
+  # part of the running stack:
+  #   docker compose -f deploy/docker-compose.yml run --rm backup
+  #       -> base-backup.sh (default command)
+  #   docker compose -f deploy/docker-compose.yml run --rm backup \
+  #       /usr/local/bin/presence-backup/restore-rehearse.sh
+  #       -> the dual-authorised restore drill; run
+  #          deploy/postgres/dev-keys/generate-dev-keys.sh first
+  backup:
+    image: presence/postgres:p0
+    profiles: ["tools"]
+    user: "70"   # postgres — matches the k8s CronJob securityContext
+    command: ["/usr/local/bin/presence-backup/base-backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: presence
+      BACKUP_AGE_RECIPIENT_INNER: age1dzxr48zxrwvtr2zxvrqna235htq8ws2ze0det3a7th94kah49p9snscufh
+      BACKUP_AGE_RECIPIENT_OUTER: age1953ydc8hnz8cv2wnj5y6cmuzwyf3q99am25yukahpf2tgv0mkeps6ryz32
+      BACKUP_REPLICATION_PASSWORD: presence-backup-dev   # DEV-ONLY
+      # SEC-11 dual-authorisation rehearsal: two distinct DEV-ONLY identity
+      # files (gitignored; generate-dev-keys.sh creates them).
+      BACKUP_AGE_IDENTITY_INNER_FILE: /run/backup-keys/inner.agekey
+      BACKUP_AGE_IDENTITY_OUTER_FILE: /run/backup-keys/outer.agekey
+      BACKUP_REHEARSAL_OPERATOR_IDS: dev-ops-a,dev-ops-b   # DEV-ONLY
+    volumes:
+      - pgbackups:/backups
+      - ../deploy/postgres/dev-keys:/run/backup-keys:ro
+    depends_on:
+      postgres: { condition: service_healthy }
 
   valkey:
     image: valkey/valkey:8-alpine
@@ -157,3 +208,4 @@ services:
 
 volumes:
   pgdata:
+  pgbackups:

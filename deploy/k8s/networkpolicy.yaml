@@ -139,6 +139,21 @@ spec:
         - podSelector: { matchLabels: { app: edge } }
         - podSelector: { matchLabels: { app: match } }
         - podSelector: { matchLabels: { app: keycloak } }
+        - podSelector: { matchLabels: { app: postgres-backup } }   # pg_basebackup (INF-18)
+      ports: [{ protocol: TCP, port: 5432 }]
+---
+# Batch 51 (INF-14): the backup CronJobs may reach postgres and nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-backup-egress
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: postgres-backup }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: postgres } } }]
       ports: [{ protocol: TCP, port: 5432 }]
 ---
 apiVersion: networking.k8s.io/v1

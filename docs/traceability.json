@@ -143,7 +143,10 @@
       "family": "BR",
       "status": "organisational",
       "evidence": [
+        "db/migrations/0025_p2p_transfers.sql",
         "docs/adr/0007-payments-gated-on-br06.md",
+        "docs/spec/srs-addendum-001.md",
+        "docs/ux/identity-assurance.md",
         "docs/ux/safety-and-indoor-presence.md"
       ],
       "note": "Five sequenced revenue lines only; payments gated per docs/adr/0007."
@@ -153,8 +156,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/rendered-ui.md",
         "docs/ux/safety-and-indoor-presence.md",
-        "services/edge/src/context.ts"
+        "services/edge/src/context.ts",
+        "tests/test_batch38.py"
       ],
       "note": "Safety is free and two taps away end to end: the report, block, consent-withdrawal and account-deletion endpoints exist and are ungated (no monetisation gate exists), and the client reportFlow.ts contract pins the five SRS-named actions on their wires, the safety-tray entry on every screen, the two-tap budget for any screen x action, and monetisation fields as audit violations."
     },
@@ -364,8 +369,8 @@
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0016_age_assurance.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/account.ts",
-        "services/edge/src/routes/presence.ts"
+        "docs/spec/srs-addendum-001.md",
+        "services/edge/src/routes/account.ts"
       ],
       "note": "POST /account/age-declaration upserts a birth-year declaration; under-18 sets age_blocked; presence+scan refuse with a neutral 403 (no reason disclosed); boundary fails toward blocking; tested."
     },
@@ -375,9 +380,9 @@
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
         "db/migrations/0019_reporting_compliance.sql",
+        "db/migrations/0026_dsar_transfers.sql",
         "docs/api/openapi.yaml",
-        "docs/ux/interaction-surfaces.md",
-        "docs/ux/journeys-and-conversations.md"
+        "docs/spec/srs-addendum-001.md"
       ],
       "note": "DELETE /v1/account erases in one authenticated call; the client journey is pinned in journeyContracts.ts \u2014 three steps (settings -> account -> confirm) inside the three-tap budget ending in that call, with no support-contact step (budget and no-support proofs test-pinned, App-shell guard)."
     },
@@ -387,9 +392,9 @@
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
         "docs/api/openapi.yaml",
+        "docs/spec/srs-addendum-001.md",
         "services/edge/src/routes/account.ts",
-        "services/edge/src/routes/presence.ts",
-        "services/edge/src/routes/scan.ts"
+        "services/edge/src/routes/presence.ts"
       ],
       "note": "delete_account purges envelopes/pairs/blocks/profile/identity synchronously and tombstones the user; the edge strips Valkey presence+suppress+block keys in the same call; ledger actors anonymised after the 90-day hold by lifecycle_tick."
     },
@@ -411,8 +416,9 @@
       "evidence": [
         "db/migrations/0020_venue_registry.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/profile.ts",
-        "tests/test_venue_registry.py"
+        "docs/spec/srs-addendum-001.md",
+        "services/edge/src/routes/identity.ts",
+        "services/edge/src/routes/profile.ts"
       ],
       "note": "PUT/GET /v1/profile/identity over user_identities (migration 0020): handle set-once (409 on change), display_name <=80 chars defaulting to the handle at render time (COALESCE in display_handle(), the route reads and dsar_export), bio varchar(140) enforced in the data layer and the route schema; display name and bio are content-screened (SEC-37 idiom); the photo stays RLS-gated to OPEN (identity_after_open) and is uploaded out of band."
     },
@@ -676,8 +682,8 @@
         "db/migrations/0001_init.sql",
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0019_reporting_compliance.sql",
-        "docs/api/openapi.yaml",
-        "docs/ux/interaction-surfaces.md"
+        "db/migrations/0024_kyc_avatars.sql",
+        "db/migrations/0025_p2p_transfers.sql"
       ],
       "note": "DETECTED>NUDGED>EXPRESSED>MUTUAL>OPEN enforced by DB trigger; DETECTED recorded on first surfacing; tested."
     },
@@ -687,9 +693,9 @@
       "evidence": [
         "db/migrations/0001_init.sql",
         "db/migrations/0007_group_surface.sql",
+        "db/migrations/0024_kyc_avatars.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/auth.ts",
-        "services/edge/src/routes/consent.ts"
+        "docs/spec/srs-addendum-001.md"
       ],
       "note": "Identity RLS-gated to OPEN; verified by policy + edge tests."
     },
@@ -708,9 +714,9 @@
       "evidence": [
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
+        "db/migrations/0026_dsar_transfers.sql",
         "docs/api/openapi.yaml",
-        "services/consent-go/README.md",
-        "services/edge/src/lifecycle.ts"
+        "docs/spec/srs-addendum-001.md"
       ],
       "note": "Silent decline: POST /consent/:id/decline always answers 204, publishes 'expired'; maskCloseReason maps declined>expired; tested."
     },
@@ -732,9 +738,9 @@
       "evidence": [
         "db/migrations/0002_offer_lifecycle.sql",
         "db/migrations/0003_account_deletion.sql",
+        "db/migrations/0026_dsar_transfers.sql",
         "docs/api/openapi.yaml",
-        "services/consent-go/README.md",
-        "services/edge/src/lifecycle.ts"
+        "docs/spec/srs-addendum-001.md"
       ],
       "note": "Blocking: blocks table (no UPDATE/DELETE grants), permanent Valkey blockKey, scan excludes both directions via blocked_users_for; pair closes silently."
     },
@@ -914,10 +920,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0021_attestation_push.sql",
+        "db/migrations/0024_kyc_avatars.sql",
         "docs/api/openapi.yaml",
         "docs/security/attestation.md",
-        "docs/ux/accessibility-and-reveal.md",
-        "services/edge/src/attestation.ts"
+        "docs/spec/srs-addendum-001.md"
       ],
       "note": "Cryptographic verified enrolment (migration 0021): challenge-bound ECDSA P-256 assertion verified against the presented key, monotonic counter enforced inside register_verified_attestation() (replays never honour the write), FR-07 dedupe semantics preserved with the same neutral 201. The discovery gate is structural: the match service reads profiles only for accounts in the attested_accounts view (verified keys + approved fallbacks) \u2014 an unattested account has no corpus profile and cannot appear in results. Pins: test_batch29.py + edge attestation.test.ts (real P-256 pairs)."
     },
@@ -964,8 +970,8 @@
         "db/migrations/0008_moderation.sql",
         "db/migrations/0020_venue_registry.sql",
         "docs/api/openapi.yaml",
-        "services/edge/src/routes/moderation.ts",
-        "services/edge/src/routes/presence.ts"
+        "docs/spec/srs-addendum-001.md",
+        "docs/ux/identity-assurance.md"
       ],
       "note": "suspensions table + suspension_dimension enum (attestation_key/handle/payment_instrument), one active per (user, dimension) partial unique index; attestation gate wired into presence publish (neutral 403), handle mask via display_handle() inside group_member_directory, payment_instrument record-only until the P3 payments surface; lift is per-dimension."
     },
@@ -1046,7 +1052,7 @@
         "db/migrations/0004_discovery_safety.sql",
         "db/migrations/0019_reporting_compliance.sql",
         "db/migrations/0020_venue_registry.sql",
-        "docs/api/openapi.yaml"
+        "db/migrations/0026_dsar_transfers.sql"
       ],
       "note": "GET /account/export assembles the full subject record (profile, interests, pairs, ledger actions, blocks, reports) via dsar_export() with FR-32/34 masking intact; erasure via DELETE /account."
     },
@@ -1136,11 +1142,11 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
+        "docs/spec/srs-addendum-001.md",
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
         "docs/ux/journeys-and-conversations.md",
-        "tests/test_batch38.py",
-        "tests/test_batch39.py"
+        "tests/test_batch38.py"
       ],
       "note": "client/src/presence/verificationBadge.ts \u2014 the identity-reveal registry is exactly the three SRS surfaces (offer, table-roster, booked-slot; account settings is NOT one); a reveal is built from the FR-51 attestation state alone with the badge label pinned (a surface cannot forge a friendlier status), and unregistered surfaces, blank names and garbage states fail closed to null; the audit flags a label that does not match its state. Pinned by client tests + tests/test_batch43.py."
     },
@@ -1199,7 +1205,9 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
+        "docs/spec/srs-addendum-001.md",
         "docs/ux/discovery-surfaces.md",
+        "docs/ux/rendered-ui.md",
         "tests/test_batch38.py",
         "tests/test_batch39.py"
       ],
@@ -1240,9 +1248,9 @@
       "evidence": [
         "docs/ux/discovery-surfaces.md",
         "docs/ux/journeys-and-conversations.md",
+        "docs/ux/rendered-ui.md",
         "tests/test_batch34.py",
-        "tests/test_batch37.py",
-        "tests/test_batch39.py"
+        "tests/test_batch37.py"
       ],
       "note": "client/src/presence/discoverySkeleton.ts \u2014 pairs/rooms/tables share one pinned region list (header/modeSelector/resultRegion/statusTray); only resultContent differs (skeletonSharedAcrossModes guard). Each mode has a pinned one-sentence explanation shown once per user (seen-set under the allowlisted presence.ui.seenExplanations key, TR-30 wiped, parse fails toward explaining again); planModeChange defers any switch while a conversation is open. SKELETON_AFFORDANCES has no load-more \u2014 the result region renders one bounded payload. Pinned by client tests + tests/test_batch39.py."
     },
@@ -1317,11 +1325,11 @@
       "family": "FR",
       "status": "implemented",
       "evidence": [
+        "docs/spec/srs-addendum-001.md",
         "docs/ux/discovery-surfaces.md",
+        "docs/ux/identity-assurance.md",
         "docs/ux/interaction-surfaces.md",
-        "docs/ux/journeys-and-conversations.md",
-        "tests/test_batch39.py",
-        "tests/test_batch41.py"
+        "docs/ux/journeys-and-conversations.md"
       ],
       "note": "client/src/presence/surfaceIntegrity.ts \u2014 the single PROHIBITED_ENGAGEMENT_PATTERNS registry (infinite/auto-loading scroll, typing indicators, read receipts, streaks, daily-login rewards, like/view counts, photo-at-match) every surface descriptor is audited against via descriptorViolations; the discovery surfaces (matchSurface, presenceHalo, offerWindow, discoverySkeleton) pass the guard by construction with pinned affordance lists, and the conversation surfaces inherit the same registry. Server-side the patterns remain structural (no endpoint serves the data). Pinned by client tests + tests/test_batch39.py."
     },
@@ -1342,8 +1350,10 @@
       "status": "implemented",
       "evidence": [
         "docs/ux/journeys-and-conversations.md",
+        "docs/ux/rendered-ui.md",
         "docs/ux/safety-and-indoor-presence.md",
-        "tests/test_batch41.py"
+        "tests/test_batch38.py",
+        "tests/test_batch39.py"
       ],
       "note": "Check-in is the primary indoor presence path end to end: signed per-floor tokens + floor attribution server-side (FR-99/FR-100), and the client indoorPresence.ts contract resolves the primary action to venue check-in via the FR-48 confidence ordering \u2014 the cell appears indoors only as the explicit fallback with the pinned notice, an empty code still presents check-in first while refusing at the wire, and garbage venue context fails closed."
     },
@@ -1422,9 +1432,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/spec/srs-addendum-001.md",
+        "docs/ux/p2p-transfers.md",
         "services/edge/src/announcements.ts",
-        "services/edge/src/routes/announcements.ts",
-        "services/edge/test/announcements.test.ts"
+        "services/edge/src/routes/announcements.ts"
       ],
       "note": "Fixed category enum (schema + CHECK); bodies and responses screened with screenText, category-coded 422 (SEC-37)."
     },
@@ -1512,7 +1523,8 @@
       "evidence": [
         "docs/ux/client-budgets.md",
         "scripts/profile_device_budgets.py",
-        "tests/test_batch42.py"
+        "tests/test_batch42.py",
+        "tests/test_batch46.py"
       ],
       "note": "client/src/presence/startupBudget.ts \u2014 the same ledger's warm column: resume pays nothing for the resident native runtime or JS bundle, sums to exactly 600 ms, no warm phase dearer than its cold twin; on-device profiling remains."
     },
@@ -1583,14 +1595,25 @@
     "NFR-15": {
       "family": "NFR",
       "status": "external-evidence",
-      "evidence": [],
-      "note": "RTO <=60 min single-zone loss."
+      "evidence": [
+        "deploy/k8s/README.md",
+        "deploy/k8s/backup.yaml",
+        "docs/ops/backup-restore.md",
+        "scripts/validate_deploy.py"
+      ],
+      "note": "RTO <=60 min single-zone loss \u2014 the restore path is in-repo (batch 51): restore-rehearse.sh runs the timed restore against a hard 3600 s RTO budget and fails on breach; runbook in docs/ops/backup-restore.md. Production timing evidence comes from the quarterly drill."
     },
     "NFR-16": {
       "family": "NFR",
       "status": "external-evidence",
-      "evidence": [],
-      "note": "RPO <=5 min consent ledger (PITR, INF-18)."
+      "evidence": [
+        "deploy/docker-compose.yml",
+        "deploy/k8s/backup.yaml",
+        "deploy/k8s/postgres.yaml",
+        "docs/ops/backup-restore.md",
+        "scripts/validate_deploy.py"
+      ],
+      "note": "RPO <=5 min consent ledger (PITR, INF-18) \u2014 archive_timeout=300 on the postgres args (compose + k8s) forces a WAL segment at least every 5 minutes and wal-archive.sh ships every segment encrypted; production freshness measurement outstanding."
     },
     "NFR-17": {
       "family": "NFR",
@@ -1666,18 +1689,23 @@
     "NFR-24": {
       "family": "NFR",
       "status": "external-evidence",
-      "evidence": [],
-      "note": "35-day backup retention \u2014 production ops."
+      "evidence": [
+        "deploy/docker-compose.yml",
+        "deploy/k8s/backup.yaml",
+        "docs/ops/backup-restore.md",
+        "scripts/validate_deploy.py"
+      ],
+      "note": "35-day backup retention \u2014 enforce-retention.sh CronJob (daily 03:41 UTC) with a hard 35-day floor that refuses shorter windows and never deletes the newest restorable chain; production ops cadence outstanding."
     },
     "NFR-25": {
       "family": "NFR",
       "status": "implemented",
       "evidence": [
+        "docs/spec/srs-addendum-001.md",
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
-        "docs/ux/journeys-and-conversations.md",
-        "docs/ux/safety-and-indoor-presence.md",
-        "tests/test_batch38.py"
+        "docs/ux/identity-assurance.md",
+        "docs/ux/journeys-and-conversations.md"
       ],
       "note": "client/src/presence/accessibility.ts \u2014 WCAG 2.2 AA as code: relative-luminance contrast (4.5:1 normal / 3:1 large and non-text) audited over the pinned shell palette (the audit caught the note colour at 3.50:1 \u2014 moved to #74879B); dynamic type pinned to the 200 % resize floor (clamped, garbage fails closed to 1); reduced motion is a pinned instant fallback with unreadable preference treated as reduce; screen-reader labelling and focus order audited per control (non-empty label, registered role, unique non-negative focus position). On-device VoiceOver/TalkBack validation is the named residual beyond code. Pinned by client tests + tests/test_batch43.py."
     },
@@ -1697,8 +1725,8 @@
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
         "docs/ux/localisation-and-degradation.md",
-        "tests/test_batch38.py",
-        "tests/test_batch39.py"
+        "docs/ux/p2p-transfers.md",
+        "docs/ux/rendered-ui.md"
       ],
       "note": "client/src/presence/copyRegistry.ts \u2014 one copy registry keyed off the English launch baseline; a locale is pure data (BCP-47-lite tag + string map) so adding one needs no code change (proven by the master guard registering a synthetic locale at runtime); missing keys fall back to the English floor, unknown keys fail closed to null, malformed tags/bundles resolve as English; localeCoverage/localeIsLaunchReady set the full-coverage bar for the pinned +2-locales-in-3-months commitment; the shell renders title/subtitle through the registry with ACTIVE_LOCALE=null. Pinned by client tests + tests/test_batch44.py."
     },
@@ -1720,7 +1748,8 @@
       "evidence": [
         "docs/ux/client-budgets.md",
         "scripts/profile_device_budgets.py",
-        "tests/test_batch42.py"
+        "tests/test_batch42.py",
+        "tests/test_batch46.py"
       ],
       "note": "client/src/presence/powerBudget.ts \u2014 duty-cycle ledger: fixed consumers (BLE advertise/scan, UI render) plus publish+cell activations computed from the FR-85 cadence (12/h standard, 6/h reduced), both modes inside the 2 %/h ceiling; on-device battery profiling remains."
     },
@@ -1731,7 +1760,8 @@
         "docs/ux/client-budgets.md",
         "scripts/profile_device_budgets.py",
         "tests/test_batch34.py",
-        "tests/test_batch42.py"
+        "tests/test_batch42.py",
+        "tests/test_batch46.py"
       ],
       "note": "client/src/presence/powerBudget.ts \u2014 structural half landed: the background work registry is EMPTY when background presence is off (parity by doing nothing), exactly ble-central-wake when on, cross-pinned to app.json UIBackgroundModes and blocked ACCESS_BACKGROUND_LOCATION; the no-op-parity measurement remains device-side."
     },
@@ -1789,7 +1819,8 @@
         "docs/ux/client-budgets.md",
         "docs/ux/discovery-surfaces.md",
         "scripts/profile_device_budgets.py",
-        "tests/test_batch42.py"
+        "tests/test_batch42.py",
+        "tests/test_batch46.py"
       ],
       "note": "client/src/presence/frameBudget.ts \u2014 pinned render ledger (layout/path-geometry/label-measure/paint-commit = 16 ms) fits the 60 fps frame budget AND the 30 ms floor, audited fail-closed; on-device fps profiling remains."
     },
@@ -2064,10 +2095,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/p2p-transfers.md",
         "services/edge/src/app.ts",
         "services/edge/src/errors.ts",
-        "services/edge/src/reports.ts",
-        "services/edge/src/routes/account.ts"
+        "services/edge/src/identity.ts"
       ],
       "note": "docs/api/openapi.yaml is the machine-readable contract; every /v1 body/query/params carries a JSON Schema with additionalProperties:false under ajv strict mode \u2014 unknown fields hard-400 before the handler runs."
     },
@@ -2398,8 +2429,14 @@
     "SEC-11": {
       "family": "SEC",
       "status": "external-evidence",
-      "evidence": [],
-      "note": "Encrypted backups, separate key, dual-authorisation restore \u2014 production ops."
+      "evidence": [
+        "deploy/docker-compose.yml",
+        "deploy/k8s/README.md",
+        "deploy/k8s/backup.yaml",
+        "deploy/k8s/external-secrets.yaml",
+        "deploy/k8s/postgres.yaml"
+      ],
+      "note": "Encrypted backups, separate key, dual-authorisation restore \u2014 every artefact is age-wrapped twice (inner then outer recipient); only the public recipients exist in-cluster (postgres-backup-config), both private keys live off-cluster with separate operators, and restore-rehearse.sh refuses to run without two distinct identity files. Production key-ceremony + storage evidence outstanding."
     },
     "SEC-12": {
       "family": "SEC",
@@ -2425,6 +2462,7 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0003_account_deletion.sql",
+        "db/migrations/0026_dsar_transfers.sql",
         "docs/api/openapi.yaml",
         "services/edge/src/routes/account.ts"
       ],
@@ -2476,10 +2514,10 @@
       "status": "implemented",
       "evidence": [
         "db/migrations/0021_attestation_push.sql",
+        "db/migrations/0024_kyc_avatars.sql",
         "docs/api/openapi.yaml",
         "docs/security/attestation.md",
-        "services/edge/src/attestation.ts",
-        "services/edge/src/auth.ts"
+        "docs/spec/srs-addendum-001.md"
       ],
       "note": "Attestation before discovery with a documented fallback (docs/security/attestation.md): single-use 120 s challenges, signature verification, monotonic counter, verified_at registry; the corpus gates on attested_accounts (match profile read joins the view). Fallback: moderator-approved, audited, one-open-per-account, revocable waivers (attestation_fallbacks + approve/revoke definers under the moderator GUC; console routes POST/DELETE /v1/moderation/attestation-fallbacks/:userId). Legacy unverified enrolment stays accepted but discovery-ineligible until verified. Pins: test_batch29.py."
     },
@@ -2573,7 +2611,7 @@
         "deploy/keycloak/README.md",
         "scripts/validate_deploy.py"
       ],
-      "note": "No Secret manifests anywhere in the repo (CI-pinned: validate_deploy fails on any Secret with data/stringData); production secrets materialise from a managed store via the External Secrets Operator (deploy/k8s/external-secrets.yaml \u2014 ClusterSecretStore with AWS-SM/Vault backend blocks + ExternalSecret covering all nine referenced keys); compose keeps only clearly-marked dev values."
+      "note": "No Secret manifests anywhere in the repo (CI-pinned: validate_deploy fails on any Secret with data/stringData); production secrets materialise from a managed store via the External Secrets Operator (deploy/k8s/external-secrets.yaml \u2014 ClusterSecretStore with AWS-SM/Vault backend blocks + ExternalSecret covering every referenced key); compose keeps only clearly-marked dev values."
     },
     "SEC-29": {
       "family": "SEC",
@@ -2664,9 +2702,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/spec/srs-addendum-001.md",
+        "docs/ux/p2p-transfers.md",
         "services/edge/src/announcements.ts",
-        "services/edge/src/routes/announcements.ts",
-        "services/edge/src/routes/profile.ts"
+        "services/edge/src/routes/announcements.ts"
       ],
       "note": "screenText gates both announcement publish and respond routes; findings return category-coded 422, never the matched text."
     },
@@ -2746,7 +2785,9 @@
       "status": "external-evidence",
       "evidence": [
         "deploy/k8s/README.md",
-        "deploy/k8s/postgres.yaml"
+        "deploy/k8s/backup.yaml",
+        "deploy/k8s/postgres.yaml",
+        "docs/ops/backup-restore.md"
       ],
       "note": "Postgres 4 vCPU/16 GB, 500 GB SSD, PITR \u2014 production."
     },
@@ -2850,8 +2891,14 @@
     "INF-18": {
       "family": "INF",
       "status": "external-evidence",
-      "evidence": [],
-      "note": "PITR 5-min granularity, 35-day retention, quarterly timed restore."
+      "evidence": [
+        "deploy/docker-compose.yml",
+        "deploy/k8s/README.md",
+        "deploy/k8s/backup.yaml",
+        "deploy/k8s/external-secrets.yaml",
+        "deploy/k8s/networkpolicy.yaml"
+      ],
+      "note": "PITR 5-min granularity, 35-day retention, quarterly timed restore \u2014 in-repo layer (batch 51): wal-archive.sh + archive_timeout=300, base-backup.sh CronJob with manifest, enforce-retention.sh (35-day floor), restore-rehearse.sh (timed, dual-authorised, verifies append-only integrity counts, logs to an append-only drill trail). The quarterly drill itself stays an ops duty."
     },
     "INF-19": {
       "family": "INF",
@@ -2996,6 +3043,8 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "tests/test_batch48.py",
+        "tests/test_batch49.py",
         "tests/test_openapi_contract.py"
       ],
       "note": "tests/test_openapi_contract.py generates assertions from openapi.yaml: strict-body structural + behavioural checks, doc<->route coverage both ways, TR-24 header docs, schema well-formedness."
@@ -3078,7 +3127,13 @@
     "TECH-23": {
       "family": "TECH",
       "status": "implemented",
-      "evidence": [],
+      "evidence": [
+        "db/migrations/0025_p2p_transfers.sql",
+        "docs/api/openapi.yaml",
+        "docs/spec/srs-addendum-001.md",
+        "docs/ux/identity-assurance.md",
+        "docs/ux/p2p-transfers.md"
+      ],
       "note": "No Mojaloop/TigerBeetle deployed; ARC-002 \u00a79 gates them at P3."
     },
     "TECH-24": {

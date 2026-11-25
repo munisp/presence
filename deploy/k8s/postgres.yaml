@@ -21,6 +21,19 @@ spec:
       containers:
         - name: postgres
           image: presence/postgres:p0   # built from deploy/postgres (postgis + pgvector, FR-09/TECH-09)
+          # PITR (INF-18/NFR-16): WAL archiving on, a segment forced every
+          # 300 s so the point-in-time window never exceeds 5 minutes; every
+          # segment is dual-encrypted by wal-archive.sh (SEC-11).
+          args:
+            - postgres
+            - -c
+            - wal_level=replica
+            - -c
+            - archive_mode=on
+            - -c
+            - archive_command=/usr/local/bin/presence-backup/wal-archive.sh %p %f
+            - -c
+            - archive_timeout=300
           ports: [{ containerPort: 5432 }]
           env:
             - name: POSTGRES_USER
@@ -29,6 +42,16 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: POSTGRES_PASSWORD } }
             - name: POSTGRES_DB
               value: presence
+            # SEC-11: public recipients only — private keys never enter the
+            # cluster; restore needs both operators (restore-rehearse.sh).
+            - name: BACKUP_AGE_RECIPIENT_INNER
+              valueFrom: { configMapKeyRef: { name: postgres-backup-config, key: BACKUP_AGE_RECIPIENT_INNER } }
+            - name: BACKUP_AGE_RECIPIENT_OUTER
+              valueFrom: { configMapKeyRef: { name: postgres-backup-config, key: BACKUP_AGE_RECIPIENT_OUTER } }
+            # Used once at initdb by zz_backup_access.sh to provision the
+            # least-privilege presence_backup role.
+            - name: BACKUP_REPLICATION_PASSWORD
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: BACKUP_REPLICATION_PASSWORD } }
           readinessProbe:
             exec: { command: ["pg_isready", "-U", "presence"] }
             periodSeconds: 5
@@ -40,9 +63,13 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: initdb
               mountPath: /docker-entrypoint-initdb.d
+            - name: backups
+              mountPath: /backups
       volumes:
         - name: initdb
           configMap: { name: postgres-initdb }
+        - name: backups
+          persistentVolumeClaim: { claimName: postgres-backups }
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:

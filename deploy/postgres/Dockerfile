@@ -29,3 +29,10 @@ RUN apk add --no-cache --virtual .h3-build \
     && cmake --install /tmp/h3-pg/build \
     && rm -rf /tmp/h3-pg \
     && apk del .h3-build
+
+# Backup toolchain (SEC-11/INF-18/NFR-24): age for the dual-recipient
+# encryption every backup artefact goes through, plus the archive/backup/
+# retention/rehearsal scripts the deploy manifests wire in.
+RUN apk add --no-cache age
+COPY backup/ /usr/local/bin/presence-backup/
+RUN chmod +x /usr/local/bin/presence-backup/*.sh

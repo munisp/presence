@@ -127,3 +127,44 @@ spec:
           annotations:
             summary: "Scan path burning the 99.9% availability budget (NFR-13)"
             runbook: "docs/runbook.md#scanavailabilityburn"
+
+        - alert: PresenceWalletWebhookRejections
+          # AMD-OPS-01 (AMD-PAY-22): a spike of rejected rail webhooks is
+          # either an attack replaying stale/forged callbacks or a broken
+          # provider credential/clock — both need a human.
+          expr: |
+            sum(rate(presence_wallet_webhook_results_total{result="rejected"}[5m])) > 0.5
+          for: 10m
+          labels:
+            severity: page
+            owner: payments-oncall
+          annotations:
+            summary: "Wallet rail webhooks being rejected (bad signature or stale timestamp)"
+            runbook: "docs/runbook.md#presencewalletwebhookrejections"
+
+        - alert: PresenceWalletRailUnavailable
+          # AMD-OPS-01 (AMD-PAY-15): any 503 from the rail kill switch means
+          # value movement is refused platform-wide — always page-worthy.
+          expr: |
+            sum(rate(presence_http_requests_total{route=~"/v1/webhooks/wallet-(funding|payout)",status="503"}[5m])) > 0
+          for: 5m
+          labels:
+            severity: page
+            owner: payments-oncall
+          annotations:
+            summary: "Wallet rail disabled (WALLET_RAIL=off) or secrets missing — 503s on rail routes"
+            runbook: "docs/runbook.md#presencewalletrailunavailable"
+
+        - alert: PresenceWalletPayoutFailures
+          # AMD-OPS-01 (AMD-PAY-17): payout callbacks whose definer refused
+          # (any non-accepted result on the payout route) signal a stuck or
+          # double-settled withdrawal queue.
+          expr: |
+            sum(rate(presence_wallet_webhook_results_total{route="payout",result="rejected"}[15m])) > 0.1
+          for: 15m
+          labels:
+            severity: ticket
+            owner: payments-oncall
+          annotations:
+            summary: "Payout callbacks failing at the definer"
+            runbook: "docs/runbook.md#presencewalletpayoutfailures"

@@ -1,11 +1,14 @@
 /**
- * Wallet rail provider webhooks (SRS Addendum 001 — AMD-PAY-16/17).
+ * Wallet rail provider webhooks (SRS Addendum 001 — AMD-PAY-16/17/22).
  *
  * These are NOT user routes: they are registered outside the authed scope
  * and authenticate the caller as the payment provider by an HMAC-SHA256
  * signature over the canonical field string (pinned in wallets.ts), using
  * a shared secret from the environment. An unset secret answers 503 — the
  * wire exists, the credential arrives with the provider integration.
+ * AMD-PAY-22 adds freshness: the provider stamps every callback with the
+ * unix epoch in x-wallet-timestamp and signs the timestamp TOGETHER with
+ * the fields, so a replayed signature ages out within RAIL_SIGNATURE_SKEW_S.
  *
  *   POST /v1/webhooks/wallet-funding — AMD-PAY-16: fund-in. The provider
  *     confirms a bank/mobile-money collection; fund_wallet credits the
@@ -24,12 +27,27 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { FastifyInstance } from "fastify";
 import { WalletRailUnavailable, withRailCallback } from "../auth.js";
 import { EdgeContext } from "../context.js";
+import { walletWebhookResults } from "../metrics.js";
 import {
+  RAIL_SIGNATURE_SKEW_S,
   fundingSignaturePayload,
   parseFundingCallback,
   parsePayoutCallback,
+  parseRailTimestamp,
   payoutSignaturePayload,
 } from "../wallets.js";
+
+/** Webhooks are machine traffic: generous burst, per-source-IP window. */
+const WEBHOOK_RATE_LIMIT = { max: 120, timeWindow: "1 minute" } as const;
+
+/** AMD-PAY-22: freshness window — reject callbacks older than the skew. */
+function timestampFresh(header: unknown): number | null {
+  const at = parseRailTimestamp(header);
+  if (at === null) return null;
+  const nowS = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowS - at) > RAIL_SIGNATURE_SKEW_S) return null;
+  return at;
+}
 
 /** Constant-time signature check; a missing or malformed header refuses. */
 function signatureValid(secret: string, payload: string, signature: unknown): boolean {
@@ -42,6 +60,7 @@ export function registerWalletRailRoutes(app: FastifyInstance, ctx: EdgeContext)
   app.post(
     "/v1/webhooks/wallet-funding",
     {
+      config: { rateLimit: WEBHOOK_RATE_LIMIT },
       schema: {
         body: {
           type: "object",
@@ -58,14 +77,24 @@ export function registerWalletRailRoutes(app: FastifyInstance, ctx: EdgeContext)
     async (req, reply) => {
       const secret = process.env.WALLET_FUNDING_SECRET;
       if (!secret) {
+        walletWebhookResults().inc({ route: "funding", result: "unconfigured" });
         return reply.code(503).send({ error: "funding callback not configured (AMD-PAY-16)" });
       }
       const parsed = parseFundingCallback(req.body);
       if (parsed === null) {
+        walletWebhookResults().inc({ route: "funding", result: "rejected" });
         return reply.code(422).send({ error: "a funding callback is a wallet, an amount and a reference (AMD-PAY-16)" });
       }
-      const payload = fundingSignaturePayload(parsed.walletId, parsed.amountMinor, parsed.reference);
+      // AMD-PAY-22: freshness is checked BEFORE the signature — a stale
+      // callback is refused even when the signature itself is valid.
+      const at = timestampFresh(req.headers["x-wallet-timestamp"]);
+      if (at === null) {
+        walletWebhookResults().inc({ route: "funding", result: "rejected" });
+        return reply.code(401).send({ error: "stale or missing timestamp (AMD-PAY-22)" });
+      }
+      const payload = fundingSignaturePayload(String(at), parsed.walletId, parsed.amountMinor, parsed.reference);
       if (!signatureValid(secret, payload, req.headers["x-wallet-signature"])) {
+        walletWebhookResults().inc({ route: "funding", result: "rejected" });
         return reply.code(401).send({ error: "bad signature" });
       }
       let rows;
@@ -85,8 +114,10 @@ export function registerWalletRailRoutes(app: FastifyInstance, ctx: EdgeContext)
       const out = rows.rows[0] as { outcome: string; balanceMinor: number | null };
       // AMD-PAY-16: a replayed callback is a success — value moved once.
       if (out.outcome === "funded" || out.outcome === "duplicate_reference") {
+        walletWebhookResults().inc({ route: "funding", result: "accepted" });
         return reply.send({ ok: true, outcome: out.outcome });
       }
+      walletWebhookResults().inc({ route: "funding", result: "rejected" });
       if (out.outcome === "unknown_wallet") return reply.code(404).send({ error: "wallet not found" });
       if (out.outcome === "invalid_amount" || out.outcome === "over_funding_cap") {
         return reply.code(422).send({ error: "the amount is outside the funding caps (AMD-PAY-16)" });
@@ -101,6 +132,7 @@ export function registerWalletRailRoutes(app: FastifyInstance, ctx: EdgeContext)
   app.post(
     "/v1/webhooks/wallet-payout",
     {
+      config: { rateLimit: WEBHOOK_RATE_LIMIT },
       schema: {
         body: {
           type: "object",
@@ -117,14 +149,22 @@ export function registerWalletRailRoutes(app: FastifyInstance, ctx: EdgeContext)
     async (req, reply) => {
       const secret = process.env.WALLET_PAYOUT_SECRET;
       if (!secret) {
+        walletWebhookResults().inc({ route: "payout", result: "unconfigured" });
         return reply.code(503).send({ error: "payout callback not configured (AMD-PAY-17)" });
       }
       const parsed = parsePayoutCallback(req.body);
       if (parsed === null) {
+        walletWebhookResults().inc({ route: "payout", result: "rejected" });
         return reply.code(422).send({ error: "a payout callback is a request, an outcome and a reference (AMD-PAY-17)" });
       }
-      const payload = payoutSignaturePayload(parsed.requestId, parsed.outcome, parsed.reference);
+      const at = timestampFresh(req.headers["x-wallet-timestamp"]);
+      if (at === null) {
+        walletWebhookResults().inc({ route: "payout", result: "rejected" });
+        return reply.code(401).send({ error: "stale or missing timestamp (AMD-PAY-22)" });
+      }
+      const payload = payoutSignaturePayload(String(at), parsed.requestId, parsed.outcome, parsed.reference);
       if (!signatureValid(secret, payload, req.headers["x-wallet-signature"])) {
+        walletWebhookResults().inc({ route: "payout", result: "rejected" });
         return reply.code(401).send({ error: "bad signature" });
       }
       try {
@@ -137,8 +177,10 @@ export function registerWalletRailRoutes(app: FastifyInstance, ctx: EdgeContext)
           );
           const out = rows.rows[0] as { outcome: string };
           if (out.outcome === "paid" || out.outcome === "duplicate_reference") {
+            walletWebhookResults().inc({ route: "payout", result: "accepted" });
             return reply.send({ ok: true, outcome: out.outcome });
           }
+          walletWebhookResults().inc({ route: "payout", result: "rejected" });
           if (out.outcome === "unknown_request") return reply.code(404).send({ error: "withdrawal not found" });
           if (out.outcome === "illegal_state") {
             return reply.code(409).send({ error: "the withdrawal is not processing (AMD-PAY-17)" });
@@ -153,8 +195,10 @@ export function registerWalletRailRoutes(app: FastifyInstance, ctx: EdgeContext)
           return (r.rows[0] as { outcome: string }).outcome;
         });
         if (outcome === "failed" || outcome === "duplicate_reference") {
+          walletWebhookResults().inc({ route: "payout", result: "accepted" });
           return reply.send({ ok: true, outcome });
         }
+        walletWebhookResults().inc({ route: "payout", result: "rejected" });
         if (outcome === "unknown_request") return reply.code(404).send({ error: "withdrawal not found" });
         if (outcome === "illegal_state") {
           return reply.code(409).send({ error: "the withdrawal is not processing (AMD-PAY-17)" });

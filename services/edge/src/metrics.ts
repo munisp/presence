@@ -198,3 +198,13 @@ export const moderationQueueAge = () =>
     "moderation_oldest_open_report_seconds",
     "Age in seconds of the oldest open moderation report",
   );
+
+// AMD-PAY-22/AMD-OPS-01: webhook acceptance vs rejection feeds the rail
+// alerts — a rejection spike is either an attack or a broken provider
+// credential, both page-worthy.
+export const walletWebhookResults = () =>
+  metrics.counter(
+    "presence_wallet_webhook_results_total",
+    "Wallet rail webhook results by route and result",
+    ["route", "result"],
+  );

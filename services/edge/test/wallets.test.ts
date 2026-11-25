@@ -4,10 +4,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  CREDIT_APPROVAL_STATES,
   DAILY_WITHDRAWAL_CAP_MINOR,
+  FOUR_EYES_CREDIT_THRESHOLD_MINOR,
   MAX_FUNDING_MINOR,
   MAX_WITHDRAWAL_MINOR,
   PLATFORM_WALLET_ID,
+  RAIL_RISK_SIGNAL_KEYS,
+  RAIL_SIGNAL_STATES,
+  RAIL_SIGNATURE_SKEW_S,
   WALLET_CURRENCY,
   WALLET_ENTRY_KINDS,
   WALLET_HOLD_STATES,
@@ -18,8 +23,11 @@ import {
   isWalletHoldState,
   isWalletStatus,
   isWithdrawalState,
+  parseEmptyBody,
   parseFundingCallback,
   parsePayoutCallback,
+  parseRailTimestamp,
+  parseSignalDecision,
   parseWalletCreation,
   parseWithdrawalDecision,
   parseWithdrawalRequest,
@@ -149,20 +157,60 @@ test("AMD-PAY-17: moderation decisions are strictly {decision}", () => {
 });
 
 test("AMD-PAY-16/17: the signed strings are canonical and colon-joined", () => {
+  // AMD-PAY-22: the timestamp leads the canonical string, so a replayed
+  // signature dies with its timestamp inside the freshness window.
   assert.equal(
     fundingSignaturePayload(
+      "1764100000",
       "11111111-2222-4333-8444-555555555555",
       2_500_000,
       "PSP_fund_01234567",
     ),
-    "11111111-2222-4333-8444-555555555555:2500000:PSP_fund_01234567",
+    "1764100000:11111111-2222-4333-8444-555555555555:2500000:PSP_fund_01234567",
   );
   assert.equal(
     payoutSignaturePayload(
+      "1764100000",
       "11111111-2222-4333-8444-555555555555",
       "completed",
       "PSP_pay_01234567",
     ),
-    "11111111-2222-4333-8444-555555555555:completed:PSP_pay_01234567",
+    "1764100000:11111111-2222-4333-8444-555555555555:completed:PSP_pay_01234567",
   );
+});
+
+test("AMD-PAY-22: the freshness window and timestamp parser are pinned", () => {
+  assert.equal(RAIL_SIGNATURE_SKEW_S, 300);
+  assert.equal(parseRailTimestamp("1764100000"), 1_764_100_000);
+  assert.equal(parseRailTimestamp(""), null);
+  assert.equal(parseRailTimestamp("now"), null);
+  assert.equal(parseRailTimestamp("17.5"), null);
+  assert.equal(parseRailTimestamp(undefined), null);
+  assert.equal(parseRailTimestamp(1_764_100_000), null);
+});
+
+test("AMD-PAY-21: signal vocabularies and the ack decision parser are pinned", () => {
+  assert.deepEqual(RAIL_RISK_SIGNAL_KEYS, [
+    "fund_velocity_1h",
+    "fund_daily_volume",
+    "withdrawal_velocity_1h",
+  ]);
+  assert.deepEqual(RAIL_SIGNAL_STATES, ["open", "acknowledged", "dismissed"]);
+  assert.deepEqual(parseSignalDecision({ decision: "acknowledge" }), { decision: "acknowledge" });
+  assert.deepEqual(parseSignalDecision({ decision: "dismiss" }), { decision: "dismiss" });
+  assert.equal(parseSignalDecision({ decision: "approve" }), null);
+  assert.equal(parseSignalDecision({ decision: "acknowledge", note: "x" }), null);
+  assert.equal(parseSignalDecision({}), null);
+  assert.equal(parseSignalDecision(null), null);
+  assert.equal(parseSignalDecision([]), null);
+});
+
+test("AMD-PAY-23: the four-eyes threshold and empty-body parser are pinned", () => {
+  assert.equal(FOUR_EYES_CREDIT_THRESHOLD_MINOR, 5_000_000);
+  assert.deepEqual(CREDIT_APPROVAL_STATES, ["pending", "approved", "rejected"]);
+  assert.equal(parseEmptyBody({}), true);
+  assert.equal(parseEmptyBody({ reason: "x" }), null);
+  assert.equal(parseEmptyBody(null), null);
+  assert.equal(parseEmptyBody([]), null);
+  assert.equal(parseEmptyBody("x"), null);
 });

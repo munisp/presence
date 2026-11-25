@@ -189,14 +189,62 @@ export function parseWithdrawalDecision(raw: unknown): { decision: "approve" | "
 }
 
 /**
- * AMD-PAY-16/17: the canonical string a provider signs — pinned field
- * order, colon-joined, so the platform and the provider can never disagree
- * about what was signed.
+ * AMD-PAY-22: maximum clock skew between the provider and the platform for
+ * a webhook to still be considered fresh — five minutes.
  */
-export function fundingSignaturePayload(walletId: string, amountMinor: number, reference: string): string {
-  return `${walletId}:${amountMinor}:${reference}`;
+export const RAIL_SIGNATURE_SKEW_S = 300;
+
+/**
+ * AMD-PAY-16/17/22: the canonical string a provider signs — pinned field
+ * order, colon-joined, timestamp first, so the platform and the provider
+ * can never disagree about what was signed, and a replayed signature ages
+ * out with its timestamp.
+ */
+export function fundingSignaturePayload(at: string, walletId: string, amountMinor: number, reference: string): string {
+  return `${at}:${walletId}:${amountMinor}:${reference}`;
 }
 
-export function payoutSignaturePayload(requestId: string, outcome: string, reference: string): string {
-  return `${requestId}:${outcome}:${reference}`;
+export function payoutSignaturePayload(at: string, requestId: string, outcome: string, reference: string): string {
+  return `${at}:${requestId}:${outcome}:${reference}`;
+}
+
+/** AMD-PAY-22: the timestamp header is a unix epoch in seconds. */
+export function parseRailTimestamp(raw: unknown): number | null {
+  if (typeof raw !== "string") return null;
+  if (!/^[0-9]{1,12}$/.test(raw)) return null;
+  const at = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(at)) return null;
+  return at;
+}
+
+/** AMD-PAY-21: closed vocabularies mirroring 0029_rail_hardening.sql. */
+export const RAIL_RISK_SIGNAL_KEYS = [
+  "fund_velocity_1h",
+  "fund_daily_volume",
+  "withdrawal_velocity_1h",
+] as const;
+export type RailRiskSignalKey = (typeof RAIL_RISK_SIGNAL_KEYS)[number];
+
+export const RAIL_SIGNAL_STATES = ["open", "acknowledged", "dismissed"] as const;
+export type RailSignalState = (typeof RAIL_SIGNAL_STATES)[number];
+
+/** AMD-PAY-23: manual credits above this threshold require a second moderator. */
+export const FOUR_EYES_CREDIT_THRESHOLD_MINOR = 5_000_000;
+
+export const CREDIT_APPROVAL_STATES = ["pending", "approved", "rejected"] as const;
+
+/** AMD-PAY-21: strict ack body — {decision} only, acknowledge or dismiss. */
+export function parseSignalDecision(raw: unknown): { decision: "acknowledge" | "dismiss" } | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const keys = Object.keys(raw as Record<string, unknown>);
+  if (keys.length !== 1 || keys[0] !== "decision") return null;
+  const { decision } = raw as { decision: unknown };
+  if (decision !== "acknowledge" && decision !== "dismiss") return null;
+  return { decision };
+}
+
+/** AMD-PAY-23: value-moving routes take NO body — strict empty object only. */
+export function parseEmptyBody(raw: unknown): true | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return Object.keys(raw as Record<string, unknown>).length === 0 ? true : null;
 }

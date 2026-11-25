@@ -55,10 +55,26 @@ import {
   parseWalletCreation,
 } from "../wallets.js";
 
+/**
+ * AMD-OPS-03: per-route rate limits on every value-touching route, keyed
+ * by the authenticated identity — the global limiter stays off.
+ */
+const WALLET_WRITE_RATE_LIMIT = {
+  max: 30,
+  timeWindow: "1 minute",
+  keyGenerator: (req: { userId: string }) => req.userId,
+} as const;
+const MODERATION_RATE_LIMIT = {
+  max: 120,
+  timeWindow: "1 minute",
+  keyGenerator: (req: { userId: string }) => req.userId,
+} as const;
+
 export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): void {
   app.post(
     "/v1/wallets",
     {
+      config: { rateLimit: WALLET_WRITE_RATE_LIMIT },
       schema: {
         body: {
           type: "object",
@@ -170,7 +186,7 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
 
   app.post(
     "/v1/moderation/wallets/:walletId/freeze",
-    { preHandler: requireModerator, schema: { params: walletParams } },
+    { preHandler: requireModerator, config: { rateLimit: MODERATION_RATE_LIMIT }, schema: { params: walletParams } },
     async (req, reply) => {
       const { walletId } = req.params as { walletId: string };
       const outcome = await withModerator(ctx.pg, async (c) => {
@@ -186,7 +202,7 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
 
   app.post(
     "/v1/moderation/wallets/:walletId/unfreeze",
-    { preHandler: requireModerator, schema: { params: walletParams } },
+    { preHandler: requireModerator, config: { rateLimit: MODERATION_RATE_LIMIT }, schema: { params: walletParams } },
     async (req, reply) => {
       const { walletId } = req.params as { walletId: string };
       const outcome = await withModerator(ctx.pg, async (c) => {
@@ -213,7 +229,7 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
 
   app.post(
     "/v1/wallets/:walletId/withdrawals",
-    { schema: { params: walletParams, body: withdrawalBody } },
+    { config: { rateLimit: WALLET_WRITE_RATE_LIMIT }, schema: { params: walletParams, body: withdrawalBody } },
     async (req, reply) => {
       const { walletId } = req.params as { walletId: string };
       const parsed = parseWithdrawalRequest(req.body);
@@ -295,7 +311,7 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
 
   app.post(
     "/v1/wallets/:walletId/withdrawals/:requestId/cancel",
-    { schema: { params: withdrawalParams } },
+    { config: { rateLimit: WALLET_WRITE_RATE_LIMIT }, schema: { params: withdrawalParams } },
     async (req, reply) => {
       const { requestId } = req.params as { walletId: string; requestId: string };
       let outcome: string;
@@ -324,6 +340,7 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
     "/v1/moderation/wallets/:walletId/credit",
     {
       preHandler: requireModerator,
+      config: { rateLimit: MODERATION_RATE_LIMIT },
       schema: {
         params: walletParams,
         body: {
@@ -347,7 +364,7 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
           req.userId,
           async (c) =>
             c.query(
-              `SELECT outcome, balance_minor AS "balanceMinor" FROM fund_wallet($1, $2, $3)`,
+              `SELECT outcome, balance_minor AS "balanceMinor", approval_id AS "approvalId" FROM fund_wallet($1, $2, $3)`,
               [walletId, amountMinor, reference],
             ),
           "app.moderator",
@@ -358,8 +375,13 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
         }
         throw err;
       }
-      const out = rows.rows[0] as { outcome: string; balanceMinor: number | null };
+      const out = rows.rows[0] as { outcome: string; balanceMinor: number | null; approvalId: string | null };
       if (out.outcome === "funded") return reply.send({ walletId, balanceMinor: out.balanceMinor });
+      // AMD-PAY-23: a large manual credit becomes a pending approval — the
+      // value has NOT moved; a second moderator must execute it.
+      if (out.outcome === "approval_required") {
+        return reply.code(202).send({ walletId, approvalId: out.approvalId });
+      }
       if (out.outcome === "duplicate_reference") {
         return reply.code(200).send({ walletId, duplicate: true });
       }
@@ -386,6 +408,7 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: EdgeContext): vo
     "/v1/moderation/withdrawals/:requestId/decide",
     {
       preHandler: requireModerator,
+      config: { rateLimit: MODERATION_RATE_LIMIT },
       schema: {
         params: decideParams,
         body: {

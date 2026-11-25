@@ -308,7 +308,9 @@ def test_no_raw_value_mover_route_exists():
     """
     rail_routes = (EDGE / "src/routes/walletRail.ts").read_text()
     transfer_routes = (EDGE / "src/routes/transfers.ts").read_text()
-    for source in (EDGE_ROUTES, rail_routes, transfer_routes):
+    # Batch 55: the governance routes are in scope for the same scan.
+    governance_routes = (EDGE / "src/routes/walletGovernance.ts").read_text()
+    for source in (EDGE_ROUTES, rail_routes, transfer_routes, governance_routes):
         for definer in ("wallet_move(", "place_wallet_hold(", "void_wallet_hold(",
                         "settle_transfer_funds("):
             assert definer not in source, definer
@@ -317,7 +319,7 @@ def test_no_raw_value_mover_route_exists():
         assert "SET app.transfer_settlement" not in source
     # Raw settle/hold paths exist nowhere; funding and payouts enter only
     # through the dedicated webhook surface.
-    for source in (EDGE_ROUTES, rail_routes, transfer_routes):
+    for source in (EDGE_ROUTES, rail_routes, transfer_routes, governance_routes):
         paths = [m.group(1) for m in re.finditer(r'"(/v1/[^"]*)"', source)]
         for banned in ("hold", "settle"):
             assert not any(banned in p for p in paths), banned

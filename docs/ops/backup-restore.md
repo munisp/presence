@@ -110,3 +110,15 @@ in-repo layer runs in integration/staging and self-hosted installs. The
 quarterly drill is environment-independent and stays an ops duty either
 way — run it against the managed restore path in production and against
 this layer elsewhere.
+
+## Automated drill (AMD-OPS-02)
+
+`.github/workflows/restore-drill.yml` runs the round-trip weekly (Mondays
+03:17 UTC) and on demand: it boots the database through the real compose
+wiring — the same image build and the same `docker-entrypoint-initdb.d`
+mounts, so the drill always covers the full migration set — dumps with
+`pg_dump`, restores into a second database, and fails unless the restored
+table count matches the source and the pinned platform fee wallet id
+(`00000000-0000-0000-0000-00000000fee1`) survives. The quarterly human
+drill remains: CI proves the archive restores, the human drill proves the
+runbook is followable.

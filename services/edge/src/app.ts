@@ -32,6 +32,7 @@ import { registerProfileRoutes } from "./routes/profile.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerTransferRoutes } from "./routes/transfers.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
+import { registerWalletGovernanceRoutes } from "./routes/walletGovernance.js";
 import { registerWalletRailRoutes } from "./routes/walletRail.js";
 import { registerRoomRoutes } from "./routes/rooms.js";
 import { registerScanRoutes } from "./routes/scan.js";
@@ -160,6 +161,9 @@ export async function buildApp(ctx: EdgeContext) {
     registerIdentityRoutes(authed, ctx);
     registerTransferRoutes(authed, ctx);
     registerWalletRoutes(authed, ctx);
+    // AMD-PAY-21/23: rail governance queues — inside the authed scope,
+    // after the wallet routes.
+    registerWalletGovernanceRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);

@@ -750,6 +750,58 @@ def main() -> int:
         and "registerWalletRailRoutes(app, ctx);" in edge_app_src,
     )
 
+    # ---- batch 55: rail hardening (SRS Addendum 001, AMD-PAY-21..23, AMD-OPS-01..03)
+    hardening_path = ROOT / "db" / "migrations" / "0029_rail_hardening.sql"
+    hardening_src = hardening_path.read_text() if hardening_path.exists() else ""
+    check(
+        "AMD-PAY-21/23 rail hardening schema: risk signals + four-eyes credit approvals",
+        "CREATE TABLE rail_risk_signals (" in hardening_src
+        and "CREATE TABLE wallet_credit_approvals (" in hardening_src
+        and "rail_risk_signals is append-only (AMD-PAY-21)" in hardening_src
+        and "wallet_credit_approvals is append-only (AMD-PAY-23)" in hardening_src,
+    )
+    check(
+        "AMD-PAY-23 four-eyes: proposals above the threshold, self-approval refused",
+        "'approval_required'" in hardening_src
+        and "'self_approval'" in hardening_src
+        and "p_amount_minor > 5000000 THEN" in hardening_src
+        and "CREATE OR REPLACE FUNCTION approve_wallet_credit(p_approval uuid)" in hardening_src,
+    )
+    check(
+        "batch-55 migration rides both initdb mounts as 31_rail_hardening.sql",
+        "=db/migrations/0029_rail_hardening.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/31_rail_hardening.sql:ro" in compose_src,
+    )
+    edge_gov_path = ROOT / "services" / "edge" / "src" / "routes" / "walletGovernance.ts"
+    edge_gov_src = edge_gov_path.read_text() if edge_gov_path.exists() else ""
+    check(
+        "AMD-PAY-21/23 governance routes registered after the wallet routes, moderator-gated",
+        '"/v1/moderation/rail-risk-signals"' in edge_gov_src
+        and '"/v1/moderation/credit-approvals/:approvalId/approve"' in edge_gov_src
+        and edge_gov_src.count("preHandler: requireModerator") == 5
+        and "registerWalletGovernanceRoutes(authed, ctx);" in edge_app_src,
+    )
+    check(
+        "AMD-PAY-22 webhook freshness: timestamp leads the signed string, checked first",
+        "RAIL_SIGNATURE_SKEW_S = 300" in (ROOT / "services" / "edge" / "src" / "wallets.ts").read_text()
+        and 'x-wallet-timestamp' in edge_rail_src
+        and "stale or missing timestamp (AMD-PAY-22)" in edge_rail_src,
+    )
+    check(
+        "AMD-OPS-01 rail alerts exist over the webhook verdict counter",
+        "PresenceWalletWebhookRejections" in (K8S / "prometheusrules.yaml").read_text()
+        and "PresenceWalletRailUnavailable" in (K8S / "prometheusrules.yaml").read_text()
+        and "PresenceWalletPayoutFailures" in (K8S / "prometheusrules.yaml").read_text(),
+    )
+    drill_path = ROOT / ".github" / "workflows" / "restore-drill.yml"
+    drill_src = drill_path.read_text() if drill_path.exists() else ""
+    check(
+        "AMD-OPS-02 restore drill: weekly pg_dump → pg_restore round-trip via compose",
+        "name: restore-drill" in drill_src
+        and "pg_dump" in drill_src
+        and "00000000-0000-0000-0000-00000000fee1" in drill_src,
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

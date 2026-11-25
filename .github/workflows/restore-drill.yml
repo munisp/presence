@@ -1,0 +1,53 @@
+# AMD-OPS-02: weekly backup/restore drill.
+#
+# A backup that has never been restored is not a backup. Every week (and on
+# demand) this workflow boots the database exactly as the compose stack
+# does — same image build, same docker-entrypoint-initdb.d mounts, so the
+# drill covers the full migration set — takes a pg_dump, restores it into
+# a SECOND database, and proves the round-trip: identical table count and
+# the pinned platform fee wallet id must both survive.
+name: restore-drill
+
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Boot the database through the real compose wiring
+        run: |
+          docker compose -f deploy/docker-compose.yml up -d --build postgres
+          for i in $(seq 1 90); do
+            if docker compose -f deploy/docker-compose.yml exec -T postgres \
+                 pg_isready -U presence -d presence -q; then break; fi
+            sleep 2
+          done
+          docker compose -f deploy/docker-compose.yml exec -T postgres \
+            pg_isready -U presence -d presence
+
+      - name: Dump, restore into a second database, and verify
+        run: |
+          DCP="docker compose -f deploy/docker-compose.yml exec -T postgres"
+          $DCP createdb -U presence restored
+          $DCP pg_dump -U presence -d presence | $DCP psql -U presence -d restored -v ON_ERROR_STOP=1 -q
+          SOURCE=$($DCP psql -U presence -d presence -tAc \
+            "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'" | tr -d '[:space:]')
+          RESTORED=$($DCP psql -U presence -d restored -tAc \
+            "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'" | tr -d '[:space:]')
+          echo "source tables: $SOURCE — restored tables: $RESTORED"
+          test -n "$SOURCE" && test "$SOURCE" = "$RESTORED"
+          FEE=$($DCP psql -U presence -d restored -tAc \
+            "SELECT wallet_id FROM wallets WHERE wallet_id = '00000000-0000-0000-0000-00000000fee1'" | tr -d '[:space:]')
+          test "$FEE" = "00000000-0000-0000-0000-00000000fee1"
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml down -v

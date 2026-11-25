@@ -118,3 +118,74 @@ page owner → service lead → incident commander (per ops policy).
    10-minute revert.
 - **Escalate if:** the burn survives a rollback, or dependencies are healthy
   while 5xx continue — treat as platform incident and freeze deploys.
+
+## PresenceWalletWebhookRejections
+
+- **Owner:** payments-oncall
+- **Symptom:** rejected wallet rail webhooks above 0.5/s for 10 minutes —
+  bad HMAC signatures or stale/missing `x-wallet-timestamp` (AMD-PAY-22)
+  on `/v1/webhooks/wallet-funding` or `/v1/webhooks/wallet-payout`.
+- **Impact:** either an attack replaying captured callbacks (the freshness
+  window is doing its job — keep rejecting) or a broken provider
+  credential/clock (legitimate funding and payout callbacks are failing —
+  users' money movements stall).
+- **First actions:**
+  1. Read the `route` and `result` labels on
+     `presence_wallet_webhook_results_total` — one route failing points at
+     one credential; both failing points at the provider or the edge.
+  2. Check whether rejections are 401-stale (clock skew — verify the
+     provider's clock and ours; the window is 300 s) or 401-bad-signature
+     (credential drift — verify `WALLET_FUNDING_SECRET` /
+     `WALLET_PAYOUT_SECRET` against the provider dashboard).
+  3. If the credential was rotated or leaked, rotate it and watch the
+     counter fall; idempotency (wallet_rail_events) means replays of
+     already-applied callbacks are safe.
+- **Escalate if:** rejections continue after a credential/clock fix, or
+  any callback moved value that the provider denies sending — treat as a
+  security incident.
+
+## PresenceWalletRailUnavailable
+
+- **Owner:** payments-oncall
+- **Symptom:** any sustained 503 on the rail webhook routes — either
+  `WALLET_RAIL=off` was flipped (AMD-PAY-15 kill switch) or a provider
+  secret is unset.
+- **Impact:** value movement is refused platform-wide: funding, payout
+  completion, manual credits and transfer settlement all answer 503. This
+  is either deliberate (an operations freeze) or a misconfiguration.
+- **First actions:**
+  1. Confirm intent: was the kill switch flipped on purpose? If yes, this
+     page is the confirmation the switch works — coordinate with
+     operations on the freeze duration.
+  2. If unintended: check the edge environment — `WALLET_RAIL` unset/≠off
+     is required for the rail, and unset `WALLET_FUNDING_SECRET` /
+     `WALLET_PAYOUT_SECRET` answers 503 on the webhooks specifically.
+  3. Restore and watch `presence_http_requests_total` 503s drain; the
+     definers' gate means nothing moved while the switch was off.
+- **Escalate if:** the rail cannot be restored within the incident
+  window — the withdrawal queue (`requested`/`processing`) accumulates and
+  needs a communication plan.
+
+## PresenceWalletPayoutFailures
+
+- **Owner:** payments-oncall
+- **Symptom:** payout callbacks the definer refuses above 0.1/s for 15
+  minutes — `complete_withdrawal`/`fail_withdrawal` answering other than
+  `paid`/`failed`/`duplicate_reference`.
+- **Impact:** withdrawals are stuck in `processing` — the hold is still
+  reserved, the user sees neither money nor refusal. A stuck queue is a
+  support and liquidity problem, not just an error rate.
+- **First actions:**
+  1. Pull the moderation reconciliation report
+     (`GET /v1/moderation/wallets/reconciliation`) — `openWithdrawals`
+     and `stuckHolds` quantify the stuck queue.
+  2. Match refused callbacks against `withdrawal_requests` state:
+     `illegal_state` means the provider is completing requests moderation
+     never approved — check the decide audit log.
+  3. Verify the provider is not double-settling: `duplicate_reference`
+     answers are successes, but a refusal means the reference is NEW and
+     the state is wrong.
+- **Escalate if:** the queue keeps growing or any `insufficient_funds`
+  refusal appears on an approved request — that combination should be
+  impossible and indicates a ledger divergence: freeze the rail
+  (`WALLET_RAIL=off`) and reconcile before paying out further.

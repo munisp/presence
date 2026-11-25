@@ -2590,12 +2590,14 @@ paths:
         "503": { description: The wallet rail is switched off (WALLET_RAIL). }
   /v1/moderation/wallets/{walletId}/credit:
     post:
-      summary: Credit a user wallet (SRS Addendum 001, AMD-PAY-16)
+      summary: Credit a user wallet (SRS Addendum 001, AMD-PAY-16/23)
       description: >-
         The audited moderation funding route: fund_wallet under the
         settlement GUC plus app.moderator, capped per event, idempotent by
         the supplied reference — a repeat answers the recorded outcome and
         moves nothing twice. Every credit lands in wallet_rail_events.
+        A credit above the four-eyes threshold answers 202 and opens a
+        pending approval a second moderator must execute (AMD-PAY-23).
       parameters:
         - name: walletId
           in: path
@@ -2615,12 +2617,108 @@ paths:
                 reference: { type: string, minLength: 8, maxLength: 128 }
       responses:
         "200": { description: Credit applied, or the reference was already recorded (duplicate). }
+        "202": { description: Above the four-eyes threshold — a pending credit approval was opened; value has NOT moved (AMD-PAY-23). }
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "403": { description: Moderator role required. }
         "404": { description: Unknown wallet. }
         "409": { description: Over the per-event cap or wallet not active (AMD-PAY-16). }
         "422": { description: Body outside the strict shape (TR-23). }
         "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/rail-risk-signals:
+    get:
+      summary: List rail risk signals (SRS Addendum 001, AMD-PAY-21)
+      description: >-
+        The moderator-only review queue: velocity signals raised inside the
+        funding and withdrawal definers (fund_velocity_1h,
+        fund_daily_volume, withdrawal_velocity_1h). Signals flag — they
+        never block.
+      responses:
+        "200": { description: The signals, newest first. }
+        "403": { description: Moderator role required. }
+  /v1/moderation/rail-risk-signals/{signalId}/ack:
+    post:
+      summary: Acknowledge or dismiss a rail risk signal (AMD-PAY-21)
+      description: >-
+        Closes an open signal. The decision is audited in the admin audit
+        log; the signal's terms are immutable and a decided signal cannot
+        be re-decided.
+      parameters:
+        - name: signalId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [acknowledge, dismiss] }
+      responses:
+        "200": { description: Decision recorded; audited. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown signal. }
+        "409": { description: The signal is already decided (AMD-PAY-21). }
+        "422": { description: Decision outside the closed vocabulary. }
+  /v1/moderation/credit-approvals:
+    get:
+      summary: List four-eyes credit approvals (SRS Addendum 001, AMD-PAY-23)
+      description: >-
+        The moderator-only queue of manual credits above the four-eyes
+        threshold. A proposal fixes the wallet, amount and reference; the
+        executor can only say yes or no to exactly that credit.
+      responses:
+        "200": { description: The approvals, newest first. }
+        "403": { description: Moderator role required. }
+  /v1/moderation/credit-approvals/{approvalId}/approve:
+    post:
+      summary: Execute a pending credit approval (AMD-PAY-23)
+      description: >-
+        Value moves here: the second moderator executes the fixed proposal
+        through exactly the provider funding path — same entry kind, same
+        rail-event idempotency on the fixed reference. The definer refuses
+        self-approval: the proposer can never execute their own credit.
+        The body is strictly empty — the approval row carries the terms.
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Credit applied. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown approval. }
+        "409": { description: Already decided, self-approval, wallet not active, or the reference already settled (AMD-PAY-23). }
+        "422": { description: Non-empty body (TR-23). }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/credit-approvals/{approvalId}/reject:
+    post:
+      summary: Reject a pending credit approval (AMD-PAY-23)
+      description: >-
+        Closes the proposal without moving value. Any moderator may reject
+        — including the proposer withdrawing their own proposal; only
+        execution is four-eyes. The decision is audited. The body is
+        strictly empty.
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Approval rejected; audited. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown approval. }
+        "409": { description: Already decided (AMD-PAY-23). }
+        "422": { description: Non-empty body (TR-23). }
   /v1/moderation/withdrawals/{requestId}/decide:
     post:
       summary: Approve or reject a withdrawal (SRS Addendum 001, AMD-PAY-17)
@@ -2670,11 +2768,18 @@ paths:
       description: >-
         The rail's fund-in wire, outside the authed scope on purpose: the
         provider authenticates with an HMAC-SHA256 signature over the
-        canonical `walletId:amountMinor:reference` string in the
-        x-wallet-signature header. fund_wallet runs under the settlement
-        GUC plus app.funding_callback, idempotent by reference. Unset
-        WALLET_FUNDING_SECRET answers 503.
-      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+        canonical `timestamp:walletId:amountMinor:reference` string in the
+        x-wallet-signature header, where the timestamp is the unix epoch
+        sent in x-wallet-timestamp — freshness (300 s skew) is checked
+        BEFORE the signature (AMD-PAY-22). fund_wallet runs under the
+        settlement GUC plus app.funding_callback, idempotent by reference.
+        Unset WALLET_FUNDING_SECRET answers 503.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: x-wallet-timestamp
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[0-9]{1,12}$" }
       requestBody:
         required: true
         content:
@@ -2699,12 +2804,20 @@ paths:
       description: >-
         The rail's payout wire, outside the authed scope on purpose: the
         provider authenticates with an HMAC-SHA256 signature over the
-        canonical `requestId:outcome:reference` string. `completed`
+        canonical `timestamp:requestId:outcome:reference` string, where
+        the timestamp is the unix epoch sent in x-wallet-timestamp —
+        freshness (300 s skew) is checked BEFORE the signature
+        (AMD-PAY-22). `completed`
         completes the withdrawal (ledger entry first, hold posted after —
         value and state can never diverge); `failed` fails it and voids
         the hold. Idempotent by reference. Unset WALLET_PAYOUT_SECRET
         answers 503.
-      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: x-wallet-timestamp
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[0-9]{1,12}$" }
       requestBody:
         required: true
         content:

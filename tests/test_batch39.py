@@ -143,11 +143,14 @@ def test_match_surface_built_only_from_the_diagram() -> None:
 
 
 def test_match_surface_identity_ban_is_pinned() -> None:
+    # SRS Addendum 001 (AMD-AVT-02, batch 48): "avatar" left the forbidden
+    # list — a curated registry symbol is not identity and MAY serve as the
+    # pre-OPEN recognition anchor (delivered via buildMatchScreen's
+    # avatarLabel, never inside this descriptor). The remaining keys stand.
     assert (
         "FORBIDDEN_MATCH_IDENTITY_FIELDS = [\n"
         '  "photo",\n'
         '  "photoUrl",\n'
-        '  "avatar",\n'
         '  "displayName",\n'
         '  "handle",\n'
         '  "fullName",\n'

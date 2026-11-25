@@ -201,11 +201,24 @@ export function buildDiscoveryScreen(
  * FR-76 rendered: the headline and the converging paths come from the
  * MatchSurface alone; the only interaction is the FR-82 hold-to-wave,
  * plus the global safety entry.
+ *
+ * AMD-AVT-02: the optional avatarLabel is the pre-OPEN recognition
+ * anchor — the counterpart's curated-symbol label from the pair_avatar
+ * contract (e.g. "◆ Ember Fox"), rendered as a header text node. It is
+ * NOT part of the MatchSurface descriptor — the reason payload still
+ * builds that alone — it adds no affordance, and a blank label omits
+ * the node rather than failing the screen (the anchor is optional: the
+ * counterpart may not have chosen a symbol yet).
  */
-export function buildMatchScreen(surface: MatchSurface): UiNode | null {
+export function buildMatchScreen(surface: MatchSurface, avatarLabel?: string): UiNode | null {
   const title = textNode("match-title", "ui.match.title", "note");
   const headline = literalText("match-headline", surface.headline, "title");
   if (title === null || headline === null) return null;
+  const headerChildren: UiNode[] = [title, headline];
+  if (avatarLabel !== undefined) {
+    const anchor = literalText("match-avatar-anchor", avatarLabel, "subtitle");
+    if (anchor !== null) headerChildren.push(anchor);
+  }
   const pathNodes: UiNode[] = surface.paths.map((path, index) => {
     const text = `${path.yoursLabel} → ${path.nodeLabel} ← ${path.theirsLabel}`;
     return { kind: "text", id: `path-${index}`, text, tone: "subtitle" } as UiNode;
@@ -217,7 +230,7 @@ export function buildMatchScreen(surface: MatchSurface): UiNode | null {
     kind: "screen",
     id: "match",
     children: [
-      { kind: "region", id: "header", children: [title, headline] },
+      { kind: "region", id: "header", children: headerChildren },
       { kind: "region", id: "paths", children: pathNodes },
       { kind: "region", id: "actions", children: [wave, tray] },
     ],

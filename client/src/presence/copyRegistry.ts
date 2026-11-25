@@ -84,6 +84,15 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.thread.close-offer": "Close offer",
   "ui.thread.delete-local": "Delete local copy",
   "ui.thread.leave": "Leave",
+  // SRS Addendum 001 (b48) — identity assurance surfaces.
+  "ui.identity.status-title": "Identity & verification",
+  "ui.kyc.status.pending": "Verification in progress",
+  "ui.kyc.status.verified": "Verified",
+  "ui.kyc.status.rejected": "Verification declined",
+  "ui.kyc.status.suspended": "Verification suspended",
+  "ui.avatar.choose": "Choose your symbol",
+  "ui.avatar.cooldown": "Your symbol can change once a day",
+  "ui.avatar.locked": "Your symbol stays while a conversation is open",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

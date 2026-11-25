@@ -110,6 +110,7 @@ import { powerBudgetHonoursNfr29, backgroundParityHonoursNfr30 } from "./src/pre
 import { frameBudgetHonoursNfr35, ambientRefreshHonoursNfr36 } from "./src/presence/frameBudget.js";
 import { dependencyBudgetHonoursTech16, BUNDLE_CAP_BYTES } from "./src/presence/dependencyBudget.js";
 import { buildIdentityReveal, revealHonoursFr70 } from "./src/presence/verificationBadge.js";
+import { identityAssuranceHonoursAmendment } from "./src/presence/identityAssurance.js";
 import {
   REACH_REFERENCE_DEVICE,
   TOUCH_TARGET_MIN_PT,
@@ -204,6 +205,10 @@ const SURFACE_CHECKS = [
   dependencyBudgetHonoursTech16(),
   // FR-70: verification status rides every identity reveal on the three surfaces.
   revealHonoursFr70() && buildIdentityReveal("offer", "Ada", "verified") !== null,
+  // SRS Addendum 001 (b48): the identity-assurance contract — discovery is
+  // attested AND KYC-verified fail-closed, and the recognition anchor is a
+  // curated symbol, never a photo.
+  identityAssuranceHonoursAmendment(),
   // NFR-25/26/37: AA palette, 44 pt targets, primary action in the lower 40 %.
   accessibilityHonoursNfr25Nfr26Nfr37() &&
     primaryActionInReachZone(

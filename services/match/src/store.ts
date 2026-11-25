@@ -68,15 +68,18 @@ export class Store {
   async profile(userId: string): Promise<Profile | null> {
     const cached = this.profileCache.get(userId);
     if (cached && this.clock.now() - cached.at < CORPUS_REFRESH_MS) return cached.profile;
-    // FR-51/SEC-19: only attested accounts are discoverable — an account
-    // without a verified attestation key (or an approved fallback waiver)
-    // has no profile as far as the match path is concerned, so it can never
-    // appear in another user's results.
+    // FR-51/SEC-19 + AMD-KYC-01: only discovery-eligible accounts are
+    // discoverable — attested (FR-51) AND KYC-verified (SRS Addendum 001).
+    // An account without a verified attestation key (or an approved
+    // fallback waiver), or without a verified KYC state, has no profile as
+    // far as the match path is concerned, so it can never appear in
+    // another user's results. The gate fails closed: every account starts
+    // pending.
     const rows = await this.pg.query(
       `SELECT node_id, weight FROM profile_interests
         WHERE user_id = $1
-          AND EXISTS (SELECT 1 FROM attested_accounts
-                      WHERE attested_accounts.user_id = profile_interests.user_id)`,
+          AND EXISTS (SELECT 1 FROM discovery_eligible
+                      WHERE discovery_eligible.user_id = profile_interests.user_id)`,
       [userId],
     );
     if (rows.rows.length === 0) return null;

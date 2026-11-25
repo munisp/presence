@@ -43,11 +43,17 @@ import {
  * FR-76/FR-87: identity-shaped field keys that MUST NOT appear on the
  * match surface. The descriptor never carries them by construction;
  * this list is what the guard scans for.
+ *
+ * SRS Addendum 001 (AMD-AVT-02): "avatar" is no longer on this list —
+ * a curated registry symbol is not identity (never a photo, name, or
+ * handle; AMD-AVT-01) and MAY serve as the pre-OPEN recognition anchor.
+ * It still cannot ride inside this descriptor: the anchor reaches the
+ * screen through buildMatchScreen's avatarLabel, supplied from the
+ * pair_avatar contract — never from the reason payload.
  */
 export const FORBIDDEN_MATCH_IDENTITY_FIELDS = [
   "photo",
   "photoUrl",
-  "avatar",
   "displayName",
   "handle",
   "fullName",

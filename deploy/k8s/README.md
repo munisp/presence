@@ -55,6 +55,7 @@ kubectl -n presence create configmap postgres-initdb \
   --from-file=23_attestation_push.sql=db/migrations/0021_attestation_push.sql \
   --from-file=24_jit_elevation.sql=db/migrations/0022_jit_elevation.sql \
   --from-file=25_geofence_qa.sql=db/migrations/0023_geofence_qa.sql \
+  --from-file=26_kyc_avatars.sql=db/migrations/0024_kyc_avatars.sql \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n presence create configmap keycloak-realms \
   --from-file=deploy/keycloak/realm-consumer.json \

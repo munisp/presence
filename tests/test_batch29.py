@@ -63,7 +63,11 @@ def test_fr51_discovery_gate_at_the_corpus():
     assert "GRANT SELECT ON attested_accounts TO presence_match" in MIGRATION
     # The match profile read joins the gate — an unattested account has no
     # profile as far as the corpus is concerned.
-    assert "EXISTS (SELECT 1 FROM attested_accounts" in MATCH_STORE
+    # SRS Addendum 001 (AMD-KYC-01, batch 48): the gate tightened from
+    # attested_accounts to discovery_eligible (= attested_accounts JOIN
+    # kyc_verified_accounts) — attestation remains necessary, KYC-verified
+    # became necessary too. attested_accounts itself is unchanged above.
+    assert "EXISTS (SELECT 1 FROM discovery_eligible" in MATCH_STORE
     assert "profile_interests" in MATCH_STORE
 
 

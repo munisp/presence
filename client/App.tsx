@@ -70,7 +70,8 @@
  */
 
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { BLE_ROTATION_PERIOD_S } from "./src/presence/bleCodes.js";
 import { PRESENCE_H3_RESOLUTION } from "./src/presence/cell.js";
@@ -81,7 +82,7 @@ import { STABILISATION_WINDOW_MS } from "./src/presence/cellStabiliser.js";
 import { ACCURACY_REFUSAL_ALTERNATIVE } from "./src/presence/publishGate.js";
 import { PKCE_CHALLENGE_METHOD } from "./src/presence/authFlow.js";
 import { ACCESS_TOKEN_LIFESPAN_S, REFRESH_MARGIN_S } from "./src/presence/session.js";
-import { skeletonSharedAcrossModes, skeletonFor, DISCOVERY_MODES } from "./src/presence/discoverySkeleton.js";
+import { skeletonSharedAcrossModes, skeletonFor, DISCOVERY_MODES, type DiscoveryMode } from "./src/presence/discoverySkeleton.js";
 import { showsCommonalityNotIdentity, buildMatchSurface } from "./src/presence/matchSurface.js";
 import { DEFAULT_EXPIRY_PRESENTATION } from "./src/presence/offerWindow.js";
 import { haloHonoursFr77, haloFromCount } from "./src/presence/presenceHalo.js";
@@ -126,6 +127,20 @@ import { buildOutboundPayload, e2eCryptoHonoursTech08 } from "./src/presence/e2e
 import { safetyAccessHonoursBr07 } from "./src/presence/reportFlow.js";
 import { indoorPresenceHonoursFr89 } from "./src/presence/indoorPresence.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
+import { themeHonoursA11y } from "./src/presence/ui/theme.js";
+import {
+  currentScreen,
+  goBack,
+  initialNavigation,
+  navigateTo,
+  safetyReachable,
+} from "./src/presence/ui/navigation.js";
+import {
+  buildDiscoveryScreen,
+  buildSettingsScreen,
+  uiHonoursContracts,
+} from "./src/presence/ui/screens.js";
+import { renderNode } from "./src/ui/render.js";
 
 /** NFR-27: English at launch; a locale pack is data dropped in here. */
 const ACTIVE_LOCALE: LocaleBundle | null = null;
@@ -206,8 +221,66 @@ const SURFACE_CHECKS = [
   safetyAccessHonoursBr07(),
   // FR-89: indoors, check-in is the primary path and the cell the fallback.
   indoorPresenceHonoursFr89(),
+  // UI (b47): the rendered shell — theme AA by derivation, navigation
+  // reaches safety in two taps from everywhere, every screen descriptor
+  // passes the control + prohibition + tray audits.
+  themeHonoursA11y() && safetyReachable(initialNavigation()) && uiHonoursContracts(),
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
+
+/**
+ * The rendered shell (b47): the current screen's audited descriptor
+ * mapped onto React Native by the thin renderer. The demo wiring keeps
+ * every control live: mode-switch swaps the discovery mode, the safety
+ * entry navigates to settings, and back returns to the root. Screens
+ * that need live data (match, conversation, check-in) render from
+ * their contract fixtures in the unit tests.
+ */
+function PresenceShell() {
+  const [nav, setNav] = useState(initialNavigation());
+  const [mode, setMode] = useState<DiscoveryMode>("pairs");
+  const screen = currentScreen(nav);
+  const descriptor =
+    screen === "discovery"
+      ? buildDiscoveryScreen(mode, haloFromCount(0))
+      : screen === "settings"
+        ? buildSettingsScreen()
+        : null;
+  const onAction = (affordance: string, nodeId: string) => {
+    if (affordance === "mode-switch" && nodeId.startsWith("mode-")) {
+      const next = nodeId.slice("mode-".length) as DiscoveryMode;
+      if ((DISCOVERY_MODES as readonly string[]).includes(next)) setMode(next);
+      return;
+    }
+    if (affordance === "safety-entry") {
+      setNav((state) => navigateTo(state, "settings"));
+      return;
+    }
+    // refresh and the tray's five actions need live services; no-op here.
+  };
+  return (
+    <View style={styles.shell} testID="presence-shell">
+      {nav.stack.length > 1 && (
+        <Pressable
+          testID="nav-back"
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          onPress={() => setNav((state) => goBack(state))}
+          style={styles.back}
+        >
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
+      )}
+      {descriptor === null
+        ? null
+        : renderNode(descriptor, {
+            locale: ACTIVE_LOCALE,
+            preferredScale: 1,
+            onAction,
+          })}
+    </View>
+  );
+}
 
 export default function App() {
   return (
@@ -215,6 +288,7 @@ export default function App() {
       <StatusBar style="light" />
       <Text style={styles.title}>{resolveCopy(ACTIVE_LOCALE, "app.title")}</Text>
       <Text style={styles.subtitle}>{resolveCopy(ACTIVE_LOCALE, "app.subtitle")}</Text>
+      <PresenceShell />
       <Text style={styles.note}>
         On-device cells (H3 r{PRESENCE_H3_RESOLUTION}) · {LOCAL_STATE_ALLOWLIST.length} local keys, wiped
         on logout · BLE codes rotate every {BLE_ROTATION_PERIOD_S / 60} min · protocol v{CLIENT_PROTOCOL_VERSION}
@@ -240,6 +314,7 @@ export default function App() {
         {"\n"}messages: MLS envelope only, keys on device · screen before encrypt · libsignal refused
         {"\n"}safety: report, block, withdraw, delete, privacy — free, two taps from any screen ·
         indoors, check-in first, cell is the fallback
+        {"\n"}rendered shell: every screen is an audited descriptor · safety tray on every screen
       </Text>
     </View>
   );
@@ -256,4 +331,7 @@ const styles = StyleSheet.create({
   title: { color: "#F2F5F7", fontSize: 34, fontWeight: "700" },
   subtitle: { color: "#9FB0BC", fontSize: 16, marginTop: 8 },
   note: { color: "#74879B", fontSize: 12, marginTop: 24, textAlign: "center" },
+  shell: { marginTop: 16, alignSelf: "stretch" },
+  back: { minWidth: 44, minHeight: 44, justifyContent: "center" },
+  backText: { color: "#9FB0BC", fontSize: 16 },
 });

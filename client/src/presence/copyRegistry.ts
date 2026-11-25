@@ -64,6 +64,26 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "report.cta": "Report",
   "block.cta": "Block",
   "settings.delete-account": "Delete account",
+  // UI shell (b47): screen titles, mode labels, tray and gesture copy.
+  "ui.discovery.title": "Discovery",
+  "ui.mode.pairs": "Pairs",
+  "ui.mode.rooms": "Rooms",
+  "ui.mode.tables": "Tables",
+  "ui.refresh": "Refresh",
+  "ui.back": "Back",
+  "ui.safety.tray": "Safety",
+  "ui.safety.withdraw": "Withdraw consent",
+  "ui.safety.privacy": "Privacy controls",
+  "ui.thread.title": "Conversation",
+  "ui.checkin.title": "Venue check-in",
+  "ui.settings.title": "Settings",
+  "ui.match.title": "Match",
+  "ui.wave.hold": "Hold to wave",
+  "ui.thread.send": "Send",
+  "ui.thread.revoke": "Revoke",
+  "ui.thread.close-offer": "Close offer",
+  "ui.thread.delete-local": "Delete local copy",
+  "ui.thread.leave": "Leave",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

@@ -802,6 +802,50 @@ def main() -> int:
         and "00000000-0000-0000-0000-00000000fee1" in drill_src,
     )
 
+    # ---- batch 56: core-platform innovations (SRS Addendum 001, AMD-INN-01..10)
+    innovations_path = ROOT / "db" / "migrations" / "0030_innovations.sql"
+    innovations_src = innovations_path.read_text() if innovations_path.exists() else ""
+    check(
+        "AMD-INN-01..10 innovation schema: eight tables, guards, definer-only writes",
+        all(f"CREATE TABLE {t} (" in innovations_src for t in (
+            "presence_bonds", "met_receipts", "escrow_agreements",
+            "escrow_milestones", "group_stakes", "disclosure_grants",
+            "serendipity_windows", "introductions"))
+        and innovations_src.count("(AMD-INN-") >= 20,
+    )
+    check(
+        "AMD-INN value discipline: settlement gate on every value-moving definer",
+        innovations_src.count("app.transfer_settlement") >= 8
+        and "GRANT EXECUTE ON FUNCTION attestation_claims() TO presence_app;" in innovations_src,
+    )
+    check(
+        "batch-56 migration rides both initdb mounts as 32_innovations.sql",
+        "=db/migrations/0030_innovations.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/32_innovations.sql:ro" in compose_src,
+    )
+    edge_innov_path = ROOT / "services" / "edge" / "src" / "routes" / "innovations.ts"
+    edge_innov_src = edge_innov_path.read_text() if edge_innov_path.exists() else ""
+    check(
+        "AMD-INN edge routes registered; passport verify outside the authed scope",
+        '/v1/attestation/verify"' in edge_innov_src
+        and "registerInnovationRoutes(authed, ctx);" in edge_app_src
+        and "registerAttestationVerifyRoute(app, ctx);" in edge_app_src
+        and edge_app_src.index("registerAttestationVerifyRoute(app, ctx);")
+            < edge_app_src.index("await app.register(async (authed)"),
+    )
+    check(
+        "AMD-INN-09 attestation verdicts counted for ops visibility",
+        "presence_attestation_verify_results_total"
+        in (ROOT / "services" / "edge" / "src" / "metrics.ts").read_text()
+        and edge_innov_src.count("attestationVerifyResults().inc(") == 4,
+    )
+    check(
+        "AMD-INN-05/07 client-only: duress pipeline + on-device preview ship no route",
+        (ROOT / "client" / "src" / "presence" / "duressMode.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "matchPreview.ts").exists()
+        and "duress" not in edge_innov_src.lower(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

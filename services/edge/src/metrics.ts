@@ -208,3 +208,13 @@ export const walletWebhookResults = () =>
     "Wallet rail webhook results by route and result",
     ["route", "result"],
   );
+
+// AMD-INN-09: attestation verification is an unauthed oracle — every verdict
+// is counted so a grinding spike (invalid) or a misconfigured deployment
+// (unconfigured) is visible.
+export const attestationVerifyResults = () =>
+  metrics.counter(
+    "presence_attestation_verify_results_total",
+    "Attestation verification verdicts",
+    ["result"],
+  );

@@ -33,6 +33,7 @@ import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerTransferRoutes } from "./routes/transfers.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerWalletGovernanceRoutes } from "./routes/walletGovernance.js";
+import { registerInnovationRoutes, registerAttestationVerifyRoute } from "./routes/innovations.js";
 import { registerWalletRailRoutes } from "./routes/walletRail.js";
 import { registerRoomRoutes } from "./routes/rooms.js";
 import { registerScanRoutes } from "./routes/scan.js";
@@ -117,6 +118,11 @@ export async function buildApp(ctx: EdgeContext) {
   // HMAC signature over the canonical payload, never a user token.
   registerWalletRailRoutes(app, ctx);
 
+  // AMD-INN-09: attestation verification oracle — outside the authed scope on
+  // purpose: the caller is a third-party verifier with no account; the
+  // token itself is the credential. Answers valid | expired | invalid.
+  registerAttestationVerifyRoute(app, ctx);
+
   // NFR-33: Prometheus scrape endpoint — outside the authed scope and not
   // under /v1 (it is operational, not API; it stays out of openapi.yaml).
   // Aggregates only. The moderation-queue gauge is refreshed on scrape under
@@ -164,6 +170,9 @@ export async function buildApp(ctx: EdgeContext) {
     // AMD-PAY-21/23: rail governance queues — inside the authed scope,
     // after the wallet routes.
     registerWalletGovernanceRoutes(authed, ctx);
+    // AMD-INN-01..10: innovation routes — after the wallet governance
+    // routes; value-moving wires run inside withSettlement.
+    registerInnovationRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);

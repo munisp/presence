@@ -3794,6 +3794,461 @@ paths:
       responses:
         "200": { description: Per-venue QA rows for the whole estate. }
         "403": { description: Venue-ops role required. }
+  /v1/presence/bond:
+    post:
+      summary: Place a presence bond (SRS Addendum 001, AMD-INN-01)
+      description: >-
+        Stakes the pinned bond (100,000 minor units) as a showing-up
+        commitment, reserved through a standard wallet hold. One active
+        bond per user; KYC-verified only; body empty.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201": { description: Bond placed; returns bondId. }
+        "403": { description: KYC required. }
+        "409": { description: A bond is already active, or no active wallet. }
+        "422": { description: Insufficient funds. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/presence/bond/release:
+    post:
+      summary: Release the caller's bond (AMD-INN-01)
+      description: >-
+        The owner releases an active bond; the hold voids and nothing
+        moves. Body: { bondId }.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Released. }
+        "404": { description: Unknown or not the caller's bond. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/bonds/{bondId}/forfeit:
+    post:
+      summary: Forfeit a bond on a report (AMD-INN-01)
+      description: >-
+        Moderator-only. The hold posts and the value moves user ->
+        platform as fee entries; forfeiture MUST name a report against the
+        bond's owner. Audited in the admin audit log.
+      parameters:
+        - name: bondId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reportId]
+              additionalProperties: false
+              properties:
+                reportId: { type: string, format: uuid }
+      responses:
+        "200": { description: Forfeited. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown bond. }
+        "422": { description: The report does not name the bond's owner. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/met-receipts:
+    post:
+      summary: Submit a verified-met co-attestation (AMD-INN-02)
+      description: >-
+        The caller's half of a pair co-attestation. A reciprocal
+        submission inside the pinned 900-second window confirms the
+        receipt. No location, no device data, no free text.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [peer]
+              additionalProperties: false
+              properties:
+                peer: { type: string, format: uuid }
+      responses:
+        "201": { description: Confirmed — the peer's half was waiting. }
+        "202": { description: Pending — the caller's half is recorded. }
+        "422": { description: Self or unknown peer. }
+    get:
+      summary: List the caller's met receipts (AMD-INN-02)
+      responses:
+        "200": { description: Own receipts, newest first. }
+  /v1/escrows:
+    post:
+      summary: Create a trust escrow (AMD-INN-03)
+      description: >-
+        The milestone list is the contract: 1..12 positive amounts summing
+        to at most 5,000,000 minor units, reserved up front as a single
+        wallet hold. Both parties KYC-verified.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payee, milestones]
+              additionalProperties: false
+              properties:
+                payee: { type: string, format: uuid }
+                milestones:
+                  type: array
+                  minItems: 1
+                  maxItems: 12
+                  items: { type: integer, minimum: 1 }
+      responses:
+        "201": { description: Created; returns escrowId. }
+        "403": { description: KYC required (either party). }
+        "422": { description: Invalid amounts, unknown payee, self, or insufficient funds. }
+        "409": { description: No active wallet. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+    get:
+      summary: List the caller's escrows with milestones (AMD-INN-03)
+      responses:
+        "200": { description: Party-scoped escrows and their milestones. }
+  /v1/escrows/{escrowId}/milestones/{seq}/release:
+    post:
+      summary: Release one escrow milestone (AMD-INN-03)
+      description: >-
+        Payer only; body strictly empty. Value moves payer -> payee. When
+        the last pending milestone releases, the hold voids and the escrow
+        completes.
+      parameters:
+        - name: escrowId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: seq
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 12 }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Released, or completed when the last milestone released. }
+        "404": { description: Unknown escrow or milestone. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/escrows/{escrowId}/dispute:
+    post:
+      summary: Dispute an active escrow (AMD-INN-03)
+      description: >-
+        Either party may dispute; the remaining value stays held until a
+        moderator resolves. Body strictly empty.
+      parameters:
+        - name: escrowId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Disputed. }
+        "404": { description: Unknown escrow. }
+  /v1/moderation/escrows/{escrowId}/resolve:
+    post:
+      summary: Resolve a disputed escrow (AMD-INN-03)
+      description: >-
+        Moderator-only. 'refund' voids the hold and refunds the remainder;
+        'release' pays every remaining milestone to the payee and
+        completes. Audited either way.
+      parameters:
+        - name: escrowId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [refund, release] }
+      responses:
+        "200": { description: Resolved. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown or undisputed escrow. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/groups/{tableId}/stake:
+    post:
+      summary: Stake a group-table seat (AMD-INN-04)
+      description: >-
+        Reserves the pinned stake (50,000 minor) on an open table under
+        the six-seat cap. One active stake per user per table; body
+        strictly empty.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201": { description: Staked; returns stakeId. }
+        "403": { description: KYC required. }
+        "404": { description: Unknown table. }
+        "409": { description: Table closed or full, or a stake already active. }
+        "422": { description: Insufficient funds. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/groups/{tableId}/stake/refund:
+    post:
+      summary: Refund a stake after verified check-in (AMD-INN-04)
+      description: >-
+        Presence proven before value returns: the FR-100 check-in token
+        MUST verify against the table's venue before the hold voids.
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stakeId, checkinToken]
+              additionalProperties: false
+              properties:
+                stakeId: { type: string, format: uuid }
+                checkinToken: { type: string, maxLength: 1024 }
+      responses:
+        "200": { description: Refunded. }
+        "401": { description: Invalid or expired check-in token (FR-100). }
+        "404": { description: Unknown stake. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/sweeps:
+    post:
+      summary: Run a pinned expiry/forfeiture sweep (AMD-INN-02/04/10)
+      description: >-
+        Moderator-only. kind selects the sweep: met_receipts (expire
+        unconfirmed windows), introductions (expire unanswered proposals),
+        group_stakes (forfeit no-show stakes older than 24 h).
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              additionalProperties: false
+              properties:
+                kind: { type: string, enum: [met_receipts, introductions, group_stakes] }
+      responses:
+        "200": { description: The number swept. }
+        "403": { description: Moderator role required. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/disclosure-grants:
+    post:
+      summary: Issue a selective-disclosure grant (AMD-INN-06)
+      description: >-
+        A single-use, 900-second TTL proof of exactly one claim. The
+        secret is returned once and stored only as a digest.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claim]
+              additionalProperties: false
+              properties:
+                claim: { type: string, enum: [over_18, kyc_verified] }
+      responses:
+        "201": { description: Issued; returns grantId, secret, expiresAt. }
+        "403": { description: The claim is not proven for this account. }
+        "422": { description: Claim outside the pinned vocabulary. }
+  /v1/venues/disclosure-verify:
+    post:
+      summary: Redeem a disclosure grant (AMD-INN-06)
+      description: >-
+        Venue-ops only. Answers the claim — never the account, the birth
+        year, or the KYC record. Single-use; expiry and reuse answer 410.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grantId, secret]
+              additionalProperties: false
+              properties:
+                grantId: { type: string, format: uuid }
+                secret: { type: string, pattern: "^[0-9a-f]{48}$" }
+      responses:
+        "200": { description: The claim, and nothing else. }
+        "403": { description: Venue-ops role required. }
+        "404": { description: Invalid grant or secret. }
+        "410": { description: Used or expired. }
+  /v1/serendipity/windows:
+    post:
+      summary: Declare a serendipity window (AMD-INN-08)
+      description: >-
+        A weekly availability window (weekday 0-6, hour range, market). At
+        most four active per account.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [weekday, hourStart, hourEnd, market]
+              additionalProperties: false
+              properties:
+                weekday: { type: integer, minimum: 0, maximum: 6 }
+                hourStart: { type: integer, minimum: 0, maximum: 23 }
+                hourEnd: { type: integer, minimum: 1, maximum: 24 }
+                market: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "201": { description: Added; returns windowId. }
+        "409": { description: Four windows already active. }
+        "422": { description: Invalid window. }
+    get:
+      summary: List the caller's serendipity windows (AMD-INN-08)
+      responses:
+        "200": { description: Own windows, newest first. }
+  /v1/serendipity/windows/{windowId}/state:
+    post:
+      summary: Pause or resume a window (AMD-INN-08)
+      description: >-
+        Windows pause and resume; they are never deleted. Resuming honours
+        the four-active cap.
+      parameters:
+        - name: windowId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              additionalProperties: false
+              properties:
+                state: { type: string, enum: [active, paused] }
+      responses:
+        "200": { description: Updated. }
+        "404": { description: Unknown window. }
+        "409": { description: Four windows already active. }
+  /v1/serendipity/overlap:
+    get:
+      summary: Do the caller and a peer overlap? (AMD-INN-08)
+      description: >-
+        A boolean, computed server-side. The peer's windows are never
+        revealed.
+      parameters:
+        - name: peer
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: "{ overlap: boolean }." }
+  /v1/attestation:
+    get:
+      summary: Mint a verification passport (AMD-INN-09; wire name "attestation") (AMD-INN-09)
+      description: >-
+        KYC-verified only. Returns a one-hour HMAC-signed token carrying a
+        pseudonymous subject and the caller's proven claims.
+      responses:
+        "200": { description: "{ token, claims }." }
+        "403": { description: KYC required. }
+        "503": { description: Passport signing unconfigured (PRESENCE_PASSPORT_SECRET). }
+  /v1/attestation/verify:
+    post:
+      summary: Verify a passport — UNAUTHENTICATED (wire name "attestation") (AMD-INN-09)
+      description: >-
+        The caller is a third-party verifier with no account; the token
+        itself is the credential. Answers valid (with the claims) |
+        expired | invalid — never identity. Every verdict is counted in
+        presence_attestation_verify_results_total.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              additionalProperties: false
+              properties:
+                token: { type: string, maxLength: 2048 }
+      responses:
+        "200": { description: The verdict. }
+        "503": { description: Passport verification unconfigured. }
+  /v1/introductions:
+    post:
+      summary: Propose a host-mediated introduction (AMD-INN-10)
+      description: >-
+        The caller hosts; both parties must exist and be KYC-verified; a
+        block between the parties in either direction is an absolute
+        refusal; one open introduction per pair.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [partyA, partyB]
+              additionalProperties: false
+              properties:
+                partyA: { type: string, format: uuid }
+                partyB: { type: string, format: uuid }
+      responses:
+        "201": { description: Proposed; returns introId. }
+        "403": { description: KYC required (host or a party). }
+        "409": { description: Blocked pair or an open introduction exists. }
+        "422": { description: Invalid parties. }
+    get:
+      summary: List introductions the caller hosts or parties (AMD-INN-10)
+      responses:
+        "200": { description: Own introductions, newest first. }
+  /v1/introductions/{introId}/answer:
+    post:
+      summary: Answer an introduction (AMD-INN-10)
+      description: >-
+        A party answers for themselves. The second accept moves the
+        introduction to accepted and opens the pair at MUTUAL through the
+        FR-29 consent ledger — never by direct update.
+      parameters:
+        - name: introId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [accept, decline] }
+      responses:
+        "200": { description: Accepted (both) or declined. }
+        "202": { description: Recorded — waiting on the other party. }
+        "404": { description: Unknown introduction. }
 components:
   parameters:
     pairId:

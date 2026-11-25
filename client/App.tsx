@@ -56,7 +56,12 @@
  * changes — every shell string resolves through the copy registry with
  * the English baseline as the floor (NFR-27) — and the OS floors are
  * pinned while BLE capability degrades down a pinned ladder that never
- * strands the core journey (NFR-28).
+ * strands the core journey (NFR-28). Messaging is end-to-end encrypted
+ * over MLS with keys held on device: the provider registry admits only
+ * OpenMLS or vodozemac and refuses libsignal twice over, the wire
+ * carries a single opaque envelope, and first-message screening runs in
+ * the compose path before encryption because the server cannot see
+ * plaintext (TECH-08).
  */
 
 import { StatusBar } from "expo-status-bar";
@@ -112,6 +117,7 @@ import {
   bleFloorHonoursNfr28,
   resolveBlePlan,
 } from "./src/presence/bleFloor.js";
+import { buildOutboundPayload, e2eCryptoHonoursTech08 } from "./src/presence/e2eCrypto.js";
 import { CLIENT_PROTOCOL_VERSION } from "./src/presence/versioning.js";
 
 /** NFR-27: English at launch; a locale pack is data dropped in here. */
@@ -187,6 +193,8 @@ const SURFACE_CHECKS = [
   // NFR-28: OS floors pinned; every BLE capability degrades, never dead-ends.
   bleFloorHonoursNfr28() &&
     resolveBlePlan({ os: "android", version: ANDROID_FLOOR_API }, "scan-only").tier === "degraded",
+  // TECH-08: OpenMLS/vodozemac registry, libsignal refused, ciphertext-only wire.
+  e2eCryptoHonoursTech08() && buildOutboundPayload("Y2lwaGVydGV4dA==") !== null,
 ] as const;
 const SURFACES_OK = SURFACE_CHECKS.every(Boolean);
 
@@ -218,6 +226,7 @@ export default function App() {
         primary action in the lower 40 %
         {"\n"}copy registry: English at launch, locales are data · iOS {IOS_FLOOR_MAJOR}+ / API{" "}
         {ANDROID_FLOOR_API}+ floors · BLE degrades, never dead-ends
+        {"\n"}messages: MLS envelope only, keys on device · screen before encrypt · libsignal refused
       </Text>
     </View>
   );

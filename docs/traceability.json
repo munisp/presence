@@ -3,11 +3,11 @@
   "generated_by": "scripts/build_traceability.py",
   "total": 306,
   "status_counts": {
-    "implemented": 231,
+    "implemented": 232,
     "partial": 8,
     "gap-p0": 0,
     "phase-gated": 1,
-    "client": 1,
+    "client": 0,
     "organisational": 34,
     "external-evidence": 29,
     "superseded": 2
@@ -74,11 +74,11 @@
       "superseded": 1
     },
     "TECH": {
-      "implemented": 21,
+      "implemented": 22,
       "partial": 0,
       "gap-p0": 0,
       "phase-gated": 0,
-      "client": 1,
+      "client": 0,
       "organisational": 1,
       "external-evidence": 0,
       "superseded": 1
@@ -753,6 +753,7 @@
       "evidence": [
         "db/migrations/0001_init.sql",
         "docs/api/openapi.yaml",
+        "docs/ux/e2e-crypto.md",
         "services/edge/src/routes/messages.ts",
         "services/edge/src/screening.ts"
       ],
@@ -775,10 +776,10 @@
       "status": "implemented",
       "evidence": [
         "docs/api/openapi.yaml",
+        "docs/ux/e2e-crypto.md",
         "docs/ux/journeys-and-conversations.md",
         "services/edge/src/routes/messages.ts",
-        "services/edge/src/screening.ts",
-        "services/edge/test/screening.test.ts"
+        "services/edge/src/screening.ts"
       ],
       "note": "First message per sender per pair screened at the edge for links/phones/emails/bypass/scam patterns before storage; rejection is inline and category-level, nothing stored; tested. With MLS the same classifier runs in the client compose path (TECH-08)."
     },
@@ -1690,7 +1691,8 @@
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
         "docs/ux/localisation-and-degradation.md",
-        "tests/test_batch43.py"
+        "tests/test_batch38.py",
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/copyRegistry.ts \u2014 one copy registry keyed off the English launch baseline; a locale is pure data (BCP-47-lite tag + string map) so adding one needs no code change (proven by the master guard registering a synthetic locale at runtime); missing keys fall back to the English floor, unknown keys fail closed to null, malformed tags/bundles resolve as English; localeCoverage/localeIsLaunchReady set the full-coverage bar for the pinned +2-locales-in-3-months commitment; the shell renders title/subtitle through the registry with ACTIVE_LOCALE=null. Pinned by client tests + tests/test_batch44.py."
     },
@@ -1702,7 +1704,7 @@
         "docs/ux/client-budgets.md",
         "docs/ux/localisation-and-degradation.md",
         "tests/test_batch34.py",
-        "tests/test_batch43.py"
+        "tests/test_batch38.py"
       ],
       "note": "client/src/presence/bleFloor.ts \u2014 OS floors pinned in code (IOS_FLOOR_MAJOR 16 / ANDROID_FLOOR_API 29) and cross-checked against app.json (deploymentTarget/minSdkVersion) by tests/test_batch44.py; boundary-exact (floor supported, one below refuses with pinned upgrade notice, non-finite fails closed); the BLE capability ladder advertise+scan -> scan-only -> none degrades attestation two-way -> witness-only -> off with pinned notices, and every supported OS/capability combination is proven dead-end-free through the TR-32 resolver; garbage readings fail closed to the least radio. Pinned by client tests + tests/test_batch44.py."
     },
@@ -2132,7 +2134,7 @@
         "docs/security/sdk-allowlist.json",
         "docs/ux/client-budgets.md",
         "docs/ux/discovery-surfaces.md",
-        "docs/ux/interaction-surfaces.md"
+        "docs/ux/e2e-crypto.md"
       ],
       "note": "client/src/presence/localState.ts: LOCAL_STATE_ALLOWLIST of 4 namespaced keys (session refresh token, device id, notification prefs, taxonomy version); createLocalState is type-safe over allowlisted keys only; clearLocalState wipes every allowlisted key by construction (logout/uninstall); secrets backed by expo-secure-store via the platform adapter, not AsyncStorage."
     },
@@ -2151,7 +2153,8 @@
       "status": "implemented",
       "evidence": [
         "docs/ux/localisation-and-degradation.md",
-        "tests/test_batch35.py"
+        "tests/test_batch35.py",
+        "tests/test_batch44.py"
       ],
       "note": "client/src/presence/permissions.ts: resolveCapabilities maps bluetooth/location/push denials to a degraded-but-never-dead profile. The floors are architectural: manual-checkin is always present (FR-99/FR-100 check-in tokens need no OS permission), push-denied falls back to the in-app Centrifugo realtime channel (TECH-06), and consent/chat are server-driven (FR-29). assertNoDeadEnds proves every core journey step (check-in, discover, connect, chat) keeps a satisfier across all eight permission combinations; each denial carries a user-facing impact + recovery hint."
     },
@@ -2920,15 +2923,15 @@
     },
     "TECH-08": {
       "family": "TECH",
-      "status": "client",
+      "status": "implemented",
       "evidence": [
         "docs/ux/accessibility-and-reveal.md",
         "docs/ux/client-budgets.md",
+        "docs/ux/e2e-crypto.md",
         "docs/ux/journeys-and-conversations.md",
-        "docs/ux/localisation-and-degradation.md",
-        "services/edge/src/screening.ts"
+        "docs/ux/localisation-and-degradation.md"
       ],
-      "note": "OpenMLS/vodozemac client crypto; libsignal prohibited (AGPL-3.0 vs closed client)."
+      "note": "client/src/presence/e2eCrypto.ts \u2014 provider registry exactly OpenMLS (MIT/Apache-2.0) / vodozemac (MIT); libsignal refused by name (lookalike forks included) AND by its AGPL marker via the TECH-16 licence screen, SRS reason pinned verbatim; keys pinned to the device keystore (secure-store), key-package upload single-field with refill floor 10 (garbage refills); per-pair MLS epoch machine forms at OPEN / seals at close / refuses out-of-order; wire payload exactly {envelope} with plaintext-field violations (server-cannot-read); compose path pins screen -> encrypt -> send with screening mandatory per FR-38 (cross-pinned conversationThread). Pinned by client tests + tests/test_batch45.py."
     },
     "TECH-09": {
       "family": "TECH",
@@ -3004,10 +3007,10 @@
       "status": "implemented",
       "evidence": [
         "docs/ux/client-budgets.md",
+        "docs/ux/e2e-crypto.md",
         "docs/ux/journeys-and-conversations.md",
         "tests/test_batch38.py",
-        "tests/test_batch39.py",
-        "tests/test_batch40.py"
+        "tests/test_batch39.py"
       ],
       "note": "client/src/presence/dependencyBudget.ts \u2014 45 MB bundle cap with one size allocation per runtime dependency (31 MB allocated, cross-pinned to package.json); the licence allowlist mirrors the SEC-25 CI set with a prohibited-marker screen in front (GPL/AGPL/LGPL/SSPL/Commons Clause refuse \u2014 the TECH-08 libsignal discipline); the admission gate refuses in pinned order (size, SEC-18 membership, deprecated, licence, cap); the SEC-18 sdk-allowlist CI gate enforces membership. Pinned by client tests + tests/test_batch42.py."
     },

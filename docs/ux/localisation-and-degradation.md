@@ -24,5 +24,6 @@ degradation shape every such device will experience. The two
 post-launch locale packs themselves are the ops half of NFR-27
 (scheduled inside the pinned three-month window); the code half — the
 registry, the fallback floor, the readiness bar — is what lands here.
-TECH-08 (OpenMLS/vodozemac E2E crypto) remains the one client-gated
-requirement and is the next batch's scope.
+TECH-08 (OpenMLS/vodozemac E2E crypto) closed in the next batch —
+`client/src/presence/e2eCrypto.ts`, mapped in `docs/ux/e2e-crypto.md` —
+leaving the traceability matrix with no client-gated requirements.

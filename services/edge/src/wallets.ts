@@ -1,6 +1,7 @@
 /**
- * SRS Addendum 001 — wallet validators (AMD-PAY-10..14).
- * Pure functions, unit-tested; the routes in routes/wallets.ts do the I/O.
+ * SRS Addendum 001 — wallet validators (AMD-PAY-10..20).
+ * Pure functions, unit-tested; the routes in routes/wallets.ts and
+ * routes/walletRail.ts do the I/O.
  *
  *   AMD-PAY-10 — one wallet per user per currency; NGN at launch; the
  *     platform fee wallet is a pinned constant so the rail, the tests and
@@ -8,12 +9,14 @@
  *   AMD-PAY-11/12 — the entry kinds and hold states are closed sets,
  *     mirrored byte-for-byte by the client contract and cross-pinned
  *     against migration 0027 by tests/test_batch53.py.
- *   AMD-PAY-13 — there is deliberately no validator here that reaches a
- *     value-moving definer: wallet_move, place_wallet_hold,
- *     void_wallet_hold and settle_transfer_funds are rail-only, gated in
- *     the database by the transaction-local app.transfer_settlement
- *     setting no P0 component sets (AMD-PAY-08 extended). The routes
- *     expose creation, reads and moderation — never movement.
+ *   AMD-PAY-15 — the rail is live: the value-moving wires set
+ *     app.transfer_settlement through the withSettlement /
+ *     withRailCallback helpers (the ONLY writers of the GUC), behind the
+ *     WALLET_RAIL operational kill switch. The definers keep their
+ *     database gate as defence in depth.
+ *   AMD-PAY-16/17 — funding and payout callbacks authenticate with an
+ *     HMAC-SHA256 signature over the canonical field string; withdrawals
+ *     carry the pinned caps and the closed state lifecycle.
  */
 
 /** AMD-PAY-10: the launch currency — one currency, stated once. */
@@ -70,4 +73,130 @@ export function parseWalletCreation(raw: unknown): Record<string, never> | null 
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
   if (Object.keys(raw as Record<string, unknown>).length !== 0) return null;
   return {};
+}
+
+/** AMD-PAY-17: the withdrawal lifecycle — requested → processing → paid | failed; requested → failed | cancelled. */
+export const WITHDRAWAL_STATES = ["requested", "processing", "paid", "failed", "cancelled"] as const;
+
+export type WithdrawalState = (typeof WITHDRAWAL_STATES)[number];
+
+export function isWithdrawalState(raw: unknown): raw is WithdrawalState {
+  return typeof raw === "string" && (WITHDRAWAL_STATES as readonly string[]).includes(raw);
+}
+
+/** AMD-PAY-17: per-withdrawal cap — NGN 50,000.00 in kobo, mirroring AMD-PAY-05. */
+export const MAX_WITHDRAWAL_MINOR = 5_000_000;
+
+/** AMD-PAY-17: rolling 24 h withdrawal cap — NGN 150,000.00 in kobo, mirroring AMD-PAY-05. */
+export const DAILY_WITHDRAWAL_CAP_MINOR = 15_000_000;
+
+/** AMD-PAY-16: per-event funding cap — NGN 150,000.00 in kobo. */
+export const MAX_FUNDING_MINOR = 15_000_000;
+
+const RAIL_REF_RE = /^.{8,128}$/;
+
+/**
+ * AMD-PAY-17: strict withdrawal body — {amountMinor, destinationRef} only.
+ * The destination is an opaque provider-side payout reference, never raw
+ * bank details.
+ */
+export function parseWithdrawalRequest(
+  raw: unknown,
+): { amountMinor: number; destinationRef: string } | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const keys = Object.keys(raw as Record<string, unknown>);
+  if (keys.length !== 2 || !keys.includes("amountMinor") || !keys.includes("destinationRef")) {
+    return null;
+  }
+  const { amountMinor, destinationRef } = raw as { amountMinor: unknown; destinationRef: unknown };
+  if (typeof amountMinor !== "number" || !Number.isInteger(amountMinor) || amountMinor <= 0) {
+    return null;
+  }
+  if (typeof destinationRef !== "string" || !RAIL_REF_RE.test(destinationRef)) return null;
+  return { amountMinor, destinationRef };
+}
+
+/** AMD-PAY-16: strict funding callback body — {walletId, amountMinor, reference} only. */
+export function parseFundingCallback(
+  raw: unknown,
+): { walletId: string; amountMinor: number; reference: string } | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const keys = Object.keys(raw as Record<string, unknown>);
+  if (
+    keys.length !== 3 ||
+    !keys.includes("walletId") ||
+    !keys.includes("amountMinor") ||
+    !keys.includes("reference")
+  ) {
+    return null;
+  }
+  const { walletId, amountMinor, reference } = raw as {
+    walletId: unknown;
+    amountMinor: unknown;
+    reference: unknown;
+  };
+  if (
+    typeof walletId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(walletId)
+  ) {
+    return null;
+  }
+  if (typeof amountMinor !== "number" || !Number.isInteger(amountMinor) || amountMinor <= 0) {
+    return null;
+  }
+  if (typeof reference !== "string" || !RAIL_REF_RE.test(reference)) return null;
+  return { walletId, amountMinor, reference };
+}
+
+/** AMD-PAY-17: strict payout callback body — {requestId, outcome, reference} only. */
+export function parsePayoutCallback(
+  raw: unknown,
+): { requestId: string; outcome: "completed" | "failed"; reference: string } | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const keys = Object.keys(raw as Record<string, unknown>);
+  if (
+    keys.length !== 3 ||
+    !keys.includes("requestId") ||
+    !keys.includes("outcome") ||
+    !keys.includes("reference")
+  ) {
+    return null;
+  }
+  const { requestId, outcome, reference } = raw as {
+    requestId: unknown;
+    outcome: unknown;
+    reference: unknown;
+  };
+  if (
+    typeof requestId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(requestId)
+  ) {
+    return null;
+  }
+  if (outcome !== "completed" && outcome !== "failed") return null;
+  if (typeof reference !== "string" || !RAIL_REF_RE.test(reference)) return null;
+  return { requestId, outcome, reference };
+}
+
+/** AMD-PAY-17: strict moderation decision body — {decision} only, approve or reject. */
+export function parseWithdrawalDecision(raw: unknown): { decision: "approve" | "reject" } | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const keys = Object.keys(raw as Record<string, unknown>);
+  if (keys.length !== 1 || keys[0] !== "decision") return null;
+  const { decision } = raw as { decision: unknown };
+  if (decision !== "approve" && decision !== "reject") return null;
+  return { decision };
+}
+
+/**
+ * AMD-PAY-16/17: the canonical string a provider signs — pinned field
+ * order, colon-joined, so the platform and the provider can never disagree
+ * about what was signed.
+ */
+export function fundingSignaturePayload(walletId: string, amountMinor: number, reference: string): string {
+  return `${walletId}:${amountMinor}:${reference}`;
+}
+
+export function payoutSignaturePayload(requestId: string, outcome: string, reference: string): string {
+  return `${requestId}:${outcome}:${reference}`;
 }

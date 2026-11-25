@@ -130,6 +130,19 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.wallet.hold.pending": "Reserved",
   "ui.wallet.hold.posted": "Settled",
   "ui.wallet.hold.voided": "Released",
+  // SRS Addendum 001 (b54) — the live wallet rail (AMD-PAY-15..20).
+  "ui.wallet.fund": "Add money",
+  "ui.wallet.fund.pending": "Funding arrives by bank transfer",
+  "ui.wallet.withdraw": "Withdraw to bank",
+  "ui.wallet.withdraw.insufficient": "Your available balance cannot cover this",
+  "ui.wallet.withdraw.over-cap": "This amount exceeds a platform cap",
+  "ui.wallet.withdraw.cancel": "Cancel withdrawal",
+  "ui.wallet.rail-disabled": "Money movement is temporarily paused",
+  "ui.wallet.withdrawal.requested": "Requested",
+  "ui.wallet.withdrawal.processing": "On its way",
+  "ui.wallet.withdrawal.paid": "Paid",
+  "ui.wallet.withdrawal.failed": "Failed",
+  "ui.wallet.withdrawal.cancelled": "Cancelled",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

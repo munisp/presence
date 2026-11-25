@@ -1,24 +1,30 @@
-/** SRS Addendum 001 (b53): client wallet contract — AMD-PAY-10..14. */
+/** SRS Addendum 001 (b54): client wallet contract — AMD-PAY-10..20. */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  DAILY_WITHDRAWAL_CAP_MINOR,
+  MAX_WITHDRAWAL_MINOR,
   PLATFORM_WALLET_ID,
   WALLET_CURRENCY,
   WALLET_ENTRY_KINDS,
   WALLET_HOLD_STATES,
   WALLET_STATUSES,
   WALLET_SUMMARY_FIELDS,
+  WITHDRAWAL_STATES,
   buildWalletSummary,
   copyKeyForEntryKind,
   copyKeyForHoldState,
   copyKeyForWalletStatus,
+  copyKeyForWithdrawalState,
   formatWalletAmount,
   isWalletEntryKind,
   isWalletHoldState,
   isWalletStatus,
+  isWithdrawalState,
   planWalletCreation,
+  planWithdrawal,
   walletHonoursAmendment,
 } from "../src/presence/walletView.js";
 
@@ -121,4 +127,85 @@ test("copy keys exist for every status, entry kind and hold state", () => {
 
 test("the master guard holds and is not vacuous", () => {
   assert.equal(walletHonoursAmendment(), true);
+});
+
+test("the withdrawal lifecycle and caps are pinned to the amendment values", () => {
+  assert.deepEqual(WITHDRAWAL_STATES, ["requested", "processing", "paid", "failed", "cancelled"]);
+  assert.equal(MAX_WITHDRAWAL_MINOR, 5_000_000);
+  assert.equal(DAILY_WITHDRAWAL_CAP_MINOR, 15_000_000);
+  assert.ok(isWithdrawalState("processing"));
+  assert.equal(isWithdrawalState("approved"), false);
+});
+
+test("planWithdrawal refuses with exactly one reason, in the pinned order", () => {
+  const base = {
+    amountMinor: 1_000_000,
+    availableMinor: 2_000_000,
+    dailyUsedMinor: 0,
+    destinationRef: "PSP_rcpt_01234567",
+  };
+  assert.deepEqual(planWithdrawal(base), { allowed: true });
+  // Garbage input refuses first.
+  assert.deepEqual(planWithdrawal(null as never), { allowed: false, reason: "invalid-input" });
+  assert.deepEqual(planWithdrawal({ ...base, amountMinor: 0 }), {
+    allowed: false,
+    reason: "invalid-input",
+  });
+  assert.deepEqual(planWithdrawal({ ...base, amountMinor: 1.5 }), {
+    allowed: false,
+    reason: "invalid-input",
+  });
+  assert.deepEqual(planWithdrawal({ ...base, availableMinor: -1 }), {
+    allowed: false,
+    reason: "invalid-input",
+  });
+  assert.deepEqual(planWithdrawal({ ...base, dailyUsedMinor: -1 }), {
+    allowed: false,
+    reason: "invalid-input",
+  });
+  assert.deepEqual(planWithdrawal({ ...base, destinationRef: 42 } as never), {
+    allowed: false,
+    reason: "invalid-input",
+  });
+  // The destination shape refuses second.
+  assert.deepEqual(planWithdrawal({ ...base, destinationRef: "short" }), {
+    allowed: false,
+    reason: "invalid-destination",
+  });
+  assert.deepEqual(planWithdrawal({ ...base, destinationRef: "x".repeat(129) }), {
+    allowed: false,
+    reason: "invalid-destination",
+  });
+  // The per-withdrawal cap refuses third.
+  assert.deepEqual(planWithdrawal({ ...base, amountMinor: 5_000_001, availableMinor: 20_000_000 }), {
+    allowed: false,
+    reason: "over-withdrawal-cap",
+  });
+  // The available balance refuses fourth.
+  assert.deepEqual(planWithdrawal({ ...base, amountMinor: 3_000_000 }), {
+    allowed: false,
+    reason: "exceeds-available",
+  });
+  // The rolling daily cap refuses last.
+  assert.deepEqual(planWithdrawal({ ...base, dailyUsedMinor: 14_500_000 }), {
+    allowed: false,
+    reason: "over-daily-cap",
+  });
+  // Exactly at every cap is allowed.
+  assert.deepEqual(
+    planWithdrawal({
+      amountMinor: 5_000_000,
+      availableMinor: 5_000_000,
+      dailyUsedMinor: 10_000_000,
+      destinationRef: "PSP_rcpt_01234567",
+    }),
+    { allowed: true },
+  );
+});
+
+test("copy keys exist for every withdrawal state", () => {
+  for (const state of WITHDRAWAL_STATES) {
+    assert.equal(copyKeyForWithdrawalState(state), `ui.wallet.withdrawal.${state}`);
+  }
+  assert.equal(copyKeyForWithdrawalState("garbage"), null);
 });

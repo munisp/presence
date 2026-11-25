@@ -2429,9 +2429,10 @@ paths:
         currency, self-serve, idempotent. The create_wallet definer
         decides: the owner claim must be the caller (the definer bypasses
         RLS) and the caller must be KYC-verified (AMD-PAY-01 discipline).
-        An unfunded wallet is inert — value moves only through the
-        rail-gated definers (AMD-PAY-13); no route funds, withdraws,
-        holds or settles.
+        An unfunded wallet is inert — value enters only through the
+        authenticated rail (AMD-PAY-16) and moves only through the
+        rail-gated definers (AMD-PAY-13/15), behind the WALLET_RAIL
+        operational kill switch.
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -2511,6 +2512,218 @@ paths:
         "400": { $ref: "#/components/responses/SchemaViolation" }
         "403": { description: Moderator role required, or not a user wallet. }
         "404": { description: Unknown wallet. }
+  /v1/wallets/{walletId}/withdrawals:
+    post:
+      summary: Request a withdrawal (SRS Addendum 001, AMD-PAY-17)
+      description: >-
+        The owner requests a payout to an opaque provider-side destination
+        reference — never raw bank details (AMD-KYC-03 minimisation).
+        request_withdrawal decides under the wallet row lock: ownership is
+        the caller (app_user()), the wallet must be active, the amount is
+        reserved as a pending hold in the same transaction, and the caps
+        mirror AMD-PAY-05 — 5,000,000 minor per withdrawal and 15,000,000
+        minor rolling 24-hour over requested, processing and paid. Runs
+        under the settlement GUC behind the WALLET_RAIL kill switch
+        (AMD-PAY-15).
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amountMinor, destinationRef]
+              additionalProperties: false
+              properties:
+                amountMinor: { type: integer, minimum: 1 }
+                destinationRef: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        "201": { description: Withdrawal requested; hold placed. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Unknown or not-owned wallet. }
+        "409": { description: Cap exceeded, insufficient funds, or wallet not active (AMD-PAY-17). }
+        "422": { description: Body outside the strict shape (TR-23). }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+    get:
+      summary: List a wallet's withdrawal requests (AMD-PAY-17)
+      description: >-
+        The caller's withdrawal requests for one wallet, newest first. An
+        id the caller does not own answers 404 — wallet existence is not
+        leaked (FR-30 discipline).
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: The wallet's withdrawal requests. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Unknown or not-owned wallet. }
+  /v1/wallets/{walletId}/withdrawals/{requestId}/cancel:
+    post:
+      summary: Cancel a requested withdrawal (SRS Addendum 001, AMD-PAY-17)
+      description: >-
+        The owner cancels while the request is still `requested`; the hold
+        is voided in the same transaction. Any other state answers 409 —
+        the lifecycle is enforced by the database (FR-29 trigger
+        discipline).
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Withdrawal cancelled; hold voided. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "404": { description: Unknown or not-owned wallet or request. }
+        "409": { description: The request has left the requested state (AMD-PAY-17). }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/wallets/{walletId}/credit:
+    post:
+      summary: Credit a user wallet (SRS Addendum 001, AMD-PAY-16)
+      description: >-
+        The audited moderation funding route: fund_wallet under the
+        settlement GUC plus app.moderator, capped per event, idempotent by
+        the supplied reference — a repeat answers the recorded outcome and
+        moves nothing twice. Every credit lands in wallet_rail_events.
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amountMinor, reference]
+              additionalProperties: false
+              properties:
+                amountMinor: { type: integer, minimum: 1 }
+                reference: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        "200": { description: Credit applied, or the reference was already recorded (duplicate). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown wallet. }
+        "409": { description: Over the per-event cap or wallet not active (AMD-PAY-16). }
+        "422": { description: Body outside the strict shape (TR-23). }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/withdrawals/{requestId}/decide:
+    post:
+      summary: Approve or reject a withdrawal (SRS Addendum 001, AMD-PAY-17)
+      description: >-
+        Moderation decides a `requested` withdrawal: approve moves it to
+        `processing` for the payout rail; reject moves it to `failed` and
+        voids the hold in the same transaction. The decision is audited in
+        the admin audit log (FR-60).
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+      responses:
+        "200": { description: Decision recorded; audited. }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown withdrawal request. }
+        "409": { description: The request has left the requested state (AMD-PAY-17). }
+        "422": { description: Decision outside the closed vocabulary. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/wallets/reconciliation:
+    get:
+      summary: Reconcile the wallet ledger (SRS Addendum 001, AMD-PAY-19)
+      description: >-
+        The moderator-only audit read: every wallet's balance re-derived
+        from its ledger and compared against the stored running balance,
+        the platform fee delta, holds pending longer than 24 hours, and
+        open withdrawals. It moves nothing — it reads and reports.
+      responses:
+        "200": { description: The reconciliation report. }
+        "403": { description: Moderator role required. }
+  /v1/webhooks/wallet-funding:
+    post:
+      summary: Funding provider callback (SRS Addendum 001, AMD-PAY-16)
+      description: >-
+        The rail's fund-in wire, outside the authed scope on purpose: the
+        provider authenticates with an HMAC-SHA256 signature over the
+        canonical `walletId:amountMinor:reference` string in the
+        x-wallet-signature header. fund_wallet runs under the settlement
+        GUC plus app.funding_callback, idempotent by reference. Unset
+        WALLET_FUNDING_SECRET answers 503.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [walletId, amountMinor, reference]
+              additionalProperties: false
+              properties:
+                walletId: { type: string, format: uuid }
+                amountMinor: { type: integer, minimum: 1 }
+                reference: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        "200": { description: Funding applied, or the reference was already recorded (duplicate). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "401": { description: Signature verification failed (AMD-PAY-16). }
+        "422": { description: Body outside the strict shape (TR-23). }
+        "503": { description: Funding secret unset, or the wallet rail is switched off. }
+  /v1/webhooks/wallet-payout:
+    post:
+      summary: Payout provider callback (SRS Addendum 001, AMD-PAY-17)
+      description: >-
+        The rail's payout wire, outside the authed scope on purpose: the
+        provider authenticates with an HMAC-SHA256 signature over the
+        canonical `requestId:outcome:reference` string. `completed`
+        completes the withdrawal (ledger entry first, hold posted after —
+        value and state can never diverge); `failed` fails it and voids
+        the hold. Idempotent by reference. Unset WALLET_PAYOUT_SECRET
+        answers 503.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId, outcome, reference]
+              additionalProperties: false
+              properties:
+                requestId: { type: string, format: uuid }
+                outcome: { type: string, enum: [completed, failed] }
+                reference: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        "200": { description: Payout recorded, or the reference was already recorded (duplicate). }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "401": { description: Signature verification failed (AMD-PAY-17). }
+        "409": { description: The request is not in a payable state (AMD-PAY-17). }
+        "422": { description: Body outside the strict shape (TR-23). }
+        "503": { description: Payout secret unset, or the wallet rail is switched off. }
   /v1/moderation/reports/{reportId}/resolve:
     post:
       summary: Resolve a report (FR-52, FR-54, FR-55)

@@ -684,6 +684,72 @@ def main() -> int:
         and '"/v1/wallets"' in edge_wallet_src,
     )
 
+    # ---- batch 54: wallet rail activation (SRS Addendum 001, AMD-PAY-15..20)
+    activation_path = ROOT / "db" / "migrations" / "0028_wallet_activation.sql"
+    activation_src = activation_path.read_text() if activation_path.exists() else ""
+    check(
+        "AMD-PAY-16/17 rail schema: wallet_rail_events + withdrawal_requests",
+        "CREATE TABLE wallet_rail_events (" in activation_src
+        and "CREATE TABLE withdrawal_requests (" in activation_src
+        and "CHECK (kind IN ('fund', 'payout'))" in activation_src
+        and "CHECK (state IN ('requested', 'processing', 'paid', 'failed', 'cancelled'))" in activation_src,
+    )
+    check(
+        "AMD-PAY-17 withdrawal lifecycle guard: append-only, immutable terms, legal transitions",
+        "withdrawal_requests is append-only (AMD-PAY-17)" in activation_src
+        and "withdrawal request terms are immutable (AMD-PAY-17)" in activation_src
+        and "illegal withdrawal transition (AMD-PAY-17)" in activation_src,
+    )
+    check(
+        "AMD-PAY-15 every value-moving activation definer keeps the rail gate",
+        activation_src.count(
+            "current_setting('app.transfer_settlement', true) IS DISTINCT FROM 'on'"
+        ) >= 7
+        and "CREATE OR REPLACE FUNCTION fund_wallet(" in activation_src
+        and "CREATE OR REPLACE FUNCTION request_withdrawal(" in activation_src
+        and "CREATE OR REPLACE FUNCTION accept_transfer_and_settle(" in activation_src
+        and "CREATE OR REPLACE FUNCTION wallet_reconciliation(" in activation_src,
+    )
+    check(
+        "batch-54 migration rides both initdb mounts as 30_wallet_activation.sql",
+        "=db/migrations/0028_wallet_activation.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/30_wallet_activation.sql:ro" in compose_src,
+    )
+    edge_auth_src = (ROOT / "services" / "edge" / "src" / "auth.ts").read_text()
+    edge_src_all = "\n".join(
+        p.read_text()
+        for p in (ROOT / "services" / "edge" / "src").rglob("*.ts")
+        if p.name != "auth.ts"
+    )
+    check(
+        "AMD-PAY-15 the settlement GUC is written only by the auth.ts helpers, behind WALLET_RAIL",
+        "export class WalletRailUnavailable extends Error" in edge_auth_src
+        and "withSettlement" in edge_auth_src
+        and "withRailCallback" in edge_auth_src
+        and 'process.env.WALLET_RAIL === "off"' in edge_auth_src
+        and edge_auth_src.count("set_config('app.transfer_settlement'") == 2
+        and "set_config('app.transfer_settlement'" not in edge_src_all
+        and "SET LOCAL app.transfer_settlement" not in edge_src_all,
+    )
+    edge_rail_path = ROOT / "services" / "edge" / "src" / "routes" / "walletRail.ts"
+    edge_rail_src = edge_rail_path.read_text() if edge_rail_path.exists() else ""
+    check(
+        "AMD-PAY-16/17 provider webhooks are HMAC-authenticated and outside the authed scope",
+        '"/v1/webhooks/wallet-funding"' in edge_rail_src
+        and '"/v1/webhooks/wallet-payout"' in edge_rail_src
+        and "createHmac(" in edge_rail_src
+        and "timingSafeEqual" in edge_rail_src
+        and "x-wallet-signature" in edge_rail_src
+        and "WALLET_FUNDING_SECRET" in edge_rail_src
+        and "WALLET_PAYOUT_SECRET" in edge_rail_src,
+    )
+    edge_app_src = (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+    check(
+        "batch-54 webhook surface is registered on the app, outside the authed scope",
+        'import { registerWalletRailRoutes } from "./routes/walletRail.js";' in edge_app_src
+        and "registerWalletRailRoutes(app, ctx);" in edge_app_src,
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

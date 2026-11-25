@@ -32,6 +32,7 @@ import { registerProfileRoutes } from "./routes/profile.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerTransferRoutes } from "./routes/transfers.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
+import { registerWalletRailRoutes } from "./routes/walletRail.js";
 import { registerRoomRoutes } from "./routes/rooms.js";
 import { registerScanRoutes } from "./routes/scan.js";
 import { registerTableRoutes } from "./routes/tables.js";
@@ -109,6 +110,11 @@ export async function buildApp(ctx: EdgeContext) {
   // reads its TLS pinning policy before login; the payload is operational,
   // never user data). Registered outside the authed scope on purpose.
   registerClientConfigRoute(app);
+
+  // AMD-PAY-16/17: wallet rail provider webhooks — outside the authed
+  // scope on purpose: the caller is the payment provider, authenticated by
+  // HMAC signature over the canonical payload, never a user token.
+  registerWalletRailRoutes(app, ctx);
 
   // NFR-33: Prometheus scrape endpoint — outside the authed scope and not
   // under /v1 (it is operational, not API; it stays out of openapi.yaml).

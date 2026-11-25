@@ -65,7 +65,7 @@ def synth(schema: dict) -> object:
     if t == "string":
         if "pattern" in schema:
             return None
-        return "x"
+        return "x" * max(int(schema.get("minLength", 1)), 1)
     if t == "integer":
         return int(schema.get("minimum", 1))
     if t == "number":

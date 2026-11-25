@@ -12,8 +12,12 @@
  *     proposal outlives its window. AMD-PAY-03: the row is amount,
  *     currency, fee and state — there is no free text to return.
  *   POST /v1/transfers/:transferId/accept       — the recipient consents
- *     (dual consent, AMD-PAY-04); the definer re-proves KYC and the OPEN
- *     pair at this second moment (AMD-PAY-06).
+ *     (dual consent, AMD-PAY-04); AMD-PAY-18: acceptance settles
+ *     atomically on the wallet rail — the accept_transfer_and_settle
+ *     definer re-proves KYC and the OPEN pair (AMD-PAY-06), reserves
+ *     amount + fee on the sender's wallet and moves the value in the
+ *     same transaction. A sender who cannot cover the transfer leaves it
+ *     proposed.
  *   POST /v1/transfers/:transferId/decline      — the recipient refuses;
  *     always available while proposed.
  *   POST /v1/transfers/:transferId/cancel       — the sender retracts
@@ -27,15 +31,23 @@
  *     outcome vocabulary and writes both the ledger row and the admin
  *     audit entry.
  *
- * AMD-PAY-08: there is deliberately no settle route — 'settled' is
- * reachable only through the app.transfer_settlement GUC that no P0
- * component sets. The TECH-23 deployment gate stands.
+ * AMD-PAY-08/15: there is no standalone settle route — settlement happens
+ * at acceptance through the wallet rail, inside withSettlement (the only
+ * writer of the app.transfer_settlement GUC, behind the WALLET_RAIL
+ * operational kill switch). The external rails (Mojaloop/TigerBeetle)
+ * stay TECH-23-gated.
  *
  * TR-23: strict bodies — unknown fields fail validation with a 400.
  */
 
 import { FastifyInstance, FastifyReply } from "fastify";
-import { requireModerator, withModerator, withRls } from "../auth.js";
+import {
+  requireModerator,
+  WalletRailUnavailable,
+  withModerator,
+  withRls,
+  withSettlement,
+} from "../auth.js";
 import { EdgeContext } from "../context.js";
 import {
   parseDisputeOutcome,
@@ -160,14 +172,51 @@ export function registerTransferRoutes(app: FastifyInstance, ctx: EdgeContext): 
     { schema: { params: transferParams } },
     async (req, reply) => {
       const { transferId } = req.params as { transferId: string };
-      const outcome = await withRls(ctx.pg, req.userId, async (c) => {
-        const r = await c.query(
-          `SELECT record_transfer_event($1, $2, 'accepted') AS outcome`,
-          [transferId, req.userId],
-        );
-        return (r.rows[0] as { outcome: string }).outcome;
-      });
-      return mapEventOutcome(outcome, reply, transferId, "accepted");
+      let outcome: string;
+      try {
+        // AMD-PAY-18: acceptance IS settlement on the wallet rail — one
+        // definer, one transaction, both moments of eligibility re-proved.
+        outcome = await withSettlement(ctx.pg, req.userId, async (c) => {
+          const r = await c.query(
+            `SELECT accept_transfer_and_settle($1) AS outcome`,
+            [transferId],
+          );
+          return (r.rows[0] as { outcome: string }).outcome;
+        });
+      } catch (err) {
+        if (err instanceof WalletRailUnavailable) {
+          return reply.code(503).send({ error: "the wallet rail is disabled by operations (AMD-PAY-15)" });
+        }
+        throw err;
+      }
+      if (outcome === "settled") return reply.send({ transferId, state: "settled" });
+      if (outcome === "unknown_transfer") return reply.code(404).send({ error: "transfer not found" });
+      if (outcome === "illegal_state") {
+        return reply.code(409).send({ error: "illegal transfer transition (AMD-PAY-04)" });
+      }
+      if (outcome === "wrong_actor") return reply.code(403).send({ error: "the recipient alone accepts (AMD-PAY-04)" });
+      if (outcome === "expired") {
+        return reply.code(410).send({ error: "the acceptance window has closed (AMD-PAY-06)" });
+      }
+      if (outcome === "not_kyc_verified") {
+        return reply.code(403).send({ error: "both sides must be verified to send money (AMD-PAY-06)" });
+      }
+      if (outcome === "pair_not_open") {
+        return reply.code(403).send({ error: "money moves only inside an open conversation (AMD-PAY-06)" });
+      }
+      if (outcome === "suspended") {
+        return reply.code(403).send({ error: "transfers are suspended for this pair (AMD-PAY-06)" });
+      }
+      if (outcome === "no_wallet") {
+        return reply.code(409).send({ error: "both sides need an active wallet (AMD-PAY-18)" });
+      }
+      if (outcome === "wallet_not_active") {
+        return reply.code(409).send({ error: "a wallet on this transfer is not active (AMD-PAY-18)" });
+      }
+      if (outcome === "insufficient_funds") {
+        return reply.code(409).send({ error: "the sender cannot cover this transfer right now (AMD-PAY-18)" });
+      }
+      return reply.code(403).send({ error: "forbidden" });
     },
   );
 

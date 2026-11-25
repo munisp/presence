@@ -197,8 +197,7 @@ export async function withRls<T>(
  * appeals) without ever opening consumer rows to a second principal. The GUC
  * is set server-side only, on routes already gated by requireModerator.
  */
-export async function withModerator<T>(
-  pool: Postgres.Pool,
+export async function withModerator<T>(  pool: Postgres.Pool,
   fn: (client: Postgres.PoolClient) => Promise<T>,
 ): Promise<T> {
   return withGuc(pool, "app.moderator", fn);
@@ -241,6 +240,80 @@ async function withGuc<T>(
   try {
     await client.query("BEGIN");
     await client.query(`SELECT set_config('${guc}', 'on', true)`);
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * AMD-PAY-15: the wallet rail is live. Thrown when the operational kill
+ * switch (WALLET_RAIL=off) is engaged — routes answer 503, and because the
+ * GUC is never set the definers would refuse anyway: the switch and the
+ * database gate are two independent layers.
+ */
+export class WalletRailUnavailable extends Error {
+  constructor() {
+    super("wallet rail disabled");
+  }
+}
+
+/**
+ * AMD-PAY-15: run `fn` in one transaction with app.user_id AND
+ * app.transfer_settlement set — the only place the settlement GUC is ever
+ * written. Used by the value-moving wires (transfer accept-and-settle,
+ * withdrawal request/cancel/decision). extraGuc stacks a second GUC (e.g.
+ * app.moderator for the withdrawal decision) into the same transaction —
+ * never nest the helpers, they each take their own client.
+ */
+export async function withSettlement<T>(
+  pool: Postgres.Pool,
+  userId: string,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+  extraGuc?: string,
+): Promise<T> {
+  if (process.env.WALLET_RAIL === "off") throw new WalletRailUnavailable();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+    await client.query("SELECT set_config('app.transfer_settlement', 'on', true)");
+    if (extraGuc !== undefined) {
+      await client.query(`SELECT set_config('${extraGuc}', 'on', true)`);
+    }
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * AMD-PAY-16/17: run `fn` in one transaction with the settlement GUC plus
+ * one rail-callback GUC (app.funding_callback or app.payout_callback) set —
+ * the HMAC-verified provider webhooks authenticate with a shared secret,
+ * not a user token, so no app.user_id exists here.
+ */
+export async function withRailCallback<T>(
+  pool: Postgres.Pool,
+  callbackGuc: string,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
+  if (process.env.WALLET_RAIL === "off") throw new WalletRailUnavailable();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.transfer_settlement', 'on', true)");
+    await client.query(`SELECT set_config('${callbackGuc}', 'on', true)`);
     const out = await fn(client);
     await client.query("COMMIT");
     return out;

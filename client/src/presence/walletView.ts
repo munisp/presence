@@ -20,11 +20,15 @@
  *   3. Creation planner (AMD-PAY-10) — {@link planWalletCreation}
  *      mirrors the create_wallet definer's refusals the client can
  *      know: verified identity, no existing NGN wallet.
- *   4. No movement surface (AMD-PAY-13) — there is deliberately no
- *      client function that moves value. Fund, withdraw, hold and
- *      settle stay rail-only behind the app.transfer_settlement GUC
- *      that no P0 component sets (AMD-PAY-08 extended). The client
- *      renders a ledger; it does not write one.
+ *   4. Withdrawal surface (AMD-PAY-17) — {@link planWithdrawal} mirrors
+ *      the request_withdrawal definer's refusals the client can know:
+ *      the pinned caps (byte-identical to the edge), the available
+ *      balance, the destination shape. WITHDRAWAL_STATES is the closed
+ *      lifecycle, cross-pinned edge and migration.
+ *   5. No raw movement on the client (AMD-PAY-15) — the client plans and
+ *      renders; the wire moves value through the definer-gated routes,
+ *      behind the WALLET_RAIL operational kill switch. The client never
+ *      writes the ledger.
  *
  * The single import is the transfer contract: naira formatting and the
  * launch currency are already pinned there, byte-identical to the edge.
@@ -75,6 +79,21 @@ export function isWalletHoldState(raw: unknown): raw is WalletHoldState {
 
 /** AMD-PAY-13: the platform fee wallet — fixed in migration 0027, byte-identical to the edge copy. */
 export const PLATFORM_WALLET_ID = "00000000-0000-0000-0000-00000000fee1";
+
+/** AMD-PAY-17: the withdrawal lifecycle. Byte-identical to the edge copy. */
+export const WITHDRAWAL_STATES = ["requested", "processing", "paid", "failed", "cancelled"] as const;
+
+export type WithdrawalState = (typeof WITHDRAWAL_STATES)[number];
+
+export function isWithdrawalState(raw: unknown): raw is WithdrawalState {
+  return typeof raw === "string" && (WITHDRAWAL_STATES as readonly string[]).includes(raw);
+}
+
+/** AMD-PAY-17: per-withdrawal cap — NGN 50,000.00 in kobo. Byte-identical to the edge copy. */
+export const MAX_WITHDRAWAL_MINOR = 5_000_000;
+
+/** AMD-PAY-17: rolling 24 h withdrawal cap — NGN 150,000.00 in kobo. Byte-identical to the edge copy. */
+export const DAILY_WITHDRAWAL_CAP_MINOR = 15_000_000;
 
 /**
  * AMD-PAY-10/11: the whole summary. Six fields, all structured. There is
@@ -203,6 +222,71 @@ export function copyKeyForHoldState(state: unknown): string | null {
   return `ui.wallet.hold.${state}`;
 }
 
+/** The copy key a withdrawal state renders through. */
+export function copyKeyForWithdrawalState(state: unknown): string | null {
+  if (!isWithdrawalState(state)) return null;
+  return `ui.wallet.withdrawal.${state}`;
+}
+
+/** What the client knows before requesting a payout (AMD-PAY-17). */
+export interface WithdrawalPlan {
+  amountMinor: number;
+  /** The wallet's available balance (balance − held), as last rendered. */
+  availableMinor: number;
+  /** Withdrawals already in motion or paid in the last 24 h. */
+  dailyUsedMinor: number;
+  /** Opaque provider-side payout reference, 8–128 characters. */
+  destinationRef: string;
+}
+
+export type WithdrawalDenial =
+  | "invalid-input"
+  | "invalid-destination"
+  | "over-withdrawal-cap"
+  | "exceeds-available"
+  | "over-daily-cap";
+
+export type WithdrawalVerdict = { allowed: true } | { allowed: false; reason: WithdrawalDenial };
+
+/**
+ * AMD-PAY-17: decide a withdrawal before the wire, mirroring the
+ * request_withdrawal definer. The order of the refusals is pinned so the
+ * UI explains exactly one reason: garbage input, destination shape, the
+ * per-withdrawal cap, the available balance, then the rolling daily cap.
+ * The definer re-decides everything server-side under the wallet row
+ * lock; this planner exists so the user hears the truth before the
+ * request leaves the device.
+ */
+export function planWithdrawal(plan: WithdrawalPlan): WithdrawalVerdict {
+  if (
+    plan === null ||
+    typeof plan !== "object" ||
+    !Number.isInteger(plan.amountMinor) ||
+    plan.amountMinor <= 0 ||
+    !Number.isInteger(plan.availableMinor) ||
+    plan.availableMinor < 0 ||
+    !Number.isInteger(plan.dailyUsedMinor) ||
+    plan.dailyUsedMinor < 0 ||
+    typeof plan.destinationRef !== "string"
+  ) {
+    return { allowed: false, reason: "invalid-input" };
+  }
+  const destination = plan.destinationRef.trim();
+  if (destination.length < 8 || destination.length > 128) {
+    return { allowed: false, reason: "invalid-destination" };
+  }
+  if (plan.amountMinor > MAX_WITHDRAWAL_MINOR) {
+    return { allowed: false, reason: "over-withdrawal-cap" };
+  }
+  if (plan.amountMinor > plan.availableMinor) {
+    return { allowed: false, reason: "exceeds-available" };
+  }
+  if (plan.dailyUsedMinor + plan.amountMinor > DAILY_WITHDRAWAL_CAP_MINOR) {
+    return { allowed: false, reason: "over-daily-cap" };
+  }
+  return { allowed: true };
+}
+
 /**
  * The master guard the shell asserts: the vocabularies are exactly the
  * pinned sets, the platform wallet id is the migration value, a summary
@@ -267,6 +351,44 @@ export function walletHonoursAmendment(): boolean {
     copyKeyForEntryKind("transfer_in") === "ui.wallet.entry.transfer_in" &&
     copyKeyForHoldState("posted") === "ui.wallet.hold.posted" &&
     copyKeyForWalletStatus("garbage") === null &&
-    copyKeyForEntryKind("note") === null
+    copyKeyForEntryKind("note") === null &&
+    WITHDRAWAL_STATES.length === 5 &&
+    MAX_WITHDRAWAL_MINOR === 5_000_000 &&
+    DAILY_WITHDRAWAL_CAP_MINOR === 15_000_000 &&
+    planWithdrawal({
+      amountMinor: 1_000_000,
+      availableMinor: 2_000_000,
+      dailyUsedMinor: 0,
+      destinationRef: "PSP_rcpt_01234567",
+    }).allowed === true &&
+    (() => {
+      const denied = planWithdrawal({
+        amountMinor: 3_000_000,
+        availableMinor: 2_000_000,
+        dailyUsedMinor: 0,
+        destinationRef: "PSP_rcpt_01234567",
+      });
+      return denied.allowed === false && denied.reason === "exceeds-available";
+    })() &&
+    (() => {
+      const denied = planWithdrawal({
+        amountMinor: 6_000_000,
+        availableMinor: 20_000_000,
+        dailyUsedMinor: 0,
+        destinationRef: "PSP_rcpt_01234567",
+      });
+      return denied.allowed === false && denied.reason === "over-withdrawal-cap";
+    })() &&
+    (() => {
+      const denied = planWithdrawal({
+        amountMinor: 4_000_000,
+        availableMinor: 20_000_000,
+        dailyUsedMinor: 14_000_000,
+        destinationRef: "PSP_rcpt_01234567",
+      });
+      return denied.allowed === false && denied.reason === "over-daily-cap";
+    })() &&
+    copyKeyForWithdrawalState("processing") === "ui.wallet.withdrawal.processing" &&
+    copyKeyForWithdrawalState("garbage") === null
   );
 }

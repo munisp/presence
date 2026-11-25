@@ -6,9 +6,11 @@ the AMD-PAY-08 rail gate extended over every value-moving definer.
 
 The 306-requirement ledger stays untouched: amendments carry AMD-
 identifiers in docs/spec/srs-addendum-001.md, so the traceability counts
-stay 234/6/0. AMD-PAY-02/13: the Mojaloop/TigerBeetle deployment gate
-(TECH-23) stands — no P0 component sets app.transfer_settlement and no
-route reaches a value-moving definer.
+stay 234/6/0. AMD-PAY-02: the Mojaloop/TigerBeetle deployment gate
+(TECH-23) stands for the external rails. Batch 54 (AMD-PAY-15..20)
+activated the internal NGN rail behind the WALLET_RAIL kill switch —
+test_no_raw_value_mover_route_exists and the requireModerator count in
+test_edge_routes_are_the_wallet_wires carry that amendment.
 """
 
 from __future__ import annotations
@@ -271,7 +273,11 @@ def test_edge_module_surface():
         assert name in EDGE_WALLETS, name
 
 
-def test_edge_routes_are_the_five_wallet_wires():
+def test_edge_routes_are_the_wallet_wires():
+    # Amended in batch 54 (AMD-PAY-15..17): the rail is live, so the wire
+    # set grew — withdrawal request/list/cancel, moderation credit, the
+    # withdrawal decision and reconciliation ride alongside the five
+    # batch-53 wires.
     assert 'app.post(\n    "/v1/wallets"' in EDGE_ROUTES
     assert 'app.get("/v1/wallets"' in EDGE_ROUTES
     assert '"/v1/wallets/:walletId/entries"' in EDGE_ROUTES
@@ -282,29 +288,39 @@ def test_edge_routes_are_the_five_wallet_wires():
     assert "FROM wallets w\n           JOIN wallet_balances b" in EDGE_ROUTES
     assert "set_wallet_status($1, 'frozen')" in EDGE_ROUTES
     assert "set_wallet_status($1, 'active')" in EDGE_ROUTES
-    assert EDGE_ROUTES.count("preHandler: requireModerator") == 2
+    # freeze, unfreeze, credit, decide — moderation wires are preHandled.
+    assert EDGE_ROUTES.count("preHandler: requireModerator") == 5
     # A wallet the caller does not own answers 404 — existence is not leaked.
     assert '"wallet not found"' in EDGE_ROUTES
     # TR-23 strict bodies.
     assert "additionalProperties: false" in EDGE_ROUTES
 
 
-def test_no_value_moving_route_exists():
-    """AMD-PAY-13: the rail gate made tangible — no route, no GUC write.
+def test_no_raw_value_mover_route_exists():
+    """AMD-PAY-13/15: the rail gate made tangible — no raw mover, no GUC write.
 
-    The header comments may NAME the movers; what must not exist is a wire
-    that reaches them: no fund/withdraw/hold/settle path, no definer call,
-    and nothing that sets the transaction-local flag.
+    Amended in batch 54: routes may reach the ACTIVATION definers
+    (fund_wallet, request_withdrawal, accept_transfer_and_settle, the
+    withdrawal lifecycle definers) but never the raw movement primitives
+    — wallet_move, place_wallet_hold, void_wallet_hold and
+    settle_transfer_funds have no route caller — and no route file ever
+    writes the settlement GUC: the auth.ts helpers are the only writers.
     """
-    paths = [m.group(1) for m in re.finditer(r'"(/v1/[^"]*)"', EDGE_ROUTES)]
-    for banned in ("fund", "withdraw", "hold", "settle"):
-        assert not any(banned in p for p in paths), banned
-    for definer in ("wallet_move(", "place_wallet_hold(", "void_wallet_hold(",
-                    "settle_transfer_funds("):
-        assert definer not in EDGE_ROUTES, definer
-    assert "set_config('app.transfer_settlement'" not in EDGE_ROUTES
-    assert "SET LOCAL app.transfer_settlement" not in EDGE_ROUTES
-    assert "SET app.transfer_settlement" not in EDGE_ROUTES
+    rail_routes = (EDGE / "src/routes/walletRail.ts").read_text()
+    transfer_routes = (EDGE / "src/routes/transfers.ts").read_text()
+    for source in (EDGE_ROUTES, rail_routes, transfer_routes):
+        for definer in ("wallet_move(", "place_wallet_hold(", "void_wallet_hold(",
+                        "settle_transfer_funds("):
+            assert definer not in source, definer
+        assert "set_config(" not in source
+        assert "SET LOCAL app.transfer_settlement" not in source
+        assert "SET app.transfer_settlement" not in source
+    # Raw settle/hold paths exist nowhere; funding and payouts enter only
+    # through the dedicated webhook surface.
+    for source in (EDGE_ROUTES, rail_routes, transfer_routes):
+        paths = [m.group(1) for m in re.finditer(r'"(/v1/[^"]*)"', source)]
+        for banned in ("hold", "settle"):
+            assert not any(banned in p for p in paths), banned
 
 
 def test_edge_app_registers_the_routes():

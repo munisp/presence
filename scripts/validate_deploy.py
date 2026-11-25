@@ -49,6 +49,15 @@ Asserts (with requirement ids):
          35-day retention CronJobs, dual-recipient (dual-authorisation)
          encryption with only public keys in-cluster, a timed restore
          rehearsal verifying append-only integrity counts, and a runbook.
+  NFR-01/02/03/06/08/09/10, ACC-04 the k6 load harness pins the requirement
+         numbers in loadtest/targets.js and every scenario imports them.
+  NFR-13 the scan-path availability burn alert carries the 99.9% budget.
+  NFR-11 the edge/match HPAs are the scale-out mechanism, referenced by the
+         capacity scenario.
+  INF-13 the gateway sheds per-IP floods with limit-count 429s; the probe is
+         the pre-launch test.
+  ACC-06 the rollback workflow is dormant-gated, re-verifies signatures, and
+         its 10-minute job timeout IS the rollback budget.
 
 Run: python3 scripts/validate_deploy.py   (exit 1 on any failure)
 """
@@ -554,6 +563,85 @@ def main() -> int:
         and "zz_backup_access.sh" in compose_src
         and "pgbackups:/backups" in compose_src,
     )
+
+    # ---------------- verification instruments (batch 52) ----------------
+    lt = ROOT / "loadtest"
+    lt_files = {n: (lt / n).read_text() if (lt / n).exists() else "" for n in
+                ("targets.js", "scan-latency.js", "capacity.js", "soak.js", "ratelimit-probe.js", "README.md")}
+    check(
+        "ACC-04 load harness ships targets + four scenarios + README",
+        all(lt_files[n] for n in lt_files),
+    )
+    targets_src = lt_files["targets.js"]
+    check(
+        "NFR-01/02/03/06 targets.js pins the latency budgets verbatim",
+        all(t in targets_src for t in (
+            "SCAN_P95_MS = 150", "SCAN_P99_MS = 400",
+            "PUBLISH_ACK_P95_MS = 120", "TAP_TO_RESULTS_P95_MS = 900")),
+    )
+    check(
+        "NFR-08/09/10 targets.js pins the capacity numbers verbatim",
+        all(t in targets_src for t in (
+            "SCANS_PER_SECOND_PEAK = 600", "CONCURRENT_PRESENCES = 25000",
+            "VENUE_BURST_PER_10MIN = 60000")),
+    )
+    check(
+        "ACC-04 scenarios import targets rather than restating numbers",
+        all('from "./targets.js"' in lt_files[n]
+            for n in ("scan-latency.js", "capacity.js", "soak.js", "ratelimit-probe.js")),
+    )
+    check(
+        "NFR-13 every load scenario enforces the 0.1% error budget",
+        sum("http_req_failed" in lt_files[n] for n in ("scan-latency.js", "capacity.js", "soak.js")) == 3
+        and "ERROR_BUDGET" in targets_src,
+    )
+    check(
+        "NFR-11 capacity scenario doubles the peak and names the HPA mechanism",
+        "PEAK_MULTIPLIER" in lt_files["capacity.js"] and "deploy/k8s/edge.yaml" in lt_files["capacity.js"],
+    )
+    check(
+        "ACC-04 soak runs 2h at 60% of the NFR-09 peak",
+        'SOAK_DURATION = "2h"' in targets_src and "SOAK_RATE_RATIO = 0.6" in targets_src,
+    )
+    rules_src = (K8S / "prometheusrules.yaml").read_text()
+    check(
+        "NFR-13 scan-path availability burn alert carries the 99.9% budget",
+        "ScanAvailabilityBurn" in rules_src
+        and "0.001" in rules_src  # 0.1% error budget in the burn-rate expression
+        and "1h" in rules_src and "6h" in rules_src,
+    )
+    check(
+        "INF-13 gateway sheds per-IP floods on the API and auth surfaces",
+        apisix_src.count("limit-count:") >= 2
+        and "key: remote_addr" in apisix_src
+        and "rejected_code: 429" in apisix_src
+        and "count: 1200" in apisix_src and "count: 120" in apisix_src,
+    )
+    check(
+        "INF-13 ratelimit probe asserts 429s AND allowed latency",
+        "ratelimit_rejected_429" in lt_files["ratelimit-probe.js"]
+        and "/v1/client/config" in lt_files["ratelimit-probe.js"],
+    )
+    rollback_yml = ROOT / ".github" / "workflows" / "rollback.yml"
+    rollback_src = rollback_yml.read_text() if rollback_yml.exists() else ""
+    check(
+        "ACC-06 rollback workflow: dormant-gated, undo + re-verify + smoke, 10-min budget",
+        "workflow_dispatch" in rollback_src
+        and "rollout undo" in rollback_src
+        and "cosign verify" in rollback_src
+        and "timeout-minutes: 10" in rollback_src
+        and "PRODUCTION_DEPLOY_ENABLED" in rollback_src,
+    )
+    for doc, needle in (
+        ("docs/security/asvs-masvs-mapping.md", "ASVS 4.0.3"),
+        ("docs/security/ddos-posture.md", "limit-count"),
+        ("docs/ops/cost-model.md", "1 500"),
+        ("docs/ops/rollback.md", "10 minutes"),
+        ("docs/ux/usability-protocol.md", "8 of 10"),
+        ("docs/ux/store-review-checklist.md", "DELETE /v1/account"),
+    ):
+        doc_path = ROOT / doc
+        check(f"batch-52 doc {doc}", doc_path.exists() and needle in doc_path.read_text())
 
     print()
     if failures:

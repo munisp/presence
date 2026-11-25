@@ -205,19 +205,19 @@ CLASSIFICATION: dict[str, tuple[str, str]] = {
 }
 CLASSIFICATION.update({
     # ---------------- NFR ----------------
-    "NFR-01": ("external-evidence", "Scan server latency p95 <=150 ms — load evidence (ACC-04)."),
-    "NFR-02": ("external-evidence", "Scan server latency p99 <=400 ms — load evidence (ACC-04)."),
-    "NFR-03": ("external-evidence", "Presence publish ack p95 <=120 ms — load evidence."),
+    "NFR-01": ("external-evidence", "Scan server latency p95 <=150 ms — measured by loadtest/scan-latency.js (targets.js pins 150 ms; k6 exits non-zero on breach); production-equivalent run record outstanding (ACC-04)."),
+    "NFR-02": ("external-evidence", "Scan server latency p99 <=400 ms — measured by loadtest/scan-latency.js (targets.js pins 400 ms); production-equivalent run record outstanding (ACC-04)."),
+    "NFR-03": ("external-evidence", "Presence publish ack p95 <=120 ms — measured by loadtest/scan-latency.js (publish_ack_latency trend, targets.js pins 120 ms); production-equivalent run record outstanding (ACC-04)."),
     "NFR-04": ("partial", "client/src/presence/startupBudget.ts — pinned phase ledger (native-init/js-bundle/secure-store/config-cache/first-render/handoff summing to exactly 1800 ms), deferred work (BLE start, prefetch, flush) banned from the critical path by audit; on-device profiling on the reference mid-tier remains."),
     "NFR-05": ("partial", "client/src/presence/startupBudget.ts — the same ledger's warm column: resume pays nothing for the resident native runtime or JS bundle, sums to exactly 600 ms, no warm phase dearer than its cold twin; on-device profiling remains."),
-    "NFR-06": ("external-evidence", "Tap-to-results p95 <=900 ms — end-to-end measurement with the client."),
+    "NFR-06": ("external-evidence", "Tap-to-results p95 <=900 ms — loadtest/scan-latency.js measures the server legs end to end (publish + scan composite, targets.js pins 900 ms); the device render leg remains client-side evidence (profile_device_budgets.py harness)."),
     "NFR-07": ("implemented", "The server leg of sender-to-device delivery is measured and SLO-alerted: publishRealtime times every broker call into presence_realtime_publish_duration_seconds per channel class and counts failures; RealtimeDeliverySlow (prometheusrules.yaml) pages realtime-oncall when the publish p95 exceeds the 500 ms budget for 15 min; runbook entry + ServiceMonitor scrape wired. The device-leg confirmation rides on client telemetry."),
-    "NFR-08": ("external-evidence", "25 000 concurrent presences per city cluster — capacity test."),
-    "NFR-09": ("external-evidence", "600 scans/s at p95 peak — capacity test."),
-    "NFR-10": ("external-evidence", "60 000 single-venue burst per 10 min — capacity test."),
-    "NFR-11": ("external-evidence", "Linear 2x scale-out without schema/client change — K8s HPA + test."),
-    "NFR-12": ("external-evidence", "250k-node taxonomy at match latency targets — scale test (TR-21)."),
-    "NFR-13": ("external-evidence", "99.9% measured scan-path availability — production measurement."),
+    "NFR-08": ("external-evidence", "25 000 concurrent presences per city cluster — loadtest/capacity.js holds 25 000 VUs published on the FR-85 600 s heartbeat floor; production-equivalent run record outstanding (ACC-04)."),
+    "NFR-09": ("external-evidence", "600 scans/s at p95 peak — loadtest/capacity.js constant-arrival-rate 600 it/s for 10 min with the NFR-01/02 thresholds enforced; production-equivalent run record outstanding (ACC-04)."),
+    "NFR-10": ("external-evidence", "60 000 single-venue burst per 10 min — loadtest/capacity.js drives 100 publishes/s into one venue cell for 10 min; production-equivalent run record outstanding (ACC-04)."),
+    "NFR-11": ("external-evidence", "Linear 2x scale-out without schema/client change — the edge/match HPAs (deploy/k8s/edge.yaml, match.yaml) are the mechanism and the match store is stateless; loadtest/capacity.js PEAK_MULTIPLIER=2 run + observed pod-count doubling is the evidence record, outstanding."),
+    "NFR-12": ("external-evidence", "250k-node taxonomy at match latency targets — data-layer instrument is the TR-21 harness (tests/test_closure_scale.py + scale_taxonomy_closure.py CI job, 250k nodes <10 min); the match-latency legs ride loadtest/scan-latency.js against the same seed. One combined release record outstanding."),
+    "NFR-13": ("external-evidence", "99.9% measured scan-path availability — ScanAvailabilityBurn in prometheusrules.yaml carries the 0.1% error budget as a 1 h/6 h multi-window burn-rate alert (runbook entry wired); load runs assert http_req_failed under the same budget. The 30-day production measurement itself is outstanding."),
     "NFR-14": ("implemented", "Graceful degradation in the edge scan route: a matcher error or an unreachable matcher returns the structured { state: 'paused', results: [] } — the client shows 'discovery paused', never an error; presence is independent of the matcher and unaffected."),
     "NFR-15": ("external-evidence", "RTO <=60 min single-zone loss — the restore path is in-repo (batch 51): restore-rehearse.sh runs the timed restore against a hard 3600 s RTO budget and fails on breach; runbook in docs/ops/backup-restore.md. Production timing evidence comes from the quarterly drill."),
     "NFR-16": ("external-evidence", "RPO <=5 min consent ledger (PITR, INF-18) — archive_timeout=300 on the postgres args (compose + k8s) forces a WAL segment at least every 5 minutes and wal-archive.sh ships every segment encrypted; production freshness measurement outstanding."),
@@ -310,7 +310,7 @@ CLASSIFICATION.update({
     "SEC-20": ("implemented", "rl:scan:h 200/h (429) and rl:wave:d 20/day (429) Valkey counters; isImpossibleTravel rejects fixes implying >500 km/h with a 422."),
     "SEC-21": ("implemented", "screenText covers links, contact details and scam/bypass abuse patterns on first messages (enforced pre-storage in the messages route); room notes (FR-46) reuse the same module when rooms land (FR-44); tested."),
     "SEC-22": ("implemented", "No list endpoints; results capped at 3; tie-break rotates per scan via edge-supplied seed (sha256(seed:userId)); unseeded legacy order retained only for tooling/tests."),
-    "SEC-23": ("external-evidence", "OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch."),
+    "SEC-23": ("external-evidence", "OWASP ASVS 4.0.3 L2 / MASVS 2.0 L1 assessment before launch — docs/security/asvs-masvs-mapping.md maps every control chapter to its in-repo mechanism and evidence so the assessment verifies rather than discovers; the independent report itself remains outstanding."),
     "SEC-24": ("implemented", "Dependencies pinned (exact versions + lockfile), and every merge to main now produces an SBOM and SLSA mode=max provenance attestation per service image plus a keyless cosign signature over the immutable digest (deploy.yml) — signed provenance is a per-merge artefact, verified in the same job."),
     "SEC-25": ("implemented", ".github/workflows/ci.yml dependencies job — license-checker with an allowlist (MIT/ISC/Apache-2.0/BSD/0BSD/CC0) over both services on every PR."),
     "SEC-26": ("implemented", ".github/workflows/ci.yml (tests, npm audit, gitleaks) + codeql.yml (SAST for TS/Python) + dependabot.yml — all gated on every PR and push to main."),
@@ -336,18 +336,18 @@ CLASSIFICATION.update({
     "INF-05": ("external-evidence", "API/match sizing 3x 2 vCPU/4 GB — production."),
     "INF-06": ("external-evidence", "Valkey 1 primary + 1 replica, 4 GB — production."),
     "INF-07": ("external-evidence", "Postgres 4 vCPU/16 GB, 500 GB SSD, PITR — production."),
-    "INF-08": ("external-evidence", "Centrifugo 2 nodes x 2 vCPU — production."),
+    "INF-08": ("external-evidence", "Centrifugo 2 nodes x 2 vCPU — the k8s Deployment pins exactly that shape (replicas 2, cpu limit 2, INF-08 comment on the resources block); production capacity evidence outstanding."),
     "INF-09": ("superseded", "ClickHouse superseded by the OpenSearch-only decision (ADR-0006 / TECH-21)."),
     "INF-10": ("implemented", "autoscaling/v2 HPAs on edge + match: external p95 metric (120 ms target, 3-min window) with CPU fallback; scaleDown capped at 1 pod per 600 s; asserted by scripts/validate_deploy.py."),
     "INF-11": ("implemented", "TLS termination, HSTS and CSP configured at APISIX (validated); the gateway now staples the CA's OCSP attestation itself (ssl_stapling + ssl_stapling_verify + trusted chain + in-cluster resolver in apisix.yaml), scripts/check_tls_posture.py asserts the directives statically in CI and collects live stapling evidence (--host openssl s_client -status, 30 s budget) per docs/ops/tls.md."),
     "INF-12": ("implemented", "K8s: only APISIX reaches edge, only edge reaches match, everything else ClusterIP/headless; default-deny-all NetworkPolicy; asserted by scripts/validate_deploy.py."),
-    "INF-13": ("external-evidence", "Edge DDoS mitigation + pre-launch test."),
+    "INF-13": ("external-evidence", "Edge DDoS mitigation + pre-launch test — layered posture in docs/security/ddos-posture.md: APISIX limit-count per remote_addr (1200/60 s on /v1/*, 120/60 s on the Keycloak surface) rejects floods with 429 before in-process work; loadtest/ratelimit-probe.js is the pre-launch test (429s observed AND allowed p99 <=400 ms). Live-attack evidence impossible by construction; the probe record is outstanding."),
     "INF-14": ("implemented", "Default-deny egress + per-workload egress allowlists (DNS only otherwise) in deploy/k8s/networkpolicy.yaml; asserted by scripts/validate_deploy.py."),
     "INF-15": ("implemented", "Merge -> signed reproducible artefact -> auto-deploy: .github/workflows/deploy.yml builds edge+match on every merge to main with commit-timestamp SOURCE_DATE_EPOCH and digest addressing (reproducible), attaches buildx SBOM + mode=max provenance, signs the immutable digest keyless with cosign over the GitHub OIDC identity and self-verifies the signature, then the deploy-integration job kustomize-pins the signed digests and rolls out. Auto-deploy is gated on the integration environment variable so the artefact half runs on every merge until the cluster is wired."),
     "INF-16": ("implemented", "Flagger Canary resources on the APISIX provider: 5% steps held 10 min, auto-rollback on success-rate/p95-latency breach (deploy/k8s/canary.yaml); asserted by scripts/validate_deploy.py. Requires Flagger + Prometheus in-cluster."),
     "INF-17": ("implemented", "scripts/rehearse_migrations.py: forward-only lint (DROP TABLE/TRUNCATE/DROP COLUMN rejected, runs in CI and pytest), review checklist in docs/ops/migrations.md (lock profile, CONCURRENTLY indexes, backfill plan, RLS/grants), and a rehearsal that builds the previous release on Postgres 17, populates a production-sized synthetic snapshot (100k users, 600k messages, ~1.75M rows), applies the pending migration timed, and asserts no row loss, valid FKs, RLS intact and the heaviest join resolving — gated by the migration-rehearsal CI job (900 s budget, 120 s per-migration lock warning)."),
     "INF-18": ("external-evidence", "PITR 5-min granularity, 35-day retention, quarterly timed restore — in-repo layer (batch 51): wal-archive.sh + archive_timeout=300, base-backup.sh CronJob with manifest, enforce-retention.sh (35-day floor), restore-rehearse.sh (timed, dual-authorised, verifies append-only integrity counts, logs to an append-only drill trail). The quarterly drill itself stays an ops duty."),
-    "INF-19": ("external-evidence", "<=EUR1 500/mo at 100k MAU — Kubecost (P1) + monthly review."),
+    "INF-19": ("external-evidence", "<=EUR1 500/mo at 100k MAU — docs/ops/cost-model.md decomposes the budget line by line (EUR 1 400 modelled with 25% headroom) and names the levers; Kubecost (P1) actuals + the monthly review duty keep it honest. Measured actuals outstanding."),
     "INF-20": ("organisational", "On-call staffing, escalation ladder, 30-min Sev-1 acknowledgement."),
     # ---------------- TECH ----------------
     "TECH-01": ("implemented", "client/: React Native 0.88 + Expo SDK 58 custom dev client — expo-dev-client in dependencies and plugins, `expo start --dev-client`; Expo Go prohibited (documented + pinned by tests; BLE needs native modules). Platform floors iOS 16.0 / Android minSdkVersion 29 with BLUETOOTH_SCAN/CONNECT and when-in-use location declared, ACCESS_BACKGROUND_LOCATION explicitly blocked. CI client job typechecks the RN surface and runs the framework-free unit suites."),
@@ -375,22 +375,22 @@ CLASSIFICATION.update({
     "TECH-23": ("implemented", "No Mojaloop/TigerBeetle deployed; ARC-002 §9 gates them at P3."),
     "TECH-24": ("implemented", "MapLibre + GeoLibre + PostGIS stack (ADR-0008) complete end to end: canonical geometry in PostGIS (venues.geofence geography(Polygon,4326)); GeoLibre authoring workflow (TR-41, batch 22 — drafts, four-eyes, density gate, DB-final publish); and the QA workflow (batch 23 migration 0023) — geofence_overlap_check + a publish-time overlap gate that stops two venues claiming the same ground (attribution ambiguity, FR-90; 10 m² tolerance, floors exempt), geofence_qa_report() GUC-gated estate audit (coverage, density re-verification, overlap conflicts, geometry version, drafts in flight), console routes POST /v1/ops/geofences/overlap-check + GET /v1/ops/geofences/qa, and the runbook docs/ops/geofence-qa.md."),
     # ---------------- ACC ----------------
-    "ACC-01": ("external-evidence", "This generated matrix + the test suites are the verification instrument; final gate at pilot."),
+    "ACC-01": ("external-evidence", "This generated matrix + the test suites + the loadtest evidence records (loadtest/README.md capture contract) are the verification instrument; final gate at pilot sign-off."),
     "ACC-02": ("organisational", "Independent pen test with critical/high remediation + retest."),
     "ACC-03": ("organisational", "DPIA signed by DPO + accountable executive."),
-    "ACC-04": ("external-evidence", "Load + soak profile on production-equivalent infrastructure."),
+    "ACC-04": ("external-evidence", "Load + soak profile on production-equivalent infrastructure — the harness is in-repo (loadtest/: scan-latency, capacity, soak 2 h at 60% peak, ratelimit-probe; targets.js pins the NFR numbers; README pins the environment contract and evidence capture). The runs themselves are outstanding."),
     "ACC-05": ("organisational", "Incident response rehearsed; on-call staffed; runbooks published."),
-    "ACC-06": ("external-evidence", "Rollback drill: production release reverted <=10 min."),
+    "ACC-06": ("external-evidence", "Rollback drill: production release reverted <=10 min — .github/workflows/rollback.yml (rollout undo to the previous signed ReplicaSets, cosign re-verify, healthz smoke, job timeout-minutes 10 IS the budget) + drill contract in docs/ops/rollback.md; the timed drill record is outstanding."),
     "ACC-07": ("organisational", "Three anchor venues contracted + dashboards verified."),
-    "ACC-08": ("external-evidence", "Store review acceptance on both platforms — needs the client."),
-    "ACC-09": ("external-evidence", "10-user first-time usability test (>=8 describe the product correctly) — needs the client."),
+    "ACC-08": ("external-evidence", "Store review acceptance on both platforms — docs/ux/store-review-checklist.md maps every known rejection cause to its in-repo mechanism (in-app deletion, privacy labels, BLE justification, UGC moderation); submission needs the signed client build."),
+    "ACC-09": ("external-evidence", "10-user first-time usability test (>=8 describe the product correctly) — the study instrument is in-repo (docs/ux/usability-protocol.md: script, tasks, comprehension scoring, >=8/10 bar); running it needs the client build."),
     "ACC-10": ("partial", "Eval pipeline complete (653-pair key, rating pack, scoring; self-test alpha 0.832, p@3 0.389); the real >=3-independent-rater study is outstanding."),
 })
 
 # ---------------------------------------------------------------- generation
 
-SCAN_DIRS = ["presence", "services", "tests", "db", "docs", "deploy", "eval", "scripts"]
-SCAN_EXTS = {".py", ".ts", ".sql", ".md", ".json", ".yml", ".yaml"}
+SCAN_DIRS = ["presence", "services", "tests", "db", "docs", "deploy", "eval", "scripts", "loadtest"]
+SCAN_EXTS = {".py", ".ts", ".sql", ".md", ".json", ".yml", ".yaml", ".js"}  # .js: loadtest/ k6 scenarios (batch 52)
 SKIP_DIRS = {"node_modules", ".git", "__pycache__", "dist"}
 MAX_EVIDENCE = 5
 

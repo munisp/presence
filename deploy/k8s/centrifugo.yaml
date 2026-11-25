@@ -39,7 +39,7 @@ spec:
               value: redis://valkey:6379/1
           readinessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /health, port: 8000 }, periodSeconds: 10 }
-          resources:
+          resources:   # INF-08: 2 nodes x 2 vCPU (replicas: 2 above)
             requests: { cpu: 250m, memory: 256Mi }
             limits: { cpu: "2", memory: 2Gi }
 ---

@@ -59,6 +59,17 @@ data:
                 Strict-Transport-Security: "max-age=63072000; includeSubDomains"   # INF-11
                 Content-Security-Policy: "default-src 'none'; frame-ancestors 'none'"   # INF-11 (API surface)
                 X-Content-Type-Options: nosniff
+          # INF-13: per-source-IP flood shedding at the gateway, before any
+          # in-process work. 1200 req/60 s ≈ 20 rps — far above a real client
+          # (the app issues a handful of requests per minute), far below a
+          # flood. Rejected requests are 429 + counted by the prometheus
+          # plugin; loadtest/ratelimit-probe.js is the pre-launch test.
+          limit-count:
+            count: 1200
+            time_window: 60
+            key: remote_addr
+            rejected_code: 429
+            show_limit_quota_header: true
       - id: realtime-ws
         uri: /connection/*
         upstream:
@@ -76,6 +87,16 @@ data:
         upstream:
           type: roundrobin
           nodes: { "keycloak.presence.svc.cluster.local:8080": 1 }
+        plugins:
+          # INF-13: tighter window on the auth surface — token and
+          # registration endpoints are the classic credential-stuffing /
+          # brute-force target. 120 req/60 s per IP leaves real sign-in
+          # bursts (token refresh storms after push wakes) unaffected.
+          limit-count:
+            count: 120
+            time_window: 60
+            key: remote_addr
+            rejected_code: 429
     ssl:
       - snis: ["api.presence.example"]
         cert: __INJECTED_FROM_SECRET__   # cert.pem/key.pem mounted from the apisix-tls secret (cert-manager issued)

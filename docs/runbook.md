@@ -96,3 +96,25 @@ page owner → service lead → incident commander (per ops policy).
 - **Escalate if:** p95 keeps rising after a Centrifugo restart, or failures
   exceed publishes succeeding — treat as realtime outage and follow the
   platform incident process.
+
+## ScanAvailabilityBurn
+
+- **Owner:** edge-oncall
+- **Symptom:** scan-path 5xx share burning the NFR-13 99.9% availability
+  budget — 1 h window above 14.4x burn AND 6 h window above 6x burn on
+  `presence_http_requests_total{route=~"/v1/(scan|presence)"}`.
+- **Impact:** the discovery surface is erroring for real users; at this burn
+  rate the 30-day 99.9% budget exhausts within hours. Both windows firing
+  means this is sustained, not a blip.
+- **First actions:**
+  1. Identify the failing leg from the `route` label breakdown — `/v1/scan`
+   points at the match path (match service, Valkey, taxonomy cache),
+   `/v1/presence` at the publish path (Valkey writes, event attribution).
+  2. Check dependency health in order: match service 5xx and p95, Valkey
+   latency, Postgres connections. Most availability burns are dependency
+   failures, not edge code.
+  3. If the burn started with a deploy, roll back immediately — the ACC-06
+   path (`.github/workflows/rollback.yml`, `docs/ops/rollback.md`) is the
+   10-minute revert.
+- **Escalate if:** the burn survives a rollback, or dependencies are healthy
+  while 5xx continue — treat as platform incident and freeze deploys.

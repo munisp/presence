@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """TR-21 acceptance criteria: 250k-node closure rebuild under ten minutes.
 
+Also the NFR-12 instrument: the 250k-node taxonomy at match latency targets
+is exercised here at the data layer (the harness below) and the match-side
+latency legs are covered by loadtest/scan-latency.js against the same
+250k-node seed — NFR-12 closes when both records exist for one release.
+
 The absolute timing is enforced where a real Postgres exists — the
 taxonomy-scale CI job runs scripts/scale_taxonomy_closure.py against a
 postgres:17 service on every PR and push to main. These tests pin the

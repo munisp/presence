@@ -99,3 +99,31 @@ spec:
           annotations:
             summary: "Realtime publish p95 above the 500 ms NFR-07 budget"
             runbook: "docs/runbook.md#realtimedeliveryslow"
+
+        - alert: ScanAvailabilityBurn
+          # NFR-13: 99.9% measured scan-path availability over 30 days.
+          # Multi-window burn-rate alert on the scan error budget (0.1%):
+          # fast window 1 h/5 m at 14.4x burn, slow window 6 h/30 m at 6x —
+          # both must fire, so a single bad minute cannot page. The scan path
+          # is /v1/scan plus its presence-publish dependency.
+          expr: |
+            (
+              sum(rate(presence_http_requests_total{route=~"/v1/(scan|presence)",status=~"5.."}[1h]))
+              /
+              sum(rate(presence_http_requests_total{route=~"/v1/(scan|presence)"}[1h]))
+              > 14.4 * 0.001
+            )
+            and
+            (
+              sum(rate(presence_http_requests_total{route=~"/v1/(scan|presence)",status=~"5.."}[6h]))
+              /
+              sum(rate(presence_http_requests_total{route=~"/v1/(scan|presence)"}[6h]))
+              > 6 * 0.001
+            )
+          for: 5m
+          labels:
+            severity: page
+            owner: edge-oncall
+          annotations:
+            summary: "Scan path burning the 99.9% availability budget (NFR-13)"
+            runbook: "docs/runbook.md#scanavailabilityburn"

@@ -1,0 +1,96 @@
+# ACC-06: rollback — revert a release to the PREVIOUS verified digests inside
+# the 10-minute budget. `kubectl rollout undo` returns each deployment to its
+# previous ReplicaSet (the digest that was live before the last promote), the
+# reverted digests are re-verified with cosign (they entered via promote.yml,
+# so they must still verify), and the rollout is smoke-checked on /healthz.
+#
+# The job-level timeout-minutes: 10 IS the ACC-06 budget — a rollback that
+# exceeds it fails the drill.
+#
+# Like promote.yml, the job is dormant until the environment is wired:
+# STAGING_DEPLOY_ENABLED / PRODUCTION_DEPLOY_ENABLED plus KUBECONFIG secrets.
+name: rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment to roll back
+        type: choice
+        options: [staging, production]
+        required: true
+      reason:
+        description: Incident / change reference for the audit record
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  rollback:
+    if: >-
+      (inputs.target == 'staging' && vars.STAGING_DEPLOY_ENABLED == 'true') ||
+      (inputs.target == 'production' && vars.PRODUCTION_DEPLOY_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    timeout-minutes: 10   # ACC-06: the rollback budget
+    steps:
+      - uses: actions/setup-kustomize@v2
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Record what is live (audit)
+        env:
+          KUBECONFIG_B64: ${{ inputs.target == 'production' && secrets.PRODUCTION_KUBECONFIG || secrets.STAGING_KUBECONFIG }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBECONFIG_B64" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          for DEP in edge match; do
+            LIVE=$(kubectl -n presence get deploy $DEP -o jsonpath='{.spec.template.spec.containers[0].image}')
+            echo "rolling back $DEP from $LIVE (reason: ${{ inputs.reason }})" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Roll back to the previous ReplicaSets
+        env:
+          KUBECONFIG_B64: ${{ inputs.target == 'production' && secrets.PRODUCTION_KUBECONFIG || secrets.STAGING_KUBECONFIG }}
+        run: |
+          printf '%s' "$KUBECONFIG_B64" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          kubectl -n presence rollout undo deployment/edge
+          kubectl -n presence rollout undo deployment/match
+          kubectl -n presence rollout status deployment/edge --timeout=300s
+          kubectl -n presence rollout status deployment/match --timeout=300s
+
+      # The reverted digests entered via promote.yml and must STILL verify —
+      # a rollback must never resurrect an unsigned artefact (SEC-24).
+      - name: Re-verify the reverted digests
+        env:
+          KUBECONFIG_B64: ${{ inputs.target == 'production' && secrets.PRODUCTION_KUBECONFIG || secrets.STAGING_KUBECONFIG }}
+        run: |
+          printf '%s' "$KUBECONFIG_B64" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          for DEP in edge match; do
+            IMAGE=$(kubectl -n presence get deploy $DEP -o jsonpath='{.spec.template.spec.containers[0].image}')
+            cosign verify \
+              --certificate-identity-regexp \
+                "https://github.com/${{ github.repository }}/.github/workflows/deploy.yml" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$IMAGE" > /dev/null
+            echo "$DEP reverted to $IMAGE (signature verified)" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Smoke-check the reverted release
+        env:
+          KUBECONFIG_B64: ${{ inputs.target == 'production' && secrets.PRODUCTION_KUBECONFIG || secrets.STAGING_KUBECONFIG }}
+        run: |
+          printf '%s' "$KUBECONFIG_B64" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          for DEP in edge match; do
+            kubectl -n presence exec deploy/$DEP -- wget -qO- "http://localhost:$([ $DEP = edge ] && echo 4000 || echo 4100)/healthz" | grep -q ok
+          done
+          echo "rollback smoke OK" | tee -a "$GITHUB_STEP_SUMMARY"

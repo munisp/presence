@@ -107,7 +107,9 @@ spec:
   ports: [{ name: http, port: 4000, targetPort: 4000 }]
 ---
 # INF-10: same autoscaling contract as match — p95 > 120 ms for 3 minutes
-# scales out; scale-in <= 1 pod per 10 minutes.
+# scales out; scale-in <= 1 pod per 10 minutes. NFR-11: this HPA is the
+# linear 2x scale-out mechanism — no schema or client change; the
+# loadtest/capacity.js PEAK_MULTIPLIER=2 run observes the pod count doubling.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

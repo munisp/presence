@@ -43,6 +43,8 @@ import { registerTableRoutes } from "./routes/tables.js";
 import { registerTaxonomyRoutes } from "./routes/taxonomy.js";
 import { registerTelemetryRoutes } from "./routes/telemetry.js";
 import { registerVenueRoutes } from "./routes/venue.js";
+import { registerVerticalRoutes } from "./routes/verticals.js";
+import { verticalGate } from "./verticals.js";
 
 export async function buildApp(ctx: EdgeContext) {
   // TR-23: ajv strict mode, no silent coercion-stripping — unknown fields in
@@ -167,6 +169,10 @@ export async function buildApp(ctx: EdgeContext) {
   // request.userId, which withRls() turns into the RLS context).
   await app.register(async (authed) => {
     authed.addHook("onRequest", authenticate);
+    // AMD-VERT-02/03: vertical flags — after authenticate (req.userId is
+    // set), before idempotency and every route. Unmapped templates pass;
+    // /v1/moderation/* is never gated.
+    authed.addHook("preHandler", verticalGate(ctx));
     // TR-24: Idempotency-Key dedupe on every mutating endpoint in the scope.
     registerIdempotency(authed, ctx);
     registerPresenceRoutes(authed, ctx);
@@ -174,6 +180,7 @@ export async function buildApp(ctx: EdgeContext) {
     registerConsentRoutes(authed, ctx);
     registerLifecycleRoutes(authed, ctx);
     registerAccountRoutes(authed, ctx);
+    registerVerticalRoutes(authed, ctx);
     registerRecoveryRoutes(authed, ctx);
     registerContentRoutes(authed, ctx);
     registerAnnouncementRoutes(authed, ctx);

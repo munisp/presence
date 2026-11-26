@@ -4,8 +4,8 @@
 Applies every migration in db/migrations/ in lexical order against a scratch
 PostgreSQL instance (pgserver), then exercises the escrow lifecycle end to
 end — creation, milestone release, dispute, four-eyes resolution — plus the
-marketplace composition, the dating filters, and the wallet conservation
-invariant.
+marketplace composition, the dating filters, the vertical-flag lifecycle
+(AMD-VERT-02..05), and the wallet conservation invariant.
 
 The scratch cluster ships no contrib modules (the deploy image provides the
 real ones; see deploy/postgres). The extension-provided surface is stubbed
@@ -418,6 +418,63 @@ def main() -> int:
              ([d2],), user=buyer)  # buyer has no dating profile
     r.check("dating_filter_inert_without_profile",
             [str(x[0]) for x in rows] == [d2], str(rows))
+
+    # -------------------------------------- phase 8b: vertical flags -----
+    # AMD-VERT-01..05: default-on, definer-only writes, locked core,
+    # eligibility re-proof, all-or-nothing batch validation.
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"dating": false}', "onboarding"), user=d1)
+    r.check("verticals_disable", out == "updated", out)
+    r.check("verticals_disabled_narrows",
+            scalar("SELECT vertical_enabled(%s)", ("dating",), user=d1)
+            is False)
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"dating": true}', "settings"), user=d1)
+    r.check("verticals_enable", out == "updated", out)
+    r.check("verticals_enabled_restores",
+            scalar("SELECT vertical_enabled(%s)", ("dating",), user=d1)
+            is True)
+    # The locked core refuses narrowing; affirming it is accepted.
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"discovery": false}', "settings"), user=d1)
+    r.check("verticals_locked_core", out == "locked", out)
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"discovery": true}', "settings"), user=d1)
+    r.check("verticals_locked_affirm", out == "updated", out)
+    r.check("verticals_locked_still_on",
+            scalar("SELECT vertical_enabled(%s)", ("discovery",), user=d1)
+            is True)
+    # Unknown keys, non-boolean values and empty patches refuse the batch.
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"bogus": true}', "settings"), user=d1)
+    r.check("verticals_unknown_refused", out == "unknown_vertical", out)
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"dating": "yes"}', "settings"), user=d1)
+    r.check("verticals_non_boolean_refused", out == "invalid_patch", out)
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ("{}", "settings"), user=d1)
+    r.check("verticals_empty_refused", out == "invalid_patch", out)
+    # Eligibility: a non-KYC caller can always narrow but cannot re-enable
+    # a gated vertical.
+    unv = str(uuid.uuid4())
+    q("INSERT INTO users (user_id, birth_year, kyc_state)"
+      " VALUES (%s, 1990, 'pending')", (unv,))
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"dating": false}', "onboarding"), user=unv)
+    r.check("verticals_narrow_never_gated", out == "updated", out)
+    out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
+                 ('{"dating": true}', "settings"), user=unv)
+    r.check("verticals_enable_requires_kyc", out == "kyc_required", out)
+    # The read model: nine rows in catalogue order with effective state.
+    rows = q("SELECT vertical, locked, eligible, enabled, explicit_choice"
+             " FROM list_my_verticals()", (), user=d1)
+    r.check("verticals_read_model_shape",
+            len(rows) == 9
+            and rows[0][0] == "discovery" and rows[0][1] is True
+            and [str(x[0]) for x in rows] == [
+                "discovery", "venues", "groups", "dating", "marketplace",
+                "payments", "trust", "introductions", "serendipity"],
+            str(rows[:2]))
 
     # ------------------------- phase 9: reconciliation + guards + ledger ---
     rec = scalar("SELECT wallet_reconciliation()", (),

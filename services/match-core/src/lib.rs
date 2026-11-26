@@ -30,6 +30,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+pub mod verticals;
+
 pub const DECAY: f64 = 0.55; // TR-04
 pub const EXPANSION_DEPTH: usize = 4; // TR-04
 pub const MAX_DEPTH: usize = 5; // TR-17

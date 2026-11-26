@@ -143,6 +143,42 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.wallet.withdrawal.paid": "Paid",
   "ui.wallet.withdrawal.failed": "Failed",
   "ui.wallet.withdrawal.cancelled": "Cancelled",
+  // AMD-VERT-01..05: vertical feature flags — the onboarding/settings
+  // toggle screen (client/src/presence/verticalOnboarding.ts).
+  "ui.verticals.title": "Choose your experiences",
+  "ui.verticals.subtitle": "Turn on what you want — you can change this any time in settings.",
+  "ui.verticals.toggle.on": "On",
+  "ui.verticals.toggle.off": "Off",
+  "ui.verticals.locked": "Always on — this is the core of Presence",
+  "ui.verticals.ineligible.kyc_required": "Available after identity verification",
+  "ui.verticals.ineligible.underage": "Available to members 18 and over",
+  "ui.verticals.disabled": "This experience is off — enable it in settings to use it",
+  "ui.vertical.discovery.label": "Discovery",
+  "ui.vertical.discovery.summary":
+    "The proximity core: publish presence, scan, consent and matching.",
+  "ui.vertical.venues.label": "Venues",
+  "ui.vertical.venues.summary":
+    "Venue social surfaces: rooms, tables, booking slots, announcements and check-in.",
+  "ui.vertical.groups.label": "Groups",
+  "ui.vertical.groups.summary":
+    "Group tables and seat stakes — commit to a shared table with a refundable stake.",
+  "ui.vertical.dating.label": "Dating",
+  "ui.vertical.dating.summary":
+    "Dating mode: an opt-in structured profile and preference-based matching.",
+  "ui.vertical.marketplace.label": "Marketplace",
+  "ui.vertical.marketplace.summary":
+    "Structured listings and escrow-backed purchases between members.",
+  "ui.vertical.payments.label": "Payments",
+  "ui.vertical.payments.summary": "Wallets and person-to-person transfers.",
+  "ui.vertical.trust.label": "Trust",
+  "ui.vertical.trust.summary":
+    "Presence bonds, verified-met receipts, trust escrows and selective disclosure.",
+  "ui.vertical.introductions.label": "Introductions",
+  "ui.vertical.introductions.summary":
+    "Host-mediated introductions between members who both accept.",
+  "ui.vertical.serendipity.label": "Serendipity",
+  "ui.vertical.serendipity.summary":
+    "Serendipity windows: time-boxed openness to unplanned meets.",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

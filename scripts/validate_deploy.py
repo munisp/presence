@@ -972,6 +972,71 @@ def main() -> int:
         and "ESCROW_RACE_PAIRS" in (ROOT / "loadtest" / "targets.js").read_text(),
     )
 
+    # ---------------------------------------------------- batch 59 --------
+    vert_path = ROOT / "db" / "migrations" / "0034_vertical_flags.sql"
+    vert_src = vert_path.read_text() if vert_path.exists() else ""
+    check(
+        "AMD-VERT-01 catalogue: nine verticals, locked discovery core, gates",
+        "CREATE TABLE vertical_catalogue" in vert_src
+        and all(f"'{v}'" in vert_src for v in (
+            "discovery", "venues", "groups", "dating", "marketplace",
+            "payments", "trust", "introductions", "serendipity"))
+        and "true, false, false, true, 0" in vert_src  # discovery row: locked
+        and "ALTER TABLE vertical_catalogue ENABLE ROW LEVEL SECURITY" in vert_src,
+    )
+    check(
+        "AMD-VERT-02 flags: per-user rows, definer-only writes, owner read",
+        "CREATE TABLE user_vertical_flags" in vert_src
+        and "PRIMARY KEY (user_id, vertical)" in vert_src
+        and "ALTER TABLE user_vertical_flags ENABLE ROW LEVEL SECURITY" in vert_src
+        and "user_vertical_flags_owner_read" in vert_src
+        and "GRANT SELECT ON vertical_catalogue, user_vertical_flags TO presence_app"
+        in vert_src
+        and not re.search(
+            r"GRANT (INSERT|UPDATE|DELETE).*user_vertical_flags", vert_src),
+    )
+    check(
+        "AMD-VERT-03..05 definers: resolver, read model, all-or-nothing write",
+        all(anchor in vert_src for anchor in (
+            "CREATE OR REPLACE FUNCTION vertical_enabled(p_vertical text)",
+            "CREATE OR REPLACE FUNCTION list_my_verticals()",
+            "CREATE OR REPLACE FUNCTION set_user_verticals(p_patch jsonb, p_source text)",
+            "LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public",
+            "RETURN 'unknown_vertical'",
+            "RETURN 'locked'",
+            "RETURN 'kyc_required'",
+            "RETURN 'underage'",
+            "RETURN 'invalid_patch'")),
+    )
+    check(
+        "batch-59 migration rides both initdb mounts as 36",
+        "=db/migrations/0034_vertical_flags.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/36_vertical_flags.sql:ro" in compose_src,
+    )
+    check(
+        "batch-59 edge gate: preHandler after authenticate, account routes",
+        'authed.addHook("preHandler", verticalGate(ctx));'
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and '"/v1/account/verticals"'
+        in (ROOT / "services" / "edge" / "src" / "routes" / "verticals.ts").read_text()
+        and "vertical_disabled"
+        in (ROOT / "services" / "edge" / "src" / "verticals.ts").read_text(),
+    )
+    check(
+        "batch-59 client onboarding contract + copy keys",
+        (ROOT / "client" / "src" / "presence" / "verticalOnboarding.ts").exists()
+        and "VERTICAL_CATALOGUE"
+        in (ROOT / "client" / "src" / "presence" / "verticalOnboarding.ts").read_text()
+        and "ui.verticals.title"
+        in (ROOT / "client" / "src" / "presence" / "copyRegistry.ts").read_text(),
+    )
+    check(
+        "batch-59 Go/Rust/Python parity mirrors exist",
+        (ROOT / "services" / "presence-go" / "verticals.go").exists()
+        and (ROOT / "services" / "match-core" / "src" / "verticals.rs").exists()
+        and (ROOT / "presence" / "verticals.py").exists(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

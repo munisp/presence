@@ -3238,6 +3238,92 @@ paths:
                 required: [invisible]
                 properties:
                   invisible: { type: boolean }
+  /v1/account/verticals:
+    get:
+      summary: List the vertical catalogue with my flag state (AMD-VERT-04)
+      description: >-
+        The onboarding/settings read model: every vertical the platform
+        supports, in display order, with the caller's effective state,
+        eligibility against the catalogue gates (KYC/adult), and whether the
+        caller holds an explicit flag row. The locked core (discovery) is
+        always present and always on.
+      responses:
+        "200":
+          description: The catalogue with the caller's effective state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verticals]
+                properties:
+                  verticals:
+                    type: array
+                    items:
+                      type: object
+                      required: [vertical, label, summary, locked, eligible, enabled, explicitChoice]
+                      properties:
+                        vertical:
+                          type: string
+                          enum: [discovery, venues, groups, dating, marketplace, payments, trust, introductions, serendipity]
+                        label: { type: string }
+                        summary: { type: string }
+                        locked: { type: boolean }
+                        eligible: { type: boolean }
+                        reason: { type: string, enum: [kyc_required, underage] }
+                        enabled: { type: boolean }
+                        explicitChoice: { type: boolean }
+                        source: { type: string, enum: [onboarding, settings, ops] }
+    put:
+      summary: Set vertical feature flags (AMD-VERT-05)
+      description: >-
+        The batch toggle write behind the onboarding screen and the settings
+        screen. The patch is validated all-or-nothing: unknown keys,
+        non-boolean values or an empty patch refuse with 400; narrowing the
+        locked core refuses with 409; enabling a gated vertical the caller
+        is not eligible for refuses with 403. Disabling never requires
+        eligibility — narrowing is always safe. Default-on means an absent
+        key leaves the vertical untouched.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patch, source]
+              additionalProperties: false
+              properties:
+                patch:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    venues: { type: boolean }
+                    groups: { type: boolean }
+                    dating: { type: boolean }
+                    marketplace: { type: boolean }
+                    payments: { type: boolean }
+                    trust: { type: boolean }
+                    introductions: { type: boolean }
+                    serendipity: { type: boolean }
+                    discovery: { type: boolean }
+                source: { type: string, enum: [onboarding, settings] }
+      responses:
+        "200":
+          description: Flag state stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [state]
+                properties:
+                  state: { type: string, enum: [updated] }
+        "400": { $ref: "#/components/responses/SchemaViolation" }
+        "403":
+          description: >-
+            The caller is not eligible for a vertical they tried to enable
+            (kyc_required | underage), or the account context is forbidden.
+        "409":
+          description: The patch tried to narrow the locked core (locked).
   /v1/profile/interests:
     put:
       summary: Replace the declared interest set (FR-08)

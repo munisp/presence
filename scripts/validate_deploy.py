@@ -1324,6 +1324,30 @@ def main() -> int:
         and "postgis/postgis:17-3.5-alpine" in ci
         and "## Verification" in (ROOT / "docs" / "ops" / "geofence-qa.md").read_text(),
     )
+    check(
+        "batch-65 connectivity pack: client modules + edge wire efficiency + docs",
+        (ROOT / "client" / "src" / "presence" / "outbox.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "readCache.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "connectivity.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "transferBudget.ts").exists()
+        and (ROOT / "client" / "test" / "connectivityPack.test.ts").exists()
+        and "REFRESH_BACKOFF_MS" in (ROOT / "client" / "src" / "presence" / "session.ts").read_text()
+        and "presence.outbox.queue"
+        in (ROOT / "client" / "src" / "presence" / "localState.ts").read_text()
+        and "presence.cache.read"
+        in (ROOT / "client" / "src" / "presence" / "localState.ts").read_text()
+        and "ui.connectivity.offline"
+        in (ROOT / "client" / "src" / "presence" / "copyRegistry.ts").read_text()
+        and "@fastify/compress"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and '"@fastify/compress"'
+        in (ROOT / "services" / "edge" / "package.json").read_text()
+        and "clientConfigETag"
+        in (ROOT / "services" / "edge" / "src" / "clientConfig.ts").read_text()
+        and (ROOT / "services" / "edge" / "test" / "wireEfficiency.test.ts").exists()
+        and "AMD-NET-05" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
+        and (ROOT / "docs" / "ux" / "connectivity.md").exists(),
+    )
 
     print()
     if failures:

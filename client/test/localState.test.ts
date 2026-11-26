@@ -11,10 +11,13 @@ import {
 } from "../src/presence/localState.js";
 
 test("the allowlist is small, namespaced and documented", () => {
-  assert.equal(LOCAL_STATE_ALLOWLIST.length, 7);
+  // AMD-NET-01/02 (batch 65) added the outbox and read-cache keys: 7 → 9.
+  assert.equal(LOCAL_STATE_ALLOWLIST.length, 9);
   assert.ok(LOCAL_STATE_ALLOWLIST.includes("presence.powerMode"));
   assert.ok(LOCAL_STATE_ALLOWLIST.includes("presence.ui.seenExplanations"));
   assert.ok(LOCAL_STATE_ALLOWLIST.includes("presence.ambient.prefs"));
+  assert.ok(LOCAL_STATE_ALLOWLIST.includes("presence.outbox.queue"));
+  assert.ok(LOCAL_STATE_ALLOWLIST.includes("presence.cache.read"));
   for (const key of LOCAL_STATE_ALLOWLIST) {
     assert.match(key, /^presence\./);
   }

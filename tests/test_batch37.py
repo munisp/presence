@@ -150,7 +150,9 @@ def test_fr85_selection_persists_in_the_allowlist_and_wipes() -> None:
     keys = re.findall(r'"(presence\.[\w.]+)"', LOCAL_STATE_TS)
     # Batch 39 added presence.ui.seenExplanations (FR-80): 5 → 6 keys.
     # Batch 40 added presence.ambient.prefs (FR-86): 6 → 7 keys.
-    assert len(set(keys)) == 7
+    # Batch 65 added presence.outbox.queue + presence.cache.read
+    # (AMD-NET-01/02): 7 → 9 keys.
+    assert len(set(keys)) == 9
     # The wipe iterates the allowlist itself, so the new key wipes too.
     assert "LOCAL_STATE_ALLOWLIST.map((key) => backend.deleteItem(key))" in LOCAL_STATE_TS
 

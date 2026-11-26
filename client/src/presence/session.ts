@@ -34,10 +34,41 @@ import { WITHDRAWAL_WIRE } from "./presenceLifecycle.js";
 export const ACCESS_TOKEN_LIFESPAN_S = 300;
 
 /**
- * Refresh this far before expiry. One slow retry (network + IdP) fits in
- * the margin without the token dying mid-refresh.
+ * Refresh this far before expiry. The AMD-NET-03 bounded retry schedule
+ * ({@link REFRESH_BACKOFF_MS}) fits in the margin without the token dying
+ * mid-refresh.
  */
 export const REFRESH_MARGIN_S = 30;
+
+/**
+ * AMD-NET-03: refresh is attempted at most three times with full-jitter
+ * backoff at 0 s, 2 s, and 8 s. The whole schedule plus three slow
+ * attempts fits inside the 30-second margin; after the last attempt the
+ * honest next step is re-authentication, never an infinite retry loop.
+ * The exactly-one-retry semantics of {@link onUnauthorized} (per-request
+ * 401 handling) are unchanged — this schedule governs the PROACTIVE
+ * refresh, not the reactive 401 path.
+ */
+export const REFRESH_ATTEMPTS = 3;
+export const REFRESH_BACKOFF_MS = [0, 2_000, 8_000] as const;
+
+/** Full-jitter delay for refresh attempt `attempt` (0-indexed). */
+export function refreshAttemptDelayMs(attempt: number, random: () => number): number {
+  const base = REFRESH_BACKOFF_MS[Math.min(attempt, REFRESH_BACKOFF_MS.length - 1)] ?? 0;
+  return Math.floor(random() * base);
+}
+
+/**
+ * Guard: the schedule must fit inside the refresh margin with room for
+ * three slow round-trips (5 s each) — otherwise a degraded link would
+ * push the refresh past token expiry and every retry would be dead on
+ * arrival.
+ */
+export function refreshScheduleFitsMargin(): boolean {
+  const totalBackoff = [...REFRESH_BACKOFF_MS].reduce<number>((a, b) => a + b, 0);
+  const slowAttemptMs = 5_000;
+  return totalBackoff + REFRESH_ATTEMPTS * slowAttemptMs <= REFRESH_MARGIN_S * 1000;
+}
 
 /**
  * TR-30 allowlisted persistence key for the refresh token. Typed as a

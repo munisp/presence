@@ -251,6 +251,12 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.kycCapture.rejected": "We couldn't verify you — you can try again",
   "ui.kycCapture.review": "Almost there — a reviewer will finish this shortly",
   "ui.kycCapture.expired": "The session expired — start again",
+  // AMD-NET: connectivity surfaces (b65) — banner, outbox badge, staleness.
+  "ui.connectivity.offline": "You're offline — actions will send when you're back",
+  "ui.connectivity.degraded": "Connection is slow — some features are reduced",
+  "ui.connectivity.outboxPending": "{count} action(s) waiting to send",
+  "ui.connectivity.staleCopy": "Last updated {time}",
+  "ui.connectivity.poisonPrompt": "Some actions couldn't be sent — review and try again",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

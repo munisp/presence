@@ -1,5 +1,6 @@
 /** Edge app assembly: auth, rate limiting, routes. */
 
+import fastifyCompress from "@fastify/compress";
 import fastifyRateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { authenticate, registerAuth, withModerator } from "./auth.js";
@@ -109,6 +110,16 @@ export async function buildApp(ctx: EdgeContext) {
   // set; HS256 dev secret otherwise (ADR-0003).
   await registerAuth(app);
   await app.register(fastifyRateLimit, { global: false });
+
+  // AMD-NET-04: brotli/gzip for responses above 1 KiB. The member this
+  // platform is for is on a contested 2G/3G last mile — every byte over
+  // the wire is a budgeted cost (AMD-NET-05). Compression is global:
+  // responses smaller than the threshold pass through untouched.
+  await app.register(fastifyCompress, {
+    global: true,
+    threshold: 1024,
+    encodings: ["br", "gzip"],
+  });
 
   // SEC-30: lets the workforce-role gate (auth.ts) reach the audit store
   // without threading the context through every preHandler signature.

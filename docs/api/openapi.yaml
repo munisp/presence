@@ -72,7 +72,17 @@ paths:
         means sign-in is unavailable; the client must not guess endpoints.
       responses:
         "200":
-          description: Current client config.
+          description: >-
+            Current client config. AMD-NET-04: responses carry a strong
+            ETag ("v{configVersion}-{pin-set hash}") and
+            Cache-Control: max-age=60; send If-None-Match to revalidate.
+          headers:
+            ETag:
+              schema: { type: string }
+              description: strong validator derived from the config version and the pin-set hash (AMD-NET-04)
+            Cache-Control:
+              schema: { type: string }
+              description: max-age=60
           content:
             application/json:
               schema:
@@ -110,6 +120,10 @@ paths:
                       clientId:
                         type: string
                         description: the realm's public client for the app (FR-01)
+        "304":
+          description: >-
+            AMD-NET-04: config unchanged since the client's ETag — no body,
+            one round trip (the AMD-NET-05 configRevalidate budget).
   /v1/presence:
     post:
       summary: Enter or heartbeat presence (FR-14, FR-16, TR-12/14/15)

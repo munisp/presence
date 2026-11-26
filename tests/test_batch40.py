@@ -353,7 +353,8 @@ def test_local_state_allowlist_grew_to_seven_keys() -> None:
         "// Ambient-surface opt-ins (FR-86) — off by default, wiped on logout."
         in LOCAL_STATE_TS
     )
-    assert "assert.equal(LOCAL_STATE_ALLOWLIST.length, 7);" in LOCAL_STATE_TEST
+        # Batch 65 added presence.outbox.queue + presence.cache.read (AMD-NET-01/02): 7 → 9 keys.
+    assert "assert.equal(LOCAL_STATE_ALLOWLIST.length, 9);" in LOCAL_STATE_TEST
     assert 'LOCAL_STATE_ALLOWLIST.includes("presence.ambient.prefs")' in LOCAL_STATE_TEST
 
 

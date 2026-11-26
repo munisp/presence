@@ -31,7 +31,17 @@
  *                           values, like the pins: no secret material.
  */
 
-import { FastifyInstance } from "fastify";
+/**
+ * AMD-NET-04: the endpoint answers conditional requests. The ETag is
+ * derived from the config version and the pin-set hash — a matching
+ * If-None-Match gets a 304 (one round trip, no body), which is what
+ * makes the TR-33 cached-config startup cheap on the last mile. The
+ * 60-second max-age bounds staleness of a pin ROTATION to one minute.
+ */
+
+import { createHash } from "node:crypto";
+
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { API_VERSION, resolveMinClientVersion, VersionEnv } from "./versioning.js";
 
@@ -78,6 +88,37 @@ export function resolveClientConfig(env: ClientConfigEnv = process.env): ClientC
   };
 }
 
+/**
+ * AMD-NET-04: the validator for conditional GETs — derived from the
+ * config version and the pin-set hash, so ANY change to the payload's
+ * operational content moves the tag. Strong ETag: the payload is
+ * deterministic for a given version+pin-set (resolveClientConfig is a
+ * pure function of the environment).
+ */
+export function clientConfigETag(config: ClientConfig): string {
+  const pinsHash = createHash("sha256")
+    .update(config.pinning.pins.join(","))
+    .digest("hex")
+    .slice(0, 16);
+  return `"v${config.configVersion}-${pinsHash}"`;
+}
+
+function sendConfig(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): FastifyReply {
+  const config = resolveClientConfig();
+  const etag = clientConfigETag(config);
+  void reply.header("cache-control", "max-age=60");
+  void reply.header("etag", etag);
+  if (request.headers["if-none-match"] === etag) {
+    // AMD-NET-04: one round trip, no body — the AMD-NET-05 revalidation
+    // budget ("configRevalidate") is exactly this cheap.
+    return reply.code(304).send();
+  }
+  return reply.send(config);
+}
+
 export function registerClientConfigRoute(app: FastifyInstance): void {
   // Unauthenticated by design (registered outside the authed scope in
   // app.ts): the client needs its TLS policy before it can hold a token.
@@ -120,6 +161,6 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
         },
       },
     },
-    async () => resolveClientConfig(),
+    async (request, reply) => sendConfig(request, reply),
   );
 }

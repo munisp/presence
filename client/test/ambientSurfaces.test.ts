@@ -24,7 +24,8 @@ test("the three surfaces and the persistence key are pinned (FR-86)", () => {
   assert.deepEqual(AMBIENT_SURFACES, ["lockScreenIndicator", "liveActivity", "homeScreenWidget"]);
   assert.equal(AMBIENT_PREFS_KEY, "presence.ambient.prefs");
   assert.ok(LOCAL_STATE_ALLOWLIST.includes(AMBIENT_PREFS_KEY));
-  assert.equal(LOCAL_STATE_ALLOWLIST.length, 7);
+  // Batch 65 added presence.outbox.queue + presence.cache.read (AMD-NET-01/02): 7 → 9.
+  assert.equal(LOCAL_STATE_ALLOWLIST.length, 9);
 });
 
 test("every surface is off by default (FR-86)", () => {

@@ -33,6 +33,11 @@ export const LOCAL_STATE_ALLOWLIST = [
   "presence.ui.seenExplanations",
   // Ambient-surface opt-ins (FR-86) — off by default, wiped on logout.
   "presence.ambient.prefs",
+  // AMD-NET-01 action outbox — content in flight only: write-only until
+  // acked, never read into the UI, wiped by this same wipe.
+  "presence.outbox.queue",
+  // AMD-NET-02 bounded read cache — last known state, never the truth.
+  "presence.cache.read",
 ] as const;
 
 export type LocalStateKey = (typeof LOCAL_STATE_ALLOWLIST)[number];

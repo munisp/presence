@@ -13,6 +13,7 @@
     "test": "npm run build && node --test dist/test/"
   },
   "dependencies": {
+    "@fastify/compress": "^8.0.1",
     "@fastify/jwt": "^9.0.1",
     "@fastify/rate-limit": "^10.2.2",
     "@opentelemetry/auto-instrumentations-node": "^0.83.1",

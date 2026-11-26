@@ -40,3 +40,13 @@ export const HEARTBEAT_S = 600;
 // per user (in-process rate limit) — one virtual user may scan at most once
 // per 10 s. High-rate scenarios therefore need seeded users, not retries.
 export const SCAN_PERIOD_S_PER_USER = 10;
+
+// AMD-ESC (batch 58): escrow concurrency profile (escrow-concurrency.js).
+// Each pair races payer releases against a payee dispute on one escrow; the
+// platform invariant under test is exactly-one-terminal-outcome (completed
+// XOR disputed) plus wallet-ledger conservation afterwards. The milestone
+// amount stays under the AMD-ESC-01 four-eyes threshold so the race itself
+// never needs a second moderator.
+export const ESCROW_RACE_PAIRS = 200;
+export const ESCROW_RACE_MILESTONE_MINOR = 400000; // NGN 4,000.00 x 2
+export const ESCROW_TERMINAL_CONSISTENCY = 1.0;    // XOR must hold for all

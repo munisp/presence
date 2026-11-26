@@ -323,7 +323,10 @@ def test_openapi_documents_the_new_paths():
 
 def test_every_new_openapi_post_declares_idempotency():
     start = OPENAPI.index("  /v1/dating/preferences:")
-    section = OPENAPI[start:OPENAPI.index("components:", start)]
+    # Batch 58 appends its own paths before components: — bound the b57
+    # window at the first b58 path so this pin stays a b57 pin.
+    end = OPENAPI.index("  /v1/moderation/escrow-resolutions:", start)
+    section = OPENAPI[start:end]
     posts = [m.start() for m in re.finditer(r"\n    post:", section)]
     assert len(posts) == 10
     misses = []

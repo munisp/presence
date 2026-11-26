@@ -14,7 +14,16 @@
  *   GET  /v1/escrows                             — own escrows (RLS).
  *   POST /v1/escrows/:escrowId/milestones/:seq/release — payer releases one.
  *   POST /v1/escrows/:escrowId/dispute           — either party disputes.
- *   POST /v1/moderation/escrows/:escrowId/resolve — moderator resolves.
+ *   POST /v1/moderation/escrows/:escrowId/resolve — moderator resolves;
+ *     above the AMD-ESC-01 threshold this answers 202 approval_required and
+ *     moves no value.
+ *   GET  /v1/moderation/escrow-resolutions       — AMD-ESC-01: the four-eyes
+ *     queue of high-value resolution requests (pending first).
+ *   POST /v1/moderation/escrow-resolutions/:approvalId/approve — a second
+ *     moderator executes the frozen decision; value moves inside
+ *     withSettlement. Self-approval is refused.
+ *   POST /v1/moderation/escrow-resolutions/:approvalId/reject — close a
+ *     request without moving value.
  *   POST /v1/groups/:tableId/stake               — AMD-INN-04: stake a seat.
  *   POST /v1/groups/:tableId/stake/refund        — refund ONLY after the
  *     venue check-in token (FR-100) verifies against venues.checkin_secret.
@@ -48,6 +57,7 @@ import {
   requireModerator,
   requireVenueOps,
   WalletRailUnavailable,
+  withModerator,
   withRls,
   withSettlement,
   withVenueOps,
@@ -347,6 +357,11 @@ export function registerInnovationRoutes(app: FastifyInstance, ctx: EdgeContext)
           "app.moderator",
         );
         if (outcome === "resolved") return reply.send({ state: "resolved" });
+        // AMD-ESC-01: above the threshold the request is recorded and no
+        // value moves — a second moderator must approve.
+        if (outcome === "approval_required") {
+          return reply.code(202).send({ state: "approval_required" });
+        }
         if (outcome === "unknown_escrow") return reply.code(404).send({ error: outcome });
         if (outcome === "invalid_decision") return reply.code(422).send({ error: outcome });
         return reply.code(403).send({ error: outcome });
@@ -354,6 +369,96 @@ export function registerInnovationRoutes(app: FastifyInstance, ctx: EdgeContext)
         if (err instanceof WalletRailUnavailable) return railUnavailable(reply);
         throw err;
       }
+    },
+  );
+
+  // ------------------------------------------------------- AMD-ESC-01 ---
+  // The four-eyes queue: high-value dispute resolutions a single moderator
+  // may propose but never execute alone.
+  app.get(
+    "/v1/moderation/escrow-resolutions",
+    {
+      preHandler: requireModerator,
+      config: { rateLimit: MODERATION_RATE_LIMIT },
+    },
+    async (req, reply) => {
+      const rows = await withModerator(ctx.pg, async (c) => {
+        const r = await c.query(
+          `SELECT approval_id AS "approvalId", escrow_id AS "escrowId",
+                  decision, remaining_minor AS "remainingMinor",
+                  proposed_by AS "proposedBy", state,
+                  created_at AS "createdAt", decided_by AS "decidedBy",
+                  decided_at AS "decidedAt"
+             FROM list_escrow_resolve_approvals()`,
+        );
+        return r.rows;
+      });
+      return reply.send({ resolutions: rows });
+    },
+  );
+
+  app.post(
+    "/v1/moderation/escrow-resolutions/:approvalId/approve",
+    {
+      preHandler: requireModerator,
+      config: { rateLimit: MODERATION_RATE_LIMIT },
+      schema: { params: uuidParam("approvalId") },
+    },
+    async (req, reply) => {
+      if (!parseEmptyBody(req.body)) return reply.code(400).send({ error: "invalid body" });
+      const { approvalId } = req.params as { approvalId: string };
+      try {
+        const outcome = await withSettlement(
+          ctx.pg,
+          req.userId,
+          async (c) => {
+            const r = await c.query(
+              `SELECT approve_escrow_resolution($1) AS outcome`,
+              [approvalId],
+            );
+            return r.rows[0].outcome as string;
+          },
+          "app.moderator",
+        );
+        if (outcome === "resolved") return reply.send({ state: "resolved" });
+        if (outcome === "unknown_approval") return reply.code(404).send({ error: outcome });
+        if (outcome === "self_approval") {
+          return reply.code(409).send({ error: "a moderator cannot approve their own resolution (AMD-ESC-01)" });
+        }
+        if (outcome === "illegal_state" || outcome === "escrow_not_disputed") {
+          return reply.code(409).send({ error: outcome });
+        }
+        return reply.code(403).send({ error: outcome });
+      } catch (err) {
+        if (err instanceof WalletRailUnavailable) return railUnavailable(reply);
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    "/v1/moderation/escrow-resolutions/:approvalId/reject",
+    {
+      preHandler: requireModerator,
+      config: { rateLimit: MODERATION_RATE_LIMIT },
+      schema: { params: uuidParam("approvalId") },
+    },
+    async (req, reply) => {
+      if (!parseEmptyBody(req.body)) return reply.code(400).send({ error: "invalid body" });
+      const { approvalId } = req.params as { approvalId: string };
+      // Rejection moves no value — the moderator GUC alone is sufficient
+      // (the AMD-PAY-23 credit-reject shape).
+      const outcome = await withModerator(ctx.pg, async (c) => {
+        const r = await c.query(
+          `SELECT reject_escrow_resolution($1) AS outcome`,
+          [approvalId],
+        );
+        return r.rows[0].outcome as string;
+      });
+      if (outcome === "rejected") return reply.send({ state: "rejected" });
+      if (outcome === "unknown_approval") return reply.code(404).send({ error: outcome });
+      if (outcome === "illegal_state") return reply.code(409).send({ error: outcome });
+      return reply.code(403).send({ error: outcome });
     },
   );
 

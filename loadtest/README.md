@@ -11,6 +11,7 @@ scenario can never quietly drift from the requirement text.
 | `capacity.js` | NFR-09 600 scans/s peak, NFR-08 25 000 concurrent presences, NFR-10 60 000 single-venue burst per 10 min; NFR-11 via `PEAK_MULTIPLIER=2` | ~40 min |
 | `soak.js` | ACC-04 soak: 2 h at 60% of peak with the same thresholds | 2 h |
 | `ratelimit-probe.js` | INF-13: the gateway per-IP limit sheds a flood with 429 while allowed traffic keeps p99 ≤ 400 ms | 2 min |
+| `escrow-concurrency.js` | AMD-ESC: 200 release-vs-dispute races; exactly one terminal outcome per escrow (completed XOR disputed) and zero reconciliation balance mismatches afterwards | ~5 min |
 
 ## Environment contract
 
@@ -30,6 +31,10 @@ scenario can never quietly drift from the requirement text.
 - **NFR-06 caveat**: the harness measures the server legs of tap-to-results
   (publish + scan). The device render leg is client-side evidence — the
   device-profiling runs (`scripts/profile_device_budgets.py`) complement this.
+- **Escrow pairs**: `escrow-concurrency.js` draws payer/payee token pairs
+  from `PAIRS_FILE` (see its header); every payer wallet must be pre-funded
+  for both milestones, and `MOD_TOKEN` (a moderator token) is required for
+  the post-race reconciliation conservation check.
 
 ## Running
 

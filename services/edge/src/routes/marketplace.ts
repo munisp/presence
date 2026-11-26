@@ -331,6 +331,11 @@ export function registerMarketplaceRoutes(app: FastifyInstance, ctx: EdgeContext
           "app.moderator",
         );
         if (outcome === "resolved") return reply.send({ state: "resolved" });
+        // AMD-ESC-01: above the four-eyes threshold the request is recorded
+        // and no value moves — a second moderator must approve.
+        if (outcome === "approval_required") {
+          return reply.code(202).send({ state: "approval_required" });
+        }
         if (outcome === "unknown_order") return reply.code(404).send({ error: outcome });
         if (outcome === "invalid_decision") return reply.code(400).send({ error: outcome });
         if (outcome === "forbidden") return reply.code(403).send({ error: outcome });

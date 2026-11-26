@@ -168,3 +168,17 @@ spec:
           annotations:
             summary: "Payout callbacks failing at the definer"
             runbook: "docs/runbook.md#presencewalletpayoutfailures"
+
+        - alert: EscrowDisputeAging
+          # AMD-ESC-02: disputed escrows hold user funds; a dispute older
+          # than 24 h means stuck money and a breached moderation SLA. The
+          # gauge refreshes on scrape (aggregate age only).
+          expr: |
+            max(presence_escrow_oldest_dispute_seconds) > 86400
+          for: 15m
+          labels:
+            severity: ticket
+            owner: trust-safety-lead
+          annotations:
+            summary: "Escrow dispute queue ageing past the 24 h SLA"
+            runbook: "docs/runbook.md#escrowdisputeaging"

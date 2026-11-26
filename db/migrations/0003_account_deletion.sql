@@ -137,6 +137,11 @@ GRANT EXECUTE ON FUNCTION delete_account(uuid) TO presence_app;
 -- Order: expire → lapse → purge ciphertext → hard-delete dead offers →
 -- anonymise aged deletions.
 
+-- The replacement widens the return row (two additive columns), which
+-- CREATE OR REPLACE cannot do; drop first so fresh-environment applies of
+-- the full chain succeed (caught by the AMD-ESC-03 rehearsal).
+DROP FUNCTION lifecycle_tick();
+
 CREATE OR REPLACE FUNCTION lifecycle_tick() RETURNS TABLE (
     offers_expired integer,
     conversations_lapsed integer,

@@ -914,6 +914,64 @@ def main() -> int:
         in (ROOT / "client" / "test" / "listingCard.test.ts").read_text(),
     )
 
+    # ---------------------------------------------------- batch 58 --------
+    escrow_path = ROOT / "db" / "migrations" / "0033_escrow_hardening.sql"
+    escrow_src = escrow_path.read_text() if escrow_path.exists() else ""
+    check(
+        "AMD-ESC-01 four-eyes: approvals table, guard, threshold, decision match",
+        "CREATE TABLE escrow_resolve_approvals" in escrow_src
+        and "escrow_resolve_approvals is append-only (AMD-ESC-01)" in escrow_src
+        and "escrow resolution terms are immutable (AMD-ESC-01)" in escrow_src
+        and "ALTER TABLE escrow_resolve_approvals ENABLE ROW LEVEL SECURITY" in escrow_src
+        and "v_remaining > 1000000" in escrow_src
+        and "ap.proposed_by <> v_user" in escrow_src
+        and "ON CONFLICT (escrow_id) WHERE state = 'pending' DO NOTHING" in escrow_src
+        and "CREATE POLICY" not in escrow_src,
+    )
+    check(
+        "AMD-ESC-02 liveness: disputed_at, reconciliation queues, alert, gauge",
+        "ADD COLUMN disputed_at timestamptz" in escrow_src
+        and all(f"'{k}'" in escrow_src for k in (
+            "openEscrowDisputes", "oldestEscrowDisputeSeconds",
+            "pendingEscrowResolveApprovals", "stuckEscrows"))
+        and "EscrowDisputeAging"
+        in (K8S / "prometheusrules.yaml").read_text()
+        and "presence_escrow_oldest_dispute_seconds"
+        in (ROOT / "services" / "edge" / "src" / "metrics.ts").read_text()
+        and "min(disputed_at)"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text(),
+    )
+    check(
+        "AMD-ESC-03 full-chain rehearsal script present and complete",
+        (ROOT / "scripts" / "rehearse_full_chain.py").exists()
+        and all(anchor in (ROOT / "scripts" / "rehearse_full_chain.py").read_text()
+                for anchor in ("h3index", "ST_Intersection", "check_function_bodies",
+                               "four_eyes_gate", "global_conservation",
+                               "rehearse_full_chain")),
+    )
+    check(
+        "batch-58 migration rides both initdb mounts as 35",
+        "=db/migrations/0033_escrow_hardening.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/35_escrow_hardening.sql:ro" in compose_src,
+    )
+    check(
+        "batch-58 edge routes: four-eyes queue + 202 approval_required mappings",
+        all(anchor in (ROOT / "services" / "edge" / "src" / "routes"
+                       / "innovations.ts").read_text() for anchor in (
+            '"/v1/moderation/escrow-resolutions"',
+            '"/v1/moderation/escrow-resolutions/:approvalId/approve"',
+            '"/v1/moderation/escrow-resolutions/:approvalId/reject"',
+            'reply.code(202).send({ state: "approval_required" })'))
+        and '"approval_required"'
+        in (ROOT / "services" / "edge" / "src" / "routes" / "marketplace.ts").read_text(),
+    )
+    check(
+        "batch-58 runbook section + concurrency loadtest scenario",
+        "## EscrowDisputeAging" in (ROOT / "docs" / "runbook.md").read_text()
+        and (ROOT / "loadtest" / "escrow-concurrency.js").exists()
+        and "ESCROW_RACE_PAIRS" in (ROOT / "loadtest" / "targets.js").read_text(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

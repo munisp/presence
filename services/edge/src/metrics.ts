@@ -199,6 +199,15 @@ export const moderationQueueAge = () =>
     "Age in seconds of the oldest open moderation report",
   );
 
+// AMD-ESC-02: dispute liveness — funds stay held while an escrow sits in
+// the disputed state, so an ageing queue means stuck user money. Refreshed
+// on scrape (aggregate seconds only, never row data).
+export const escrowDisputeAge = () =>
+  metrics.gauge(
+    "presence_escrow_oldest_dispute_seconds",
+    "Age in seconds of the oldest disputed escrow",
+  );
+
 // AMD-PAY-22/AMD-OPS-01: webhook acceptance vs rejection feeds the rail
 // alerts — a rejection spike is either an attack or a broken provider
 // credential, both page-worthy.

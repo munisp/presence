@@ -37,11 +37,12 @@ ALTER TABLE reports
     ADD COLUMN message_id uuid REFERENCES messages (message_id) ON DELETE SET NULL;
 
 -- Appeals reference the report they contest; disposing of the report must
--- not block on, or destroy, the appeal's own record.
-ALTER TABLE appeals DROP CONSTRAINT appeals_report_id_fkey;
+-- not block on, or destroy, the appeal's own record. 0008 anchored appeals
+-- to suspensions only, so the column is added here with the SET NULL rule
+-- (caught by the AMD-ESC-03 rehearsal: there was no constraint to drop).
 ALTER TABLE appeals
-    ADD CONSTRAINT appeals_report_id_fkey
-    FOREIGN KEY (report_id) REFERENCES reports (report_id) ON DELETE SET NULL;
+    ADD COLUMN report_id uuid
+        REFERENCES reports (report_id) ON DELETE SET NULL;
 
 -- --------------------------------------------------- SEC-30 audit store ---
 -- Append-only, separate from application logs (which are scrubbed per

@@ -8,7 +8,7 @@ import { EdgeContext } from "./context.js";
 import { registerErrorContract } from "./errors.js";
 import { registerIdempotency } from "./idempotency.js";
 import { scrubLogArgs } from "./logscrub.js";
-import { httpDuration, httpRequests, metrics, moderationQueueAge, publishFailures } from "./metrics.js";
+import { escrowDisputeAge, httpDuration, httpRequests, metrics, moderationQueueAge, publishFailures } from "./metrics.js";
 import { resolveRequestId } from "./requestid.js";
 import { registerVersionContract } from "./versioning.js";
 import { registerCheckinRoutes } from "./routes/checkin.js";
@@ -127,8 +127,9 @@ export async function buildApp(ctx: EdgeContext) {
 
   // NFR-33: Prometheus scrape endpoint — outside the authed scope and not
   // under /v1 (it is operational, not API; it stays out of openapi.yaml).
-  // Aggregates only. The moderation-queue gauge is refreshed on scrape under
-  // the moderator GUC (aggregate age, never row data).
+  // Aggregates only. The moderation-queue and escrow-dispute gauges are
+  // refreshed on scrape under the moderator GUC (aggregate age, never row
+  // data).
   app.get("/metrics", async (_req, reply) => {
     try {
       const age = await withModerator(ctx.pg, async (c) => {
@@ -142,6 +143,20 @@ export async function buildApp(ctx: EdgeContext) {
     } catch (err) {
       // A failed refresh must never break the scrape — the last value stands.
       app.log.warn({ err }, "moderation queue-age refresh failed");
+    }
+    try {
+      // AMD-ESC-02: dispute liveness — disputed_at IS NULL rows contribute
+      // nothing (min ignores NULL); an empty queue reports 0.
+      const disputeAge = await withModerator(ctx.pg, async (c) => {
+        const r = await c.query(
+          `SELECT EXTRACT(EPOCH FROM now() - min(disputed_at)) AS age
+             FROM escrow_agreements WHERE state = 'disputed'`,
+        );
+        return r.rows[0].age === null ? 0 : Number(r.rows[0].age);
+      });
+      escrowDisputeAge().set(disputeAge);
+    } catch (err) {
+      app.log.warn({ err }, "escrow dispute-age refresh failed");
     }
     return reply
       .header("content-type", "text/plain; version=0.0.4; charset=utf-8")

@@ -3949,11 +3949,14 @@ paths:
         "404": { description: Unknown escrow. }
   /v1/moderation/escrows/{escrowId}/resolve:
     post:
-      summary: Resolve a disputed escrow (AMD-INN-03)
+      summary: Resolve a disputed escrow (AMD-INN-03, AMD-ESC-01)
       description: >-
         Moderator-only. 'refund' voids the hold and refunds the remainder;
         'release' pays every remaining milestone to the payee and
-        completes. Audited either way.
+        completes. Audited either way. When the remaining value exceeds
+        the AMD-ESC-01 four-eyes threshold the call records a resolution
+        request and moves no value — a second moderator approves or
+        rejects it under /v1/moderation/escrow-resolutions.
       parameters:
         - name: escrowId
           in: path
@@ -3972,6 +3975,7 @@ paths:
                 decision: { type: string, enum: [refund, release] }
       responses:
         "200": { description: Resolved. }
+        "202": { description: Four-eyes approval required (AMD-ESC-01); no value moved. }
         "403": { description: Moderator role required. }
         "404": { description: Unknown or undisputed escrow. }
         "503": { description: The wallet rail is switched off (WALLET_RAIL). }
@@ -4525,9 +4529,57 @@ paths:
                 decision: { type: string, enum: [refund, release] }
       responses:
         "200": { description: Resolved. }
+        "202": { description: Four-eyes approval required (AMD-ESC-01); no value moved. }
         "400": { description: Invalid decision. }
         "404": { description: Unknown order. }
         "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/moderation/escrow-resolutions:
+    get:
+      summary: List escrow resolution requests (AMD-ESC-01)
+      description: >-
+        Moderator-only. The four-eyes queue of high-value dispute
+        resolutions — pending first, then history. Each row freezes the
+        escrow, the decision, the remaining value and the proposer.
+      responses:
+        "200": { description: The resolution queue. }
+        "403": { description: Moderator role required. }
+  /v1/moderation/escrow-resolutions/{approvalId}/approve:
+    post:
+      summary: Approve an escrow resolution (AMD-ESC-01)
+      description: >-
+        Moderator-only, and never the proposing moderator. Executes exactly
+        the frozen decision in the same transaction; value moves under the
+        wallet rail kill switch. Body strictly empty — the approval carries
+        the terms.
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Approved and resolved. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown approval. }
+        "409": { description: Self-approval, already decided, or the escrow is no longer disputed. }
+        "503": { description: The wallet rail is switched off (WALLET_RAIL). }
+  /v1/moderation/escrow-resolutions/{approvalId}/reject:
+    post:
+      summary: Reject an escrow resolution (AMD-ESC-01)
+      description: >-
+        Moderator-only. Closes the request without moving value; the
+        dispute stays open for a new proposal. Body strictly empty.
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Rejected. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown approval. }
+        "409": { description: Already decided. }
 components:
   parameters:
     pairId:

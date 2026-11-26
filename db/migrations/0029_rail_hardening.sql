@@ -124,6 +124,11 @@ CREATE TRIGGER wallet_credit_approvals_guard
 -- Outcomes: 'funded' | 'approval_required' | 'duplicate_reference'
 -- | 'forbidden' | 'invalid_amount' | 'over_funding_cap'
 -- | 'invalid_reference' | 'unknown_wallet' | 'wallet_not_active'.
+-- The replacement widens the return row (approval_id), which CREATE OR
+-- REPLACE cannot do; drop first so fresh-environment applies of the full
+-- chain succeed (caught by the AMD-ESC-03 rehearsal).
+DROP FUNCTION fund_wallet(uuid, bigint, text);
+
 CREATE OR REPLACE FUNCTION fund_wallet(
     p_wallet uuid, p_amount_minor bigint, p_reference text)
 RETURNS TABLE(outcome text, balance_minor bigint, approval_id uuid)

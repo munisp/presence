@@ -189,3 +189,28 @@ page owner → service lead → incident commander (per ops policy).
   refusal appears on an approved request — that combination should be
   impossible and indicates a ledger divergence: freeze the rail
   (`WALLET_RAIL=off`) and reconcile before paying out further.
+
+## EscrowDisputeAging
+
+- **Owner:** trust-safety-lead
+- **Symptom:** oldest disputed escrow older than 24 hours
+  (`presence_escrow_oldest_dispute_seconds`, refreshed on scrape).
+- **Impact:** user funds sit held while a dispute waits — a stuck escrow is
+  stuck money for both parties, and the AMD-ESC-01 four-eyes queue may be
+  waiting on a second moderator. Value never moves on a timer by design;
+  the alert exists because resolution stays human.
+- **First actions:**
+  1. Pull the moderation reconciliation report
+     (`GET /v1/moderation/wallets/reconciliation`) — `openEscrowDisputes`,
+     `oldestEscrowDisputeSeconds` and `pendingEscrowResolveApprovals`
+     quantify the queue; `stuckEscrows` counts undisputed escrows idle for
+     30+ days.
+  2. If `pendingEscrowResolveApprovals` is non-zero, the blocker is a
+     second pair of eyes — a different moderator approves or rejects via
+     `GET /v1/moderation/escrow-resolutions` and the approve/reject
+     endpoints. A moderator can never approve their own proposal.
+  3. If disputes are queueing without proposals, the dispute queue itself
+     needs moderator staffing — organisational alert, not a code alert.
+- **Escalate if:** any disputed escrow shows ledger divergence in
+  `balanceMismatches`, or a resolved dispute failed to move value — freeze
+  the rail (`WALLET_RAIL=off`) and reconcile before resolving further.

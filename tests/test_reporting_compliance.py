@@ -95,9 +95,12 @@ def test_reports_anchor_columns_detach_on_delete():
 
 
 def test_appeals_report_fk_detaches_on_report_disposal():
-    assert "DROP CONSTRAINT appeals_report_id_fkey" in MIGRATION
+    # The 0008 appeals table had no report_id column, so the FK is added
+    # with the column (fixed in place after the AMD-ESC-03 full-chain
+    # rehearsal caught the dangling DROP CONSTRAINT).
     assert re.search(
-        r"FOREIGN KEY \(report_id\) REFERENCES reports \(report_id\) ON DELETE SET NULL",
+        r"ALTER TABLE appeals\s+ADD COLUMN report_id uuid\s+"
+        r"REFERENCES reports \(report_id\) ON DELETE SET NULL",
         MIGRATION,
     )
 

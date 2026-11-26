@@ -169,6 +169,34 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:rehearse@localhost:5432/rehearse
 
+  # TECH-24: the full-chain rehearsal stubs every spatial predicate, so no
+  # geofence gate ever fires there. This job is the complement: the same 38
+  # migrations on REAL PostGIS (the deploy image's base), with known-answer
+  # polygons fired through the density gate, the overlap gate, the publish
+  # path and the QA report (TR-41/TR-42/FR-90).
+  geofence-gates:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5-alpine
+        env:
+          POSTGRES_PASSWORD: rehearse
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q "psycopg[binary]"
+      - run: python3 scripts/verify_geogates.py
+        env:
+          DATABASE_URL: postgres://postgres:rehearse@localhost:5432/postgres
+
   # TECH-18: the Rust match core — cargo test pins it to the same golden
   # corpus as the TS engine and the Python reference (1e-9, 120 pairs).
   match-core:

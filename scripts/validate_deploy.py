@@ -1313,6 +1313,17 @@ def main() -> int:
         in (ROOT / "client" / "src" / "presence" / "copyRegistry.ts").read_text()
         and (ROOT / "docs" / "ops" / "openkyc-verification.md").exists(),
     )
+    check(
+        "batch-64 PostGIS integration gate: script + CI job + ops doc",
+        (ROOT / "scripts" / "verify_geogates.py").exists()
+        and "geofence_density_check" in (ROOT / "scripts" / "verify_geogates.py").read_text()
+        and "geofence_overlap_check" in (ROOT / "scripts" / "verify_geogates.py").read_text()
+        and "publish_geofence_draft" in (ROOT / "scripts" / "verify_geogates.py").read_text()
+        and "geofence_qa_report" in (ROOT / "scripts" / "verify_geogates.py").read_text()
+        and "geofence-gates:" in ci
+        and "postgis/postgis:17-3.5-alpine" in ci
+        and "## Verification" in (ROOT / "docs" / "ops" / "geofence-qa.md").read_text(),
+    )
 
     print()
     if failures:

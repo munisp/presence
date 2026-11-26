@@ -178,10 +178,15 @@ def main() -> int:
                      (wallet, amount, ref), funding="on", settlement="on")
         r.check("fund_wallet", out == "funded", f"{ref} -> {out}")
 
-    wallets = {u: wallet_of(u) for u in (payer, payee, seller, buyer)}
-    FUNDED = {payer: 8_000_000, payee: 0, seller: 0, buyer: 3_000_000}
+    sw1, sw2 = mkuser(), mkuser()
+    wallets = {u: wallet_of(u) for u in (payer, payee, seller, buyer,
+                                         sw1, sw2)}
+    FUNDED = {payer: 8_000_000, payee: 0, seller: 0, buyer: 3_000_000,
+              sw1: 2_000_000, sw2: 2_000_000}
     fund(wallets[payer], FUNDED[payer], "rehearsal-fund-payer-01")
     fund(wallets[buyer], FUNDED[buyer], "rehearsal-fund-buyer-01")
+    fund(wallets[sw1], FUNDED[sw1], "rehearsal-fund-sw1-01")
+    fund(wallets[sw2], FUNDED[sw2], "rehearsal-fund-sw2-01")
 
     # --------------------------------- phase 3: small escrow (no gate) -----
     rows = q("SELECT outcome, escrow_id FROM create_escrow(%s, %s::bigint[])",
@@ -475,6 +480,260 @@ def main() -> int:
                 "discovery", "venues", "groups", "dating", "marketplace",
                 "payments", "trust", "introductions", "serendipity"],
             str(rows[:2]))
+
+    # -------------------------------------- phase 8c: barter swaps -------
+    # AMD-SWP-01..05: category-cover matching over the TR-18 closure,
+    # hold-at-propose, bond-backed confirmation, dispute -> moderated
+    # release/refund with optional forfeiture, and the expiry clocks.
+    q("INSERT INTO taxonomy_nodes (node_id, label, kind, sensitive, depth)"
+      " VALUES ('goods', 'Goods', 'category', false, 0),"
+      "        ('goods.vehicles', 'Vehicles', 'category', false, 1)")
+    q("INSERT INTO taxonomy_closure (node_id, ancestor_id, hops, decay)"
+      " VALUES ('goods.vehicles', 'goods', 1, 0.8)")
+    r.check("swap_covers_closure_path",
+            scalar("SELECT swap_category_covers('goods', 'goods.vehicles')")
+            is True)
+    r.check("swap_covers_self_not_descendant",
+            scalar("SELECT swap_category_covers('goods.vehicles', 'goods')")
+            is False)
+
+    def mk_swap(user, have, wants, value, name):
+        rows = q("SELECT outcome, swap_listing_id FROM create_swap_listing"
+                 " (%s, %s::text[], %s, 'lagos')",
+                 (have, wants, value), user=user)
+        r.check(name, rows[0][0] == "created", str(rows))
+        return str(rows[0][1])
+
+    l1 = mk_swap(sw1, "goods.vehicles", ["goods.electronics"], 400_000,
+                 "swap_listing_one_created")
+    l2 = mk_swap(sw2, "goods.electronics", ["goods"], 400_000,
+                 "swap_listing_two_created")
+    r.check("swap_compatible_pair",
+            scalar("SELECT swap_compatible(%s, %s)", (l1, l2)) is True)
+    r.check("swap_compatible_self_refused",
+            scalar("SELECT swap_compatible(%s, %s)", (l1, l1)) is False)
+    rows = q("SELECT swap_listing_id FROM swap_candidates()", (), user=sw2)
+    r.check("swap_candidates_reciprocal",
+            [str(x[0]) for x in rows] == [l1], str(rows))
+    rows = q("SELECT swap_listing_id FROM swap_candidates()", (), user=buyer)
+    r.check("swap_candidates_require_own_listing", rows == [], str(rows))
+
+    # Flow 1: propose with a balancer + bond, accept, dual confirm settles.
+    sw1_start = balance(wallets[sw1])
+    sw2_start = balance(wallets[sw2])
+    rows = q("SELECT outcome, agreement_id FROM propose_swap"
+             " (%s, %s, %s, true)", (l1, l2, 100_000),
+             user=sw1, settlement="on")
+    r.check("swap_proposed", rows[0][0] == "proposed", str(rows))
+    agr1 = str(rows[0][1])
+    r.check("swap_hold_at_propose",
+            scalar("SELECT h.state FROM wallet_holds h"
+                   " JOIN swap_agreements a ON a.balance_hold_id = h.hold_id"
+                   " WHERE a.agreement_id = %s", (agr1,)) == "pending"
+            and scalar("SELECT count(*) FROM swap_listings"
+                       " WHERE swap_listing_id IN (%s, %s)"
+                       " AND state = 'held'", (l1, l2)) == 2)
+    out = scalar("SELECT respond_swap(%s, true)", (agr1,),
+                 user=sw2, settlement="on")
+    r.check("swap_respond_requires_bond", out == "bond_required", out)
+    rows = q("SELECT outcome, swap_bond_id FROM stake_swap_bond(%s)",
+             (agr1,), user=sw1, settlement="on")
+    r.check("swap_bond_one_staked", rows[0][0] == "staked", str(rows))
+    rows = q("SELECT outcome, swap_bond_id FROM stake_swap_bond(%s)",
+             (agr1,), user=sw2, settlement="on")
+    r.check("swap_bond_two_staked", rows[0][0] == "staked", str(rows))
+    out = scalar("SELECT respond_swap(%s, true)", (agr1,),
+                 user=sw2, settlement="on")
+    r.check("swap_accepted", out == "accepted", out)
+    out = scalar("SELECT confirm_swap_exchange(%s)", (agr1,),
+                 user=sw1, settlement="on")
+    r.check("swap_first_confirm", out == "confirmed", out)
+    out = scalar("SELECT confirm_swap_exchange(%s)", (agr1,),
+                 user=sw2, settlement="on")
+    r.check("swap_completed", out == "completed", out)
+    r.check("swap_settlement_conservation",
+            balance(wallets[sw1]) == sw1_start - 100_000
+            and balance(wallets[sw2]) == sw2_start + 100_000
+            and scalar("SELECT count(*) FROM swap_bonds"
+                       " WHERE agreement_id = %s AND state = 'released'",
+                       (agr1,)) == 2
+            and scalar("SELECT count(*) FROM swap_listings"
+                       " WHERE swap_listing_id IN (%s, %s)"
+                       " AND state = 'swapped'", (l1, l2)) == 2
+            and scalar("SELECT count(*) FROM swap_events"
+                       " WHERE agreement_id = %s AND to_state = 'completed'",
+                       (agr1,)) == 1)
+
+    # Flow 2: the proposer cancels an unanswered proposal; the unwind voids
+    # the balancer hold and relists both listings.
+    l3 = mk_swap(sw1, "goods.vehicles", ["goods.electronics"], 300_000,
+                 "swap_listing_three_created")
+    l4 = mk_swap(sw2, "goods.electronics", ["goods"], 300_000,
+                 "swap_listing_four_created")
+    rows = q("SELECT outcome, agreement_id FROM propose_swap"
+             " (%s, %s, %s, false)", (l3, l4, 50_000),
+             user=sw1, settlement="on")
+    agr2 = str(rows[0][1])
+    out = scalar("SELECT cancel_swap(%s)", (agr2,), user=sw1, settlement="on")
+    r.check("swap_cancelled_by_proposer", out == "cancelled", out)
+    r.check("swap_cancel_unwinds",
+            scalar("SELECT h.state FROM wallet_holds h"
+                   " JOIN swap_agreements a ON a.balance_hold_id = h.hold_id"
+                   " WHERE a.agreement_id = %s", (agr2,)) == "voided"
+            and scalar("SELECT count(*) FROM swap_listings"
+                       " WHERE swap_listing_id IN (%s, %s)"
+                       " AND state = 'listed'", (l3, l4)) == 2)
+
+    # Flow 3: dispute an accepted swap; a moderated refund voids the
+    # balancer and relists.
+    l5 = mk_swap(sw1, "goods.vehicles", ["goods.electronics"], 300_000,
+                 "swap_listing_five_created")
+    l6 = mk_swap(sw2, "goods.electronics", ["goods"], 300_000,
+                 "swap_listing_six_created")
+    rows = q("SELECT outcome, agreement_id FROM propose_swap"
+             " (%s, %s, %s, false)", (l5, l6, 50_000),
+             user=sw1, settlement="on")
+    agr3 = str(rows[0][1])
+    out = scalar("SELECT respond_swap(%s, true)", (agr3,),
+                 user=sw2, settlement="on")
+    r.check("swap_three_accepted", out == "accepted", out)
+    out = scalar("SELECT dispute_swap(%s)", (agr3,), user=sw2)
+    r.check("swap_disputed", out == "disputed", out)
+    out = scalar("SELECT resolve_swap(%s, 'refund')", (agr3,),
+                 user=mod1, moderator="on", settlement="on")
+    r.check("swap_refund_resolved", out == "resolved", out)
+    r.check("swap_refund_unwinds",
+            scalar("SELECT state FROM swap_agreements"
+                   " WHERE agreement_id = %s", (agr3,)) == "cancelled"
+            and scalar("SELECT count(*) FROM swap_listings"
+                       " WHERE swap_listing_id IN (%s, %s)"
+                       " AND state = 'listed'", (l5, l6)) == 2
+            and scalar("SELECT h.state FROM wallet_holds h"
+                       " JOIN swap_agreements a"
+                       "   ON a.balance_hold_id = h.hold_id"
+                       " WHERE a.agreement_id = %s", (agr3,)) == "voided")
+
+    # Flow 4: moderated release with a bond forfeiture — the wronged party
+    # is paid, never the platform (AMD-SWP-04).
+    l7 = mk_swap(sw1, "goods.vehicles", ["goods.electronics"], 300_000,
+                 "swap_listing_seven_created")
+    l8 = mk_swap(sw2, "goods.electronics", ["goods"], 300_000,
+                 "swap_listing_eight_created")
+    rows = q("SELECT outcome, agreement_id FROM propose_swap"
+             " (%s, %s, %s, true)", (l7, l8, 50_000),
+             user=sw1, settlement="on")
+    agr4 = str(rows[0][1])
+    rows = q("SELECT outcome, swap_bond_id FROM stake_swap_bond(%s)",
+             (agr4,), user=sw1, settlement="on")
+    r.check("swap_four_bond_one", rows[0][0] == "staked", str(rows))
+    rows = q("SELECT outcome, swap_bond_id FROM stake_swap_bond(%s)",
+             (agr4,), user=sw2, settlement="on")
+    r.check("swap_four_bond_two", rows[0][0] == "staked", str(rows))
+    bond_sw2 = str(rows[0][1])
+    out = scalar("SELECT respond_swap(%s, true)", (agr4,),
+                 user=sw2, settlement="on")
+    r.check("swap_four_accepted", out == "accepted", out)
+    out = scalar("SELECT dispute_swap(%s)", (agr4,), user=sw1)
+    r.check("swap_four_disputed", out == "disputed", out)
+    sw1_mid = balance(wallets[sw1])
+    sw2_mid = balance(wallets[sw2])
+    out = scalar("SELECT resolve_swap(%s, 'release', %s::uuid)",
+                 (agr4, bond_sw2), user=mod1, moderator="on",
+                 settlement="on")
+    r.check("swap_release_resolved", out == "resolved", out)
+    r.check("swap_forfeit_pays_counterparty",
+            balance(wallets[sw1]) == sw1_mid + 50_000
+            and balance(wallets[sw2]) == sw2_mid - 50_000
+            and scalar("SELECT state FROM swap_bonds"
+                       " WHERE swap_bond_id = %s",
+                       (bond_sw2,)) == "forfeited"
+            and scalar("SELECT state FROM swap_agreements"
+                       " WHERE agreement_id = %s", (agr4,)) == "completed")
+
+    # Flow 5: an unanswered proposal expires at 72 h — cancelled, unwound,
+    # relisted. Aging bypasses the row guards via the replica role.
+    l9 = mk_swap(sw1, "goods.vehicles", ["goods.electronics"], 300_000,
+                 "swap_listing_nine_created")
+    l10 = mk_swap(sw2, "goods.electronics", ["goods"], 300_000,
+                  "swap_listing_ten_created")
+    rows = q("SELECT outcome, agreement_id FROM propose_swap"
+             " (%s, %s, %s, false)", (l9, l10, 50_000),
+             user=sw1, settlement="on")
+    agr5 = str(rows[0][1])
+    conn.execute("SET session_replication_role = replica")
+    conn.execute("UPDATE swap_agreements"
+                 "   SET created_at = now() - interval '73 hours'"
+                 " WHERE agreement_id = %s", (agr5,))
+    conn.execute("SET session_replication_role = DEFAULT")
+    n = scalar("SELECT expire_stale_swaps()", (), settlement="on")
+    r.check("swap_proposal_expired", n == 1, str(n))
+    r.check("swap_expiry_unwinds",
+            scalar("SELECT state FROM swap_agreements"
+                   " WHERE agreement_id = %s", (agr5,)) == "cancelled"
+            and scalar("SELECT count(*) FROM swap_listings"
+                       " WHERE swap_listing_id IN (%s, %s)"
+                       " AND state = 'listed'", (l9, l10)) == 2)
+
+    # Flow 6: an accepted swap with no completed exchange escalates to
+    # disputed at 168 h (keyed on decided_at), then moderation refunds it.
+    l11 = mk_swap(sw1, "goods.vehicles", ["goods.electronics"], 300_000,
+                  "swap_listing_eleven_created")
+    l12 = mk_swap(sw2, "goods.electronics", ["goods"], 300_000,
+                  "swap_listing_twelve_created")
+    rows = q("SELECT outcome, agreement_id FROM propose_swap"
+             " (%s, %s, %s, false)", (l11, l12, 0),
+             user=sw1, settlement="on")
+    agr6 = str(rows[0][1])
+    out = scalar("SELECT respond_swap(%s, true)", (agr6,),
+                 user=sw2, settlement="on")
+    r.check("swap_six_accepted", out == "accepted", out)
+    conn.execute("SET session_replication_role = replica")
+    conn.execute("UPDATE swap_agreements"
+                 "   SET created_at = now() - interval '169 hours',"
+                 "       decided_at = now() - interval '169 hours'"
+                 " WHERE agreement_id = %s", (agr6,))
+    conn.execute("SET session_replication_role = DEFAULT")
+    n = scalar("SELECT expire_stale_swaps()", (), settlement="on")
+    r.check("swap_accepted_escalates", n == 1, str(n))
+    r.check("swap_escalated_to_dispute",
+            scalar("SELECT state FROM swap_agreements"
+                   " WHERE agreement_id = %s", (agr6,)) == "disputed")
+    out = scalar("SELECT resolve_swap(%s, 'refund')", (agr6,),
+                 user=mod1, moderator="on", settlement="on")
+    r.check("swap_escalation_refunded", out == "resolved", out)
+
+    # The expirer refuses to run with the settlement rail off (value moves
+    # on the unwind path), and the event log is append-only.
+    try:
+        scalar("SELECT expire_stale_swaps()")
+        r.check("swap_expire_requires_settlement", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the expirer MUST raise
+        r.check("swap_expire_requires_settlement",
+                "AMD-SWP-03" in str(exc), str(exc)[:200])
+    try:
+        q("DELETE FROM swap_events")
+        r.check("swap_events_guard_blocks_delete", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the guard MUST raise
+        r.check("swap_events_guard_blocks_delete",
+                "AMD-SWP-05" in str(exc), str(exc)[:200])
+
+    # AMD-SWP-05: the swap surface joins the DSAR export and the swap
+    # dispute queue joins reconciliation.
+    exp = scalar("SELECT dsar_export(%s)", (sw1,), user=sw1)
+    r.check("swap_dsar_export",
+            exp is not None and "swaps" in exp
+            and len(exp["swaps"]["listings"]) >= 1
+            and len(exp["swaps"]["agreements"]) >= 4,
+            str(exp)[:200])
+    rec_swap = scalar("SELECT wallet_reconciliation()", (),
+                      user=mod1, moderator="on")
+    r.check("swap_reconciliation_keys",
+            rec_swap is not None
+            and all(k in rec_swap for k in (
+                "openSwapDisputes", "oldestSwapDisputeSeconds",
+                "stuckSwaps"))
+            and rec_swap["openSwapDisputes"] == 0,
+            str(rec_swap)[:200])
 
     # ------------------------- phase 9: reconciliation + guards + ledger ---
     rec = scalar("SELECT wallet_reconciliation()", (),

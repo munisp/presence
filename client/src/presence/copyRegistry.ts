@@ -179,6 +179,28 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.vertical.serendipity.label": "Serendipity",
   "ui.vertical.serendipity.summary":
     "Serendipity windows: time-boxed openness to unplanned meets.",
+  // SRS Addendum 001 (b60) — barter swap surfaces (AMD-SWP).
+  "ui.swaps.title": "Swap board",
+  "ui.swaps.create": "Offer a swap",
+  "ui.swaps.propose": "Propose a swap",
+  "ui.swaps.accept": "Accept swap",
+  "ui.swaps.decline": "Decline swap",
+  "ui.swaps.cancel": "Withdraw proposal",
+  "ui.swaps.confirm": "Confirm exchange",
+  "ui.swaps.dispute": "Report a problem",
+  "ui.swaps.stake-bond": "Stake swap bond",
+  "ui.swaps.kyc-required": "Both sides must be verified to swap",
+  "ui.swaps.bond-required": "Both swap bonds must be staked first",
+  "ui.swaps.balance": "Cash balance one side adds",
+  "ui.swaps.listing.state.listed": "Listed",
+  "ui.swaps.listing.state.held": "In a proposal",
+  "ui.swaps.listing.state.swapped": "Swapped",
+  "ui.swaps.listing.state.removed": "Removed",
+  "ui.swaps.agreement.state.proposed": "Waiting for an answer",
+  "ui.swaps.agreement.state.accepted": "Exchange in progress",
+  "ui.swaps.agreement.state.completed": "Swap completed",
+  "ui.swaps.agreement.state.cancelled": "Cancelled",
+  "ui.swaps.agreement.state.disputed": "In dispute",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

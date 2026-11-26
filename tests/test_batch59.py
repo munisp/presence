@@ -363,7 +363,10 @@ def test_openapi_documents_get_and_put_only():
     comps = OPENAPI.index("components:")
     assert len(re.findall(r"\n    post:", OPENAPI[bond:dating])) == 18
     assert len(re.findall(r"\n    post:", OPENAPI[dating:esc])) == 10
-    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 2
+    # Batch 60 re-bound: the 9 swap POSTs land after escrow-resolutions and
+    # before components:, so this window grows 2 -> 11 (batch 60 pins the swap
+    # POSTs separately).
+    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 11
 
 
 # ---------------------------------------------------------------- deploy ---

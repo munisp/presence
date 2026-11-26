@@ -4666,6 +4666,286 @@ paths:
         "403": { description: Moderator role required. }
         "404": { description: Unknown approval. }
         "409": { description: Already decided. }
+  /v1/swaps/listings:
+    post:
+      summary: Create a swap listing (AMD-SWP-01)
+      description: >-
+        A structured record and nothing else: a have category, one to three
+        distinct want categories, a value estimate in minor units, a market.
+        No description, no photo, no free text. Terms are immutable once
+        created — a change is remove-and-recreate.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [haveCategory, wantCategories, valueEstimateMinor, market]
+              additionalProperties: false
+              properties:
+                haveCategory: { type: string, description: taxonomy node id (dotted path, non-sensitive) }
+                wantCategories:
+                  type: array
+                  minItems: 1
+                  maxItems: 3
+                  uniqueItems: true
+                  items: { type: string, description: taxonomy node id (dotted path) }
+                valueEstimateMinor: { type: integer, minimum: 1, maximum: 5000000 }
+                market: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "201": { description: Created; returns swapListingId. }
+        "400": { description: Invalid body. }
+        "403": { description: Forbidden or kyc_required. }
+        "409": { description: Twelve live swap listings already. }
+        "422": { description: Unknown or sensitive category, invalid wants, value or market. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/swaps/listings/mine:
+    get:
+      summary: List my swap listings (AMD-SWP-01)
+      description: >-
+        The caller's own swap listings, newest first, every state. Owner
+        only — RLS enforces it.
+      responses:
+        "200": { description: The caller's swap listings. }
+  /v1/swaps/candidates:
+    get:
+      summary: Reciprocal swap candidates (AMD-SWP-02)
+      description: >-
+        Listed swaps whose have is covered by one of the caller's wants AND
+        whose want set covers the caller's have, within the same market —
+        coverage rides the TR-18 taxonomy closure. KYC-gated, block-aware
+        both directions, callable only by a caller holding a listed swap,
+        pinned to 50 rows. The projection carries no owner identity (FR-30).
+      responses:
+        "200": { description: Candidate rows — listing fields only, never an owner. }
+  /v1/swaps/listings/{listingId}/remove:
+    post:
+      summary: Remove an own swap listing (AMD-SWP-01)
+      description: >-
+        Owner takedown of a listed swap. A held swap refuses — its
+        agreement resolves first.
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Removed. }
+        "403": { description: Not the owner. }
+        "404": { description: Unknown listing. }
+        "409": { description: The listing is held by an open agreement. }
+  /v1/swaps/proposals:
+    post:
+      summary: Propose a swap (AMD-SWP-03)
+      description: >-
+        Names two listings — the proposer's and the counterparty's — an
+        optional cash balancer (proposer → counterparty) and whether the
+        pinned ₦1,000 swap bond is required. The balancer is reserved from
+        the proposer's wallet as a hold at propose time, inside the
+        settlement gate; a zero balancer places no hold. Both listings move
+        to held atomically.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [myListingId, theirListingId, balanceMinor, requiresBond]
+              additionalProperties: false
+              properties:
+                myListingId: { type: string, format: uuid }
+                theirListingId: { type: string, format: uuid }
+                balanceMinor: { type: integer, minimum: 0, maximum: 5000000 }
+                requiresBond: { type: boolean }
+      responses:
+        "201": { description: Proposed; returns agreementId. }
+        "400": { description: Invalid body. }
+        "403": { description: KYC required, blocked pair, or not the listing owner. }
+        "404": { description: Unknown listing. }
+        "409": >
+          A listing is not listed, the pair is not reciprocally compatible,
+          or one listing already sits in an open agreement.
+        "422": { description: Insufficient funds for the balancer hold. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/swaps/{agreementId}/respond:
+    post:
+      summary: Answer a swap proposal (AMD-SWP-03)
+      description: >-
+        Counterparty only. Acceptance re-proves both sides' KYC and, when
+        the bond is required, refuses until both parties hold an active
+        bond. Rejection unwinds everything: the balancer hold voids, the
+        bonds release, the listings relist.
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accept]
+              additionalProperties: false
+              properties:
+                accept: { type: boolean }
+      responses:
+        "200": { description: Accepted or rejected; returns the new state. }
+        "403": { description: Not the counterparty. }
+        "404": { description: Unknown agreement. }
+        "409": >
+          The agreement is not proposed, a KYC re-proof failed, or a
+          required bond is not yet staked.
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/swaps/{agreementId}/cancel:
+    post:
+      summary: Withdraw a swap proposal (AMD-SWP-03)
+      description: >-
+        Proposer only, while the proposal is unanswered. Everything unwinds:
+        the balancer hold voids, the bonds release, the listings relist.
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Cancelled. }
+        "403": { description: Not the proposer. }
+        "404": { description: Unknown agreement. }
+        "409": { description: The agreement is not proposed. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/swaps/{agreementId}/stake-bond:
+    post:
+      summary: Stake the swap bond (AMD-SWP-04)
+      description: >-
+        Either party stakes the pinned ₦1,000 bond on a bond-required
+        agreement, reserved from their own wallet as a hold. One active
+        bond per party per agreement.
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201": { description: Staked; returns bondId. }
+        "403": { description: Not a party, or KYC required. }
+        "404": { description: Unknown agreement. }
+        "409": { description: Bond not required, already staked, or the agreement is closed. }
+        "422": { description: Insufficient funds for the bond hold. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/swaps/{agreementId}/confirm:
+    post:
+      summary: Confirm the exchange (AMD-SWP-03)
+      description: >-
+        Either party confirms the physical exchange exactly once. The
+        second confirmation settles atomically: the balancer posts to the
+        counterparty, the bonds release, the agreement completes, both
+        listings move to swapped.
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": >
+          Confirmed — "confirmed" after the first confirmation,
+          "completed" after the second.
+        "403": { description: Not a party. }
+        "404": { description: Unknown agreement. }
+        "409": { description: The agreement is not accepted, or the caller already confirmed. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/swaps/{agreementId}/dispute:
+    post:
+      summary: Dispute a swap agreement (AMD-SWP-03/05)
+      description: >-
+        Either party, from accepted only. The balancer and the bonds stay
+        frozen until moderation resolves.
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Disputed. }
+        "403": { description: Not a party. }
+        "404": { description: Unknown agreement. }
+        "409": { description: The agreement is not accepted. }
+  /v1/swaps/agreements:
+    get:
+      summary: List my swap agreements (AMD-SWP-03)
+      description: >-
+        The caller's agreements in either role (proposer or counterparty),
+        newest first. Party only — RLS enforces it.
+      responses:
+        "200": { description: The caller's swap agreements. }
+  /v1/swaps/agreements/{agreementId}:
+    get:
+      summary: Read one swap agreement (AMD-SWP-03)
+      description: >-
+        Party only. A non-party read answers 404 — agreement existence is
+        never leaked.
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: The agreement. }
+        "404": { description: Unknown agreement, or the caller is not a party. }
+  /v1/moderation/swaps/disputed:
+    get:
+      summary: List disputed swap agreements (AMD-SWP-05)
+      description: >-
+        Moderator-only. The swap dispute queue, oldest first — the
+        AMD-ESC-02 visibility discipline applied to barter.
+      responses:
+        "200": { description: The disputed swap queue. }
+        "403": { description: Moderator role required. }
+  /v1/moderation/swaps/{agreementId}/resolve:
+    post:
+      summary: Resolve a disputed swap (AMD-SWP-05)
+      description: >-
+        Moderator-only, disputed only. "refund" voids the balancer, cancels
+        the agreement and relists both listings; "release" posts the
+        balancer to the counterparty, completes the agreement and moves
+        both listings to swapped. Either decision may additionally forfeit
+        one party's active bond TO THE OTHER PARTY — never to the platform.
+        Audited in the admin audit log.
+      parameters:
+        - name: agreementId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [refund, release] }
+                forfeitBondId: { type: string, format: uuid }
+      responses:
+        "200": { description: Resolved; returns the new state. }
+        "400": { description: Invalid decision. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown agreement or bond. }
+        "409": { description: The agreement is not disputed. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
 components:
   parameters:
     pairId:

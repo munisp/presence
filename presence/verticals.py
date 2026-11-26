@@ -67,6 +67,7 @@ _TEMPLATE_RULES: tuple[tuple[str, str], ...] = (
     ("/v1/groups", "groups"),
     ("/v1/dating", "dating"),
     ("/v1/marketplace", "marketplace"),
+    ("/v1/swaps", "marketplace"),
     ("/v1/transfers", "payments"),
     ("/v1/wallets", "payments"),
     ("/v1/presence/bond", "trust"),

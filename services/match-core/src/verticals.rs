@@ -69,7 +69,7 @@ pub fn vertical_enabled(v: Vertical, explicit: Option<bool>) -> bool {
 /// One ordered route-template rule: a segment-boundary prefix and its
 /// vertical. `/v1/moderation/*` is deliberately absent — moderation
 /// surfaces answer to workforce roles, not to consumer flags.
-const TEMPLATE_RULES: [(&str, Vertical); 17] = [
+const TEMPLATE_RULES: [(&str, Vertical); 18] = [
     ("/v1/rooms", Vertical::Venues),
     ("/v1/tables", Vertical::Venues),
     ("/v1/slots", Vertical::Venues),
@@ -78,6 +78,7 @@ const TEMPLATE_RULES: [(&str, Vertical); 17] = [
     ("/v1/groups", Vertical::Groups),
     ("/v1/dating", Vertical::Dating),
     ("/v1/marketplace", Vertical::Marketplace),
+    ("/v1/swaps", Vertical::Marketplace),
     ("/v1/transfers", Vertical::Payments),
     ("/v1/wallets", Vertical::Payments),
     ("/v1/presence/bond", Vertical::Trust),

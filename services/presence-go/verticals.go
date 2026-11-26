@@ -98,6 +98,7 @@ var templateRules = []templateRule{
 	{"/v1/groups", VerticalGroups},
 	{"/v1/dating", VerticalDating},
 	{"/v1/marketplace", VerticalMarketplace},
+	{"/v1/swaps", VerticalMarketplace},
 	{"/v1/transfers", VerticalPayments},
 	{"/v1/wallets", VerticalPayments},
 	{"/v1/presence/bond", VerticalTrust},

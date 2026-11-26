@@ -1037,6 +1037,79 @@ def main() -> int:
         and (ROOT / "presence" / "verticals.py").exists(),
     )
 
+    # ---------------------------------------------------- batch 60 --------
+    swap_path = ROOT / "db" / "migrations" / "0035_barter_swaps.sql"
+    swap_src = swap_path.read_text() if swap_path.exists() else ""
+    check(
+        "AMD-SWP-01..05 schema: four tables, RLS, value/bond discipline",
+        all(anchor in swap_src for anchor in (
+            "CREATE TABLE swap_listings",
+            "CREATE TABLE swap_agreements",
+            "CREATE TABLE swap_bonds",
+            "CREATE TABLE swap_events",
+            "ALTER TABLE swap_listings ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE swap_agreements ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE swap_bonds ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE swap_events ENABLE ROW LEVEL SECURITY",
+            "CHECK (amount_minor = 100000)",
+            "CHECK (proposer <> counterparty)")),
+    )
+    check(
+        "AMD-SWP definers: nine surfaces, hold-at-propose, candidate cap",
+        all(anchor in swap_src for anchor in (
+            "CREATE OR REPLACE FUNCTION create_swap_listing(",
+            "CREATE OR REPLACE FUNCTION delist_swap_listing(",
+            "CREATE OR REPLACE FUNCTION propose_swap(",
+            "CREATE OR REPLACE FUNCTION stake_swap_bond(",
+            "CREATE OR REPLACE FUNCTION respond_swap(",
+            "CREATE OR REPLACE FUNCTION cancel_swap(",
+            "CREATE OR REPLACE FUNCTION confirm_swap_exchange(",
+            "CREATE OR REPLACE FUNCTION dispute_swap(",
+            "CREATE OR REPLACE FUNCTION resolve_swap(",
+            "CREATE OR REPLACE FUNCTION swap_candidates(",
+            "LIMIT 50",
+            "EXCEPTION WHEN unique_violation")),
+    )
+    check(
+        "AMD-SWP-03 settlement gates + forfeiture + audit + recon keys",
+        swap_src.count("app.transfer_settlement") >= 7
+        and "forfeit" in swap_src
+        and "admin_audit_log" in swap_src
+        and "openSwapDisputes" in swap_src
+        and "REVOKE ALL ON FUNCTION swap_unwind(uuid) FROM PUBLIC;" in swap_src
+        and "REVOKE ALL ON FUNCTION swap_post_hold(uuid, uuid, uuid) FROM PUBLIC;"
+        in swap_src
+        and not re.search(
+            r"GRANT .* ON FUNCTION (swap_unwind|swap_post_hold)", swap_src),
+    )
+    check(
+        "batch-60 migration rides both initdb mounts as 37",
+        "=db/migrations/0035_barter_swaps.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/37_barter_swaps.sql:ro" in compose_src,
+    )
+    check(
+        "batch-60 edge: swap routes under the marketplace vertical",
+        (ROOT / "services" / "edge" / "src" / "routes" / "barter.ts").exists()
+        and "registerBarterRoutes(authed, ctx);"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and '[/^\\/v1\\/swaps(\\/|$)/, "marketplace"]'
+        in (ROOT / "services" / "edge" / "src" / "verticals.ts").read_text()
+        and "SWAP_BOND_AMOUNT_MINOR"
+        in (ROOT / "services" / "edge" / "src" / "barter.ts").read_text(),
+    )
+    check(
+        "batch-60 client contract + copy keys + parity mirror rows",
+        (ROOT / "client" / "src" / "presence" / "swapBoard.ts").exists()
+        and "ui.swaps.title"
+        in (ROOT / "client" / "src" / "presence" / "copyRegistry.ts").read_text()
+        and '("/v1/swaps", "marketplace")'
+        in (ROOT / "presence" / "verticals.py").read_text()
+        and '{"/v1/swaps", VerticalMarketplace},'
+        in (ROOT / "services" / "presence-go" / "verticals.go").read_text()
+        and '("/v1/swaps", Vertical::Marketplace),'
+        in (ROOT / "services" / "match-core" / "src" / "verticals.rs").read_text(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

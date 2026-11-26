@@ -57,6 +57,8 @@ func TestVerticalForTemplate(t *testing.T) {
 		{"/v1/dating/preferences", VerticalDating, true},
 		{"/v1/dating", VerticalDating, true},
 		{"/v1/marketplace/listings/mine", VerticalMarketplace, true},
+		{"/v1/swaps/listings/mine", VerticalMarketplace, true},
+		{"/v1/swaps/proposals", VerticalMarketplace, true},
 		{"/v1/transfers", VerticalPayments, true},
 		{"/v1/wallets/:walletId/entries", VerticalPayments, true},
 		{"/v1/presence/bond/release", VerticalTrust, true},

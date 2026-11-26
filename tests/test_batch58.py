@@ -269,7 +269,9 @@ def test_openapi_documents_the_new_paths_and_the_202():
 
 def test_every_batch58_openapi_post_declares_idempotency():
     start = OPENAPI.index("  /v1/moderation/escrow-resolutions:")
-    section = OPENAPI[start:OPENAPI.index("components:", start)]
+    # Batch 60 re-bound: swap paths were inserted before components:, so this
+    # batch-58 window now ends at the first swap path.
+    section = OPENAPI[start:OPENAPI.index("  /v1/swaps/listings:", start)]
     posts = [m.start() for m in re.finditer(r"\n    post:", section)]
     assert len(posts) == 2  # approve + reject; the queue list is a GET
     misses = []

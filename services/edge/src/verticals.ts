@@ -63,6 +63,8 @@ const TEMPLATE_RULES: ReadonlyArray<readonly [RegExp, Vertical]> = [
   [/^\/v1\/dating(\/|$)/, "dating"],
   // marketplace.
   [/^\/v1\/marketplace(\/|$)/, "marketplace"],
+  // marketplace (incl. barter swaps — a swap is a marketplace mode).
+  [/^\/v1\/swaps(\/|$)/, "marketplace"],
   // payments — consumer wallet + transfer routes only; the moderation
   // wallet routes live under /v1/moderation and never match these.
   [/^\/v1\/transfers(\/|$)/, "payments"],

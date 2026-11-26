@@ -47,10 +47,12 @@ fn resolver_semantics() {
 
 #[test]
 fn template_mapping() {
-    let gated: [(&str, Vertical); 20] = [
+    let gated: [(&str, Vertical); 22] = [
         ("/v1/dating/preferences", Vertical::Dating),
         ("/v1/dating", Vertical::Dating),
         ("/v1/marketplace/listings/mine", Vertical::Marketplace),
+        ("/v1/swaps/listings/mine", Vertical::Marketplace),
+        ("/v1/swaps/proposals", Vertical::Marketplace),
         ("/v1/transfers", Vertical::Payments),
         ("/v1/wallets/:walletId/entries", Vertical::Payments),
         ("/v1/presence/bond/release", Vertical::Trust),

@@ -375,8 +375,11 @@ def test_openapi_documents_get_and_put_only():
     # Batch 60 re-bound: the 9 swap POSTs land after escrow-resolutions and
     # before components:, so this window grows 2 -> 11 (batch 60 pins the swap
     # POSTs separately). Batch 61 re-bounds again: the 5 service POSTs land
-    # in the same window, 11 -> 16 (batch 61 pins them separately).
-    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 16
+    # in the same window, 11 -> 16 (batch 61 pins them separately). Batch 62
+    # re-bounds again: the 6 onboarding POSTs (apply, withdraw, approve,
+    # reject, KYC request, venue activate) land in the same window,
+    # 16 -> 22 (batch 62 pins them separately).
+    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 22
 
 
 # ---------------------------------------------------------------- deploy ---

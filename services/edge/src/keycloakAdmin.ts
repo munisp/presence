@@ -29,6 +29,11 @@ export interface KeycloakAdminConfig {
   tokenRealm: string;
   clientId: string;
   clientSecret: string;
+  /**
+   * AMD-ONB-05: the realm venue partner accounts live in — the venue_ids
+   * attribute replay targets this realm (default "consumer").
+   */
+  venueRealm: string;
 }
 
 /** Null unless every required variable is present — the documented no-op. */
@@ -39,6 +44,7 @@ export function keycloakAdminFromEnv(env: NodeJS.ProcessEnv = process.env): Keyc
     KEYCLOAK_ADMIN_CLIENT_SECRET,
     KEYCLOAK_ADMIN_REALM,
     KEYCLOAK_ADMIN_TOKEN_REALM,
+    KEYCLOAK_ADMIN_VENUE_REALM,
   } = env;
   if (!KEYCLOAK_ADMIN_BASE_URL || !KEYCLOAK_ADMIN_CLIENT_ID || !KEYCLOAK_ADMIN_CLIENT_SECRET) {
     return null;
@@ -49,6 +55,7 @@ export function keycloakAdminFromEnv(env: NodeJS.ProcessEnv = process.env): Keyc
     tokenRealm: KEYCLOAK_ADMIN_TOKEN_REALM ?? "master",
     clientId: KEYCLOAK_ADMIN_CLIENT_ID,
     clientSecret: KEYCLOAK_ADMIN_CLIENT_SECRET,
+    venueRealm: KEYCLOAK_ADMIN_VENUE_REALM ?? "consumer",
   };
 }
 
@@ -104,6 +111,42 @@ export class KeycloakAdminClient {
     );
     if (!res.ok) throw new Error(`role lookup failed: HTTP ${res.status}`);
     return (await res.json()) as RoleRep;
+  }
+
+  /**
+   * AMD-ONB-05: add a venue id to the operator's venue_ids attribute in the
+   * venue realm (get-merge-put; adding an id already present is a no-op).
+   */
+  async addVenueId(subject: string, venueId: string): Promise<void> {
+    await this.mergeVenueIds(subject, (ids) =>
+      ids.includes(venueId) ? ids : [...ids, venueId],
+    );
+  }
+
+  /** AMD-ONB-05: remove a venue id (offboard replay); absent id is a no-op. */
+  async removeVenueId(subject: string, venueId: string): Promise<void> {
+    await this.mergeVenueIds(subject, (ids) => ids.filter((id) => id !== venueId));
+  }
+
+  private async mergeVenueIds(
+    subject: string,
+    merge: (ids: string[]) => string[],
+  ): Promise<void> {
+    const userUrl = `${this.cfg.baseUrl}/admin/realms/${this.cfg.venueRealm}/users/${subject}`;
+    const current = await this.fetchImpl(userUrl, { headers: await this.headers() });
+    if (!current.ok) throw new Error(`user lookup failed: HTTP ${current.status}`);
+    const rep = (await current.json()) as { attributes?: Record<string, unknown> };
+    const attributes = (rep.attributes ?? {}) as Record<string, unknown>;
+    const existing = Array.isArray(attributes.venue_ids)
+      ? (attributes.venue_ids as unknown[]).filter((v): v is string => typeof v === "string")
+      : [];
+    const next = merge(existing);
+    const res = await this.fetchImpl(userUrl, {
+      method: "PUT",
+      headers: await this.headers(),
+      body: JSON.stringify({ attributes: { ...attributes, venue_ids: next } }),
+    });
+    if (!res.ok) throw new Error(`attribute update failed: HTTP ${res.status}`);
   }
 
   private async headers(): Promise<Record<string, string>> {
@@ -163,5 +206,31 @@ export async function bindModeratorRole(
     }
   } catch (err) {
     console.error("keycloak role binding failed", { action, error: String(err) });
+  }
+}
+
+/**
+ * AMD-ONB-05: fire-and-forget venue_ids attribute replay. Never throws —
+ * the venue_accounts row is authoritative, a binding failure is logged and
+ * repaired on the next transition. No-op when the admin client is not
+ * configured.
+ */
+export async function bindVenueId(
+  cfg: KeycloakAdminConfig | null,
+  action: "add" | "remove",
+  subject: string,
+  venueId: string,
+  client?: KeycloakAdminClient,
+): Promise<void> {
+  if (!cfg) return;
+  const admin = client ?? new KeycloakAdminClient(cfg);
+  try {
+    if (action === "add") {
+      await admin.addVenueId(subject, venueId);
+    } else {
+      await admin.removeVenueId(subject, venueId);
+    }
+  } catch (err) {
+    console.error("keycloak venue binding failed", { action, error: String(err) });
   }
 }

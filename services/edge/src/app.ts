@@ -30,6 +30,7 @@ import { registerModerationRoutes } from "./routes/moderation.js";
 import { registerPresenceRoutes } from "./routes/presence.js";
 import { registerProfileRoutes } from "./routes/profile.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
+import { registerOnboardingRoutes } from "./routes/onboarding.js";
 import { registerTransferRoutes } from "./routes/transfers.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerWalletGovernanceRoutes } from "./routes/walletGovernance.js";
@@ -208,6 +209,9 @@ export async function buildApp(ctx: EdgeContext) {
     // AMD-SVC-01..05: services — bookings compose the b56 milestone escrow
     // inside withSettlement; start/dispute move no value (withRls).
     registerServiceRoutes(authed, ctx);
+    // AMD-ONB-01..06: stakeholder onboarding — applicant surface on plain
+    // RLS, the decision surface under withModerator; no value moves.
+    registerOnboardingRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);

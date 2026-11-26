@@ -5106,6 +5106,205 @@ paths:
         "404": { description: Unknown booking. }
         "409": { description: The booking is not disputed. }
         "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/account/onboarding:
+    get:
+      summary: Consumer onboarding stepper (AMD-ONB-06)
+      description: >-
+        The canonical first-run read model: age declared, KYC state, review
+        requested, avatar set, verticals chosen and the overall complete
+        flag — one ordered journey instead of five endpoint polls.
+      responses:
+        "200": { description: The caller's onboarding status. }
+        "404": { description: Account not found. }
+  /v1/identity/kyc/request:
+    post:
+      summary: Initiate KYC review (AMD-ONB-06)
+      description: >-
+        A member whose KYC state is pending or rejected asks for review;
+        idempotent while a request is open (already_requested answers 200).
+        A decision clears the stamp, so a rejected member can re-request.
+        The moderation worklist is GET /v1/moderation/kyc-queue.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses:
+        "201": { description: Request recorded. }
+        "200": { description: A request is already open. }
+        "404": { description: Account not found. }
+        "409": { description: Verified or suspended members have nothing to request. }
+  /v1/onboarding/applications:
+    post:
+      summary: Apply as a venue partner or provider (AMD-ONB-01/02)
+      description: >-
+        The governed entry point for the non-consumer stakeholder kinds.
+        The caller must be KYC-verified. The payload is validated three
+        times against one contract — the route schema, the edge module and
+        the storage-layer validator: a venue partner application carries a
+        name (2..80), a geofence polygon (4..64 [lon, lat] pairs), an
+        optional operating schedule and a statement (10..500); a provider
+        application carries the accepted terms version (v<major>.<minor>)
+        and a statement. Idempotent on an open application (already_open
+        answers 200 with the open application).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, payload]
+              additionalProperties: false
+              properties:
+                kind: { type: string, enum: [venue_partner, provider] }
+                payload:
+                  oneOf:
+                    - type: object
+                      required: [name, polygon, statement]
+                      additionalProperties: false
+                      properties:
+                        name: { type: string, minLength: 2, maxLength: 80 }
+                        polygon:
+                          type: array
+                          minItems: 4
+                          maxItems: 64
+                          items:
+                            type: array
+                            minItems: 2
+                            maxItems: 2
+                            items: { type: number }
+                        schedule:
+                          type: [object, "null"]
+                          additionalProperties: false
+                          properties:
+                            timezone: { type: string, minLength: 1, maxLength: 64 }
+                            weekly:
+                              type: array
+                              maxItems: 21
+                              items:
+                                type: object
+                                required: [day, open, close]
+                                additionalProperties: false
+                                properties:
+                                  day: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] }
+                                  open: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+                                  close: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+                        statement: { type: string, minLength: 10, maxLength: 500 }
+                    - type: object
+                      required: [termsVersion, statement]
+                      additionalProperties: false
+                      properties:
+                        termsVersion: { type: string, pattern: "^v[0-9]+\\.[0-9]+$" }
+                        statement: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "201": { description: Submitted; returns the application id. }
+        "200": { description: An open application already exists; returns it. }
+        "400": { description: Invalid body. }
+        "403": { description: KYC verification required first. }
+        "422": { description: Unknown kind or invalid payload. }
+  /v1/onboarding/applications/mine:
+    get:
+      summary: List my onboarding applications (AMD-ONB-01)
+      description: The caller's own applications, newest first — RLS enforces it.
+      responses:
+        "200": { description: The caller's applications. }
+  /v1/onboarding/applications/{applicationId}/withdraw:
+    post:
+      summary: Withdraw a pending application (AMD-ONB-03)
+      description: >-
+        The applicant — and only the applicant — withdraws a pending
+        application. Decided rows are immutable. Audited.
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Withdrawn. }
+        "403": { description: Not the applicant. }
+        "404": { description: Unknown application. }
+        "409": { description: Only a pending application can be withdrawn. }
+  /v1/moderation/onboarding:
+    get:
+      summary: Onboarding application queue (AMD-ONB-04)
+      description: >-
+        Moderator-only. Pending applications first (oldest waiting first),
+        then recent decisions.
+      responses:
+        "200": { description: The onboarding queue. }
+        "403": { description: Moderator role required. }
+  /v1/moderation/onboarding/{applicationId}/approve:
+    post:
+      summary: Approve an onboarding application (AMD-ONB-04/05)
+      description: >-
+        Moderator-only, four-eyes: a moderator never decides their own
+        application. A venue_partner approval provisions the venue as a
+        prospect (never straight to live — activation is the separate
+        venue-ops act POST /v1/venues/{venueId}/activate) and binds the
+        operator as owner in venue_accounts; the venue_ids token claim
+        replays from the binding. Every step lands in the admin audit log.
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Approved; returns the venue id for venue partners. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown application. }
+        "409": { description: Already decided, or the applicant is the decider (four-eyes). }
+  /v1/moderation/onboarding/{applicationId}/reject:
+    post:
+      summary: Reject an onboarding application (AMD-ONB-04)
+      description: >-
+        Moderator-only, four-eyes. A rejection always carries a 10..500
+        character reason the applicant can read.
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200": { description: Rejected. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown application. }
+        "409": { description: Already decided, or the applicant is the decider (four-eyes). }
+        "422": { description: The reason is missing or out of bounds. }
+  /v1/moderation/kyc-queue:
+    get:
+      summary: KYC review worklist (AMD-ONB-06)
+      description: Moderator-only. Open member review requests, oldest first.
+      responses:
+        "200": { description: The KYC review queue. }
+        "403": { description: Moderator role required. }
+  /v1/venues/{venueId}/activate:
+    post:
+      summary: Activate a prospect venue (AMD-ONB-05)
+      description: >-
+        Venue-ops console only. The prospect -> active transition — a second
+        governed act after the moderation approval that provisioned the
+        prospect. Audited in the admin audit log.
+      parameters:
+        - name: venueId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Active. }
+        "403": { description: Venue-ops role required. }
+        "404": { description: Unknown venue. }
+        "409": { description: The venue is not a prospect. }
 components:
   parameters:
     pairId:

@@ -68,6 +68,7 @@ services:
       - ../db/migrations/0034_vertical_flags.sql:/docker-entrypoint-initdb.d/36_vertical_flags.sql:ro
       - ../db/migrations/0035_barter_swaps.sql:/docker-entrypoint-initdb.d/37_barter_swaps.sql:ro
       - ../db/migrations/0036_service_bookings.sql:/docker-entrypoint-initdb.d/38_service_bookings.sql:ro
+      - ../db/migrations/0037_onboarding.sql:/docker-entrypoint-initdb.d/39_onboarding.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - ../deploy/postgres/initdb/zz_backup_access.sh:/docker-entrypoint-initdb.d/zz_backup_access.sh:ro
       - pgdata:/var/lib/postgresql/data

@@ -31,7 +31,8 @@
 
 import { FastifyInstance } from "fastify";
 import { kSuppressed, K_MIN } from "../aggregate.js";
-import { requireVenueOps } from "../auth.js";
+import { requireVenueOps, withVenueOps } from "../auth.js";
+import { KeycloakAdminConfig, bindVenueId, keycloakAdminFromEnv } from "../keycloakAdmin.js";
 import { EdgeContext } from "../context.js";
 
 const UUID_PARAMS = {
@@ -69,6 +70,14 @@ const SCHEDULE_BODY = {
   },
   required: ["schedule"],
 } as const;
+
+let adminConfig: KeycloakAdminConfig | null | undefined;
+
+/** Lazy env gate — same discipline as the SEC-03 elevation binding. */
+function keycloakConfig(): KeycloakAdminConfig | null {
+  if (adminConfig === undefined) adminConfig = keycloakAdminFromEnv();
+  return adminConfig;
+}
 
 /** BR-12: the venue_ids claim must carry the venue being operated. */
 function venueClaimOk(req: unknown, venueId: string): boolean {
@@ -288,18 +297,49 @@ export function registerVenueRoutes(app: FastifyInstance, ctx: EdgeContext): voi
     },
   );
 
+  // AMD-ONB-05: the prospect -> active transition — venue-ops only, a
+  // second governed act after the moderation approval that provisioned the
+  // prospect (migration 0037).
+  app.post(
+    "/v1/venues/:venueId/activate",
+    { schema: { params: UUID_PARAMS }, preHandler: requireVenueOps },
+    async (req, reply) => {
+      const { venueId } = req.params as { venueId: string };
+      try {
+        const res = await ctx.pg.query(
+          "SELECT venue_activate($1::uuid, $2::uuid) AS result",
+          [venueId, req.userId],
+        );
+        return reply.send(res.rows[0].result);
+      } catch (e) {
+        const code = (e as { code?: string }).code;
+        if (code === "P0002") return reply.code(404).send({ error: "venue not found" });
+        if (code === "P0001") return reply.code(409).send({ error: "venue is not a prospect" });
+        throw e;
+      }
+    },
+  );
+
   // FR-42: offboarding is terminal and venue-ops only — never self-serve.
+  // AMD-ONB-05: the venue_accounts bindings go with it; the Keycloak
+  // venue_ids replay unbinds each operator fire-and-forget.
   app.post(
     "/v1/venues/:venueId/offboard",
     { schema: { params: UUID_PARAMS }, preHandler: requireVenueOps },
     async (req, reply) => {
       const { venueId } = req.params as { venueId: string };
       try {
+        const bound = await withVenueOps(ctx.pg, async (c) =>
+          c.query("SELECT user_id FROM venue_accounts WHERE venue_id = $1", [venueId]),
+        );
         const res = await ctx.pg.query(
           "SELECT venue_offboard($1::uuid, $2::uuid) AS result",
           [venueId, req.userId],
         );
         await purgeVenuePresence(ctx, venueId);
+        for (const row of bound.rows as Array<{ user_id: string }>) {
+          void bindVenueId(keycloakConfig(), "remove", row.user_id, venueId);
+        }
         return reply.send(res.rows[0].result);
       } catch (e) {
         const code = (e as { code?: string }).code;

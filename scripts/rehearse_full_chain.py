@@ -33,6 +33,7 @@ Prints: rehearse_full_chain: N/N checks PASS
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 import tempfile
@@ -115,6 +116,7 @@ def main() -> int:
         "moderator": "app.moderator",
         "settlement": "app.transfer_settlement",
         "funding": "app.funding_callback",
+        "venue_ops": "app.venue_ops",
     }
 
     def q(sql, params=(), **gucs):
@@ -982,6 +984,211 @@ def main() -> int:
     out = scalar("SELECT set_user_verticals('{\"services\": true}'::jsonb,"
                  " 'settings')", (), user=svc1)
     r.check("svc_vertical_restored", out == "updated", out)
+
+
+    # ------------------------- phase 8e: stakeholder onboarding -----------
+    # AMD-ONB-01..06: governed applications for the non-consumer kinds —
+    # KYC-verified prerequisite, per-kind payload validation, four-eyes
+    # moderation decisions with mandatory rejection reasons, venue
+    # provisioning as a prospect with the venue_accounts binding and the
+    # separate venue-ops activation, the consumer KYC review loop and the
+    # stepper read model.
+    onb_new = str(uuid.uuid4())
+    q("INSERT INTO users (user_id, birth_year, kyc_state)"
+      " VALUES (%s, 1992, 'pending')", (onb_new,))
+    onb_app, onb_prov, onb_mod2 = mkuser(), mkuser(), mkuser()
+
+    poly = json.dumps({"name": "Rooftop Lounge",
+                       "polygon": [[3.37, 6.45], [3.38, 6.45],
+                                   [3.38, 6.46], [3.37, 6.46]],
+                       "statement": "We run a rooftop venue in Yaba."})
+    out = scalar("SELECT outcome FROM submit_onboarding_application"
+                 " ('venue_partner', %s::jsonb)", (poly,), user=onb_new)
+    r.check("onb_unverified_refused", out == "kyc_required", out)
+    rows = q("SELECT outcome, application_id FROM submit_onboarding_application"
+             " ('venue_partner', %s::jsonb)", (poly,), user=onb_app)
+    r.check("onb_submitted", rows[0][0] == "submitted", str(rows))
+    onb_app_id = str(rows[0][1])
+    rows = q("SELECT outcome, application_id FROM submit_onboarding_application"
+             " ('venue_partner', %s::jsonb)", (poly,), user=onb_app)
+    r.check("onb_resubmit_idempotent",
+            rows[0][0] == "already_open" and str(rows[0][1]) == onb_app_id,
+            str(rows))
+
+    bad_poly = json.dumps({"name": "Rooftop Lounge",
+                           "polygon": [[3.37, 6.45], [3.38, 6.45]],
+                           "statement": "We run a rooftop venue in Yaba."})
+    out = scalar("SELECT outcome FROM submit_onboarding_application"
+                 " ('venue_partner', %s::jsonb)", (bad_poly,), user=onb_prov)
+    r.check("onb_bad_polygon", out == "invalid_payload", out)
+    bad_key = json.dumps({"termsVersion": "v1.0",
+                          "statement": "I sell refurbished phones.",
+                          "extra": True})
+    out = scalar("SELECT outcome FROM submit_onboarding_application"
+                 " ('provider', %s::jsonb)", (bad_key,), user=onb_prov)
+    r.check("onb_bad_key_refused", out == "invalid_payload", out)
+    bad_terms = json.dumps({"termsVersion": "1.0",
+                            "statement": "I sell refurbished phones."})
+    out = scalar("SELECT outcome FROM submit_onboarding_application"
+                 " ('provider', %s::jsonb)", (bad_terms,), user=onb_prov)
+    r.check("onb_bad_terms_refused", out == "invalid_payload", out)
+    out = scalar("SELECT outcome FROM submit_onboarding_application"
+                 " ('astrology', %s::jsonb)", (bad_terms,), user=onb_prov)
+    r.check("onb_unknown_kind", out == "unknown_kind", out)
+
+    out = scalar("SELECT outcome FROM decide_onboarding_application"
+                 " (%s, 'approved', NULL)", (onb_app_id,), user=onb_app)
+    r.check("onb_decide_needs_moderator", out == "forbidden", out)
+    # Four-eyes: the applicant moderates but may never decide their own.
+    rows = q("SELECT application_id FROM submit_onboarding_application"
+             " ('provider', %s::jsonb)",
+             (json.dumps({"termsVersion": "v1.0",
+                          "statement": "I sell refurbished phones."}),),
+             user=onb_mod2)
+    onb_self_id = str(rows[0][0])
+    out = scalar("SELECT outcome FROM decide_onboarding_application"
+                 " (%s, 'approved', NULL)", (onb_self_id,),
+                 user=onb_mod2, moderator="on")
+    r.check("onb_four_eyes", out == "four_eyes", out)
+    out = scalar("SELECT outcome FROM decide_onboarding_application"
+                 " (%s, 'rejected', NULL)", (onb_app_id,),
+                 user=mod1, moderator="on")
+    r.check("onb_reject_needs_reason", out == "reason_required", out)
+    out = scalar("SELECT outcome FROM decide_onboarding_application"
+                 " (%s, 'rejected', %s)",
+                 (onb_self_id, "The statement names no market presence."),
+                 user=mod1, moderator="on")
+    r.check("onb_rejected", out == "rejected", out)
+    r.check("onb_rejection_reason_visible",
+            scalar("SELECT decision_reason FROM onboarding_applications"
+                   " WHERE application_id = %s", (onb_self_id,))
+            == "The statement names no market presence.")
+
+    # Venue approval provisions the prospect and binds the operator.
+    rows = q("SELECT outcome, venue_id FROM decide_onboarding_application"
+             " (%s, 'approved', NULL)", (onb_app_id,),
+             user=mod1, moderator="on")
+    r.check("onb_venue_approved", rows[0][0] == "approved", str(rows))
+    onb_venue = str(rows[0][1])
+    r.check("onb_venue_prospect",
+            scalar("SELECT partner_status || ':' || active FROM venues"
+                   " WHERE venue_id = %s", (onb_venue,)) == "prospect:false")
+    r.check("onb_owner_bound",
+            scalar("SELECT role FROM venue_accounts WHERE venue_id = %s"
+                   " AND user_id = %s", (onb_venue, onb_app)) == "owner")
+    r.check("onb_decided_immutable",
+            scalar("SELECT outcome FROM decide_onboarding_application"
+                   " (%s, 'approved', NULL)", (onb_app_id,),
+                   user=mod2, moderator="on") == "not_pending")
+
+    # The prospect goes live only through the separate venue-ops act.
+    q("SELECT venue_activate(%s, %s)", (onb_venue, onb_mod2), venue_ops="on")
+    r.check("onb_venue_live",
+            scalar("SELECT partner_status || ':' || active FROM venues"
+                   " WHERE venue_id = %s", (onb_venue,)) == "active:true")
+    try:
+        q("SELECT venue_activate(%s, %s)", (onb_venue, onb_mod2))
+        r.check("onb_activate_twice_refused", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the definer MUST raise
+        r.check("onb_activate_twice_refused",
+                "venue is not a prospect" in str(exc), str(exc)[:200])
+
+    # The consumer KYC loop: request, idempotency, worklist, decision
+    # clears the stamp, re-request after rejection.
+    out = scalar("SELECT request_kyc_review()", user=onb_new)
+    r.check("onb_kyc_requested", out == "recorded", out)
+    out = scalar("SELECT request_kyc_review()", user=onb_new)
+    r.check("onb_kyc_request_idempotent", out == "already_requested", out)
+    r.check("onb_kyc_queue_lists",
+            scalar("SELECT count(*) FROM kyc_review_queue()",
+                   (), moderator="on") == 1)
+    out = scalar("SELECT record_kyc_decision(%s, 'mod1', 'rejected', NULL)",
+                 (onb_new,), moderator="on")
+    r.check("onb_kyc_rejected", out == "recorded", out)
+    r.check("onb_kyc_stamp_cleared",
+            scalar("SELECT kyc_review_requested_at IS NULL FROM users"
+                   " WHERE user_id = %s", (onb_new,)) is True)
+    out = scalar("SELECT request_kyc_review()", user=onb_new)
+    r.check("onb_kyc_rerequest", out == "recorded", out)
+    out = scalar("SELECT request_kyc_review()", user=onb_app)
+    r.check("onb_kyc_verified_not_requestable", out == "not_requestable", out)
+    # rejected -> pending -> verified is the legal re-review path.
+    out = scalar("SELECT record_kyc_decision(%s, 'mod1', 'pending', NULL)",
+                 (onb_new,), moderator="on")
+    r.check("onb_kyc_back_to_pending", out == "recorded", out)
+    r.check("onb_kyc_redecision_clears_stamp",
+            scalar("SELECT kyc_review_requested_at IS NULL FROM users"
+                   " WHERE user_id = %s", (onb_new,)) is True)
+    out = scalar("SELECT record_kyc_decision(%s, 'mod1', 'verified', NULL)",
+                 (onb_new,), moderator="on")
+    r.check("onb_kyc_verified", out == "recorded", out)
+
+    # The stepper: age -> kyc -> avatar -> verticals, then complete.
+    doc = scalar("SELECT onboarding_status()", user=onb_new)
+    r.check("onb_status_shape",
+            doc is not None
+            and doc["kycState"] == "verified"
+            and doc["ageDeclared"] is False
+            and doc["avatarSet"] is False
+            and doc["verticalsChosen"] is False
+            and doc["complete"] is False,
+            str(doc))
+    q("UPDATE users SET age_declared_at = now() WHERE user_id = %s", (onb_new,))
+    q("INSERT INTO user_identities (user_id, handle, avatar_key,"
+      " avatar_set_at) VALUES (%s, %s, 'sunrise', now())",
+      (onb_new, "onb-" + onb_new[:8]))
+    out = scalar("SELECT set_user_verticals(%s::jsonb, 'onboarding')",
+                 (json.dumps({"venues": True}),), user=onb_new)
+    r.check("onb_verticals_chosen", out == "updated", out)
+    doc = scalar("SELECT onboarding_status()", user=onb_new)
+    r.check("onb_complete", doc is not None and doc["complete"] is True,
+            str(doc))
+
+    # Withdrawal discipline and the offboard binding revocation.
+    rows = q("SELECT application_id FROM submit_onboarding_application"
+             " ('provider', %s::jsonb)",
+             (json.dumps({"termsVersion": "v1.2",
+                          "statement": "I tailor agbada in Surulere."}),),
+             user=onb_prov)
+    onb_prov_id = str(rows[0][0])
+    out = scalar("SELECT withdraw_onboarding_application(%s)",
+                 (onb_prov_id,), user=onb_app)
+    r.check("onb_withdraw_other_refused", out == "forbidden", out)
+    out = scalar("SELECT withdraw_onboarding_application(%s)",
+                 (onb_prov_id,), user=onb_prov)
+    r.check("onb_withdrawn", out == "withdrawn", out)
+    out = scalar("SELECT withdraw_onboarding_application(%s)",
+                 (onb_prov_id,), user=onb_prov)
+    r.check("onb_withdraw_decided_refused", out == "not_pending", out)
+    rows = q("SELECT application_id FROM submit_onboarding_application"
+             " ('provider', %s::jsonb)",
+             (json.dumps({"termsVersion": "v2.0",
+                          "statement": "I repair generators in Ikeja."}),),
+             user=onb_app)
+    r.check("onb_second_application_opens", rows is not None and len(rows) == 1,
+            str(rows))
+    r.check("onb_queue_pending_first",
+            scalar("SELECT status FROM onboarding_review_queue() LIMIT 1",
+                   (), moderator="on") == "pending")
+    q("SELECT venue_offboard(%s, %s)", (onb_venue, onb_mod2), venue_ops="on")
+    r.check("onb_offboard_revokes_bindings",
+            scalar("SELECT count(*) FROM venue_accounts WHERE venue_id = %s",
+                   (onb_venue,)) == 0)
+    r.check("onb_audit_trail",
+            scalar("SELECT count(*) FROM admin_audit WHERE target_id IN"
+                   " (%s, %s) AND action IN ('onboarding.submitted',"
+                   " 'onboarding.approved', 'onboarding.rejected',"
+                   " 'venue.provisioned', 'venue.activate',"
+                   " 'venue.offboard', 'venue.bindings_revoked')",
+                   (onb_app_id, onb_venue)) >= 5)
+    rec = scalar("SELECT dsar_export(%s)", (onb_app,))
+    r.check("onb_dsar_inclusion",
+            rec is not None
+            and "onboardingApplications" in rec
+            and rec["onboardingApplications"][0]["kind"] == "venue_partner"
+            and rec["onboardingApplications"][0]["status"] == "approved"
+            and "kycReviewRequestedAt" in rec["user"],
+            str(rec)[:200])
 
     # ------------------------- phase 9: reconciliation + guards + ledger ---
     rec = scalar("SELECT wallet_reconciliation()", (),

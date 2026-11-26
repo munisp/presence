@@ -408,15 +408,16 @@ def test_openapi_documents_the_surface():
 
 def test_openapi_post_windows():
     # The b59 windows keep their counts; the escrow→components window grew
-    # by the nine swap POSTs (2 → 11) and then by batch 61's five service
-    # POSTs (11 → 16).
+    # by the nine swap POSTs (2 → 11), then by batch 61's five service POSTs
+    # (11 → 16), then by batch 62's six onboarding POSTs — apply, withdraw,
+    # approve, reject, KYC request, venue activate (16 → 22).
     bond = OPENAPI.index("/v1/presence/bond:")
     dating = OPENAPI.index("/v1/dating/preferences:")
     esc = OPENAPI.index("/v1/moderation/escrow-resolutions:")
     comps = OPENAPI.index("components:")
     assert len(re.findall(r"\n    post:", OPENAPI[bond:dating])) == 18
     assert len(re.findall(r"\n    post:", OPENAPI[dating:esc])) == 10
-    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 16
+    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 22
 
 
 def test_every_swap_openapi_post_declares_idempotency():

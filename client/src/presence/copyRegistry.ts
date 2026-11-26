@@ -218,6 +218,25 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.services.booking.state.completed": "Completed",
   "ui.services.booking.state.cancelled": "Cancelled",
   "ui.services.booking.state.disputed": "In dispute",
+  // SRS Addendum 001 (b62) — stakeholder onboarding surfaces (AMD-ONB).
+  "ui.onboarding.title": "Get set up",
+  "ui.onboarding.step.age": "Confirm your age",
+  "ui.onboarding.step.kyc": "Verify your identity",
+  "ui.onboarding.step.avatar": "Pick your symbol",
+  "ui.onboarding.step.verticals": "Choose what you want to use",
+  "ui.onboarding.kyc.request": "Request verification",
+  "ui.onboarding.kyc.under-review": "Verification is under review",
+  "ui.onboarding.kyc.rejected": "Verification was declined — you can request a new review",
+  "ui.onboarding.kyc.suspended": "Verification is suspended",
+  "ui.onboarding.complete": "You're all set",
+  "ui.onboarding.apply.venue": "Register your venue",
+  "ui.onboarding.apply.provider": "Become a provider",
+  "ui.onboarding.apply.statement": "Tell us what you run",
+  "ui.onboarding.application.state.pending": "Under review",
+  "ui.onboarding.application.state.approved": "Approved",
+  "ui.onboarding.application.state.rejected": "Declined",
+  "ui.onboarding.application.state.withdrawn": "Withdrawn",
+  "ui.onboarding.withdraw": "Withdraw application",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

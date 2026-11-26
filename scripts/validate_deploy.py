@@ -1177,6 +1177,72 @@ def main() -> int:
         in (ROOT / "services" / "match-core" / "src" / "verticals.rs").read_text(),
     )
 
+    # ---------------------------------------------------- batch 62 --------
+    onb_path = ROOT / "db" / "migrations" / "0037_onboarding.sql"
+    onb_src = onb_path.read_text() if onb_path.exists() else ""
+    check(
+        "AMD-ONB-01..06 schema: applications + venue_accounts tables, RLS, four-eyes",
+        all(a in onb_src for a in (
+            "CREATE TABLE onboarding_applications",
+            "CREATE TABLE venue_accounts",
+            "ALTER TABLE onboarding_applications ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE venue_accounts ENABLE ROW LEVEL SECURITY",
+            "CHECK (decided_by IS NULL OR decided_by <> applicant)",
+            "onboarding_applications_one_open",
+            "ADD COLUMN kyc_review_requested_at timestamptz",
+        )),
+    )
+    check(
+        "AMD-ONB definers: submit/withdraw/decide/queue, activate, kyc loop, stepper",
+        all(a in onb_src for a in (
+            "CREATE OR REPLACE FUNCTION submit_onboarding_application(",
+            "CREATE OR REPLACE FUNCTION withdraw_onboarding_application(",
+            "CREATE OR REPLACE FUNCTION decide_onboarding_application(",
+            "CREATE OR REPLACE FUNCTION onboarding_review_queue(",
+            "CREATE OR REPLACE FUNCTION onboarding_payload_valid(",
+            "CREATE OR REPLACE FUNCTION venue_activate(",
+            "CREATE OR REPLACE FUNCTION request_kyc_review(",
+            "CREATE OR REPLACE FUNCTION kyc_review_queue(",
+            "CREATE OR REPLACE FUNCTION onboarding_status(",
+            "'kyc_required'",
+            "'four_eyes'",
+            "'reason_required'",
+            "'already_open'",
+            "'already_requested'",
+            "'prospect'",
+        )),
+    )
+    check(
+        "AMD-ONB-05/06: offboard binding revocation, decision clears the KYC stamp, DSAR keys",
+        "venue.bindings_revoked" in onb_src
+        and "kyc_review_requested_at = NULL" in onb_src
+        and "'onboardingApplications'" in onb_src
+        and "kycReviewRequestedAt" in onb_src,
+    )
+    check(
+        "batch-62 migration rides both initdb mounts as 39",
+        "=db/migrations/0037_onboarding.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/39_onboarding.sql:ro" in compose_src,
+    )
+    check(
+        "batch-62 edge: onboarding routes + venue activation + keycloak venue replay",
+        (ROOT / "services" / "edge" / "src" / "routes" / "onboarding.ts").exists()
+        and (ROOT / "services" / "edge" / "src" / "onboarding.ts").exists()
+        and "registerOnboardingRoutes(authed, ctx);"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and "bindVenueId"
+        in (ROOT / "services" / "edge" / "src" / "keycloakAdmin.ts").read_text()
+        and "venue_activate($1::uuid, $2::uuid)"
+        in (ROOT / "services" / "edge" / "src" / "routes" / "venue.ts").read_text(),
+    )
+    check(
+        "batch-62 client contract + copy keys + UX doc",
+        (ROOT / "client" / "src" / "presence" / "stakeholderOnboarding.ts").exists()
+        and "ui.onboarding.step.kyc"
+        in (ROOT / "client" / "src" / "presence" / "copyRegistry.ts").read_text()
+        and (ROOT / "docs" / "ux" / "stakeholder-onboarding.md").exists(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

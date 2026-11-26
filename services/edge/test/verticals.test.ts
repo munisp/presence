@@ -13,10 +13,10 @@ import {
   verticalGate,
 } from "../src/verticals.js";
 
-test("AMD-VERT-01: the nine verticals, locked core first", () => {
+test("AMD-VERT-01: the ten verticals, locked core first", () => {
   assert.deepEqual([...VERTICALS], [
     "discovery", "venues", "groups", "dating", "marketplace",
-    "payments", "trust", "introductions", "serendipity",
+    "services", "payments", "trust", "introductions", "serendipity",
   ]);
   assert.equal(LOCKED_VERTICAL, "discovery");
 });
@@ -30,6 +30,9 @@ test("AMD-VERT-03: route templates map to their vertical", () => {
     ["/v1/swaps/listings", "marketplace"],
     ["/v1/swaps/listings/mine", "marketplace"],
     ["/v1/swaps/proposals", "marketplace"],
+    ["/v1/services/bookings", "services"],
+    ["/v1/services/bookings/mine", "services"],
+    ["/v1/services/bookings/:bookingId/start", "services"],
     ["/v1/transfers", "payments"],
     ["/v1/wallets", "payments"],
     ["/v1/wallets/:walletId/entries", "payments"],

@@ -6,8 +6,8 @@ import "testing"
 // the edge gate. The cross-language pins live in tests/test_batch59.py.
 
 func TestCatalogueShape(t *testing.T) {
-	if len(VerticalCatalogue) != 9 {
-		t.Fatalf("catalogue has %d entries, want 9", len(VerticalCatalogue))
+	if len(VerticalCatalogue) != 10 {
+		t.Fatalf("catalogue has %d entries, want 10", len(VerticalCatalogue))
 	}
 	if VerticalCatalogue[0].Vertical != VerticalDiscovery || !VerticalCatalogue[0].Locked {
 		t.Fatalf("first catalogue entry must be the locked core, got %+v", VerticalCatalogue[0])
@@ -59,6 +59,8 @@ func TestVerticalForTemplate(t *testing.T) {
 		{"/v1/marketplace/listings/mine", VerticalMarketplace, true},
 		{"/v1/swaps/listings/mine", VerticalMarketplace, true},
 		{"/v1/swaps/proposals", VerticalMarketplace, true},
+		{"/v1/services/bookings/mine", VerticalServices, true},
+		{"/v1/services/bookings", VerticalServices, true},
 		{"/v1/transfers", VerticalPayments, true},
 		{"/v1/wallets/:walletId/entries", VerticalPayments, true},
 		{"/v1/presence/bond/release", VerticalTrust, true},

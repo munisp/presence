@@ -3264,7 +3264,7 @@ paths:
                       properties:
                         vertical:
                           type: string
-                          enum: [discovery, venues, groups, dating, marketplace, payments, trust, introductions, serendipity]
+                          enum: [discovery, venues, groups, dating, marketplace, services, payments, trust, introductions, serendipity]
                         label: { type: string }
                         summary: { type: string }
                         locked: { type: boolean }
@@ -3301,6 +3301,7 @@ paths:
                     groups: { type: boolean }
                     dating: { type: boolean }
                     marketplace: { type: boolean }
+                    services: { type: boolean }
                     payments: { type: boolean }
                     trust: { type: boolean }
                     introductions: { type: boolean }
@@ -4945,6 +4946,165 @@ paths:
         "403": { description: Moderator role required. }
         "404": { description: Unknown agreement or bond. }
         "409": { description: The agreement is not disputed. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/services/bookings:
+    post:
+      summary: Book a service listing (AMD-SVC-02)
+      description: >-
+        One transaction: the AMD-INN-03 milestone escrow — an even split,
+        the last milestone absorbing the remainder — IS the booking; the
+        listing stays listed (a service offer is repeatable). The caller
+        books; the listing's seller provides. Both sides must be
+        KYC-verified; a block in either direction refuses.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listingId, agreedMinor, milestones]
+              additionalProperties: false
+              properties:
+                listingId: { type: string, format: uuid }
+                agreedMinor:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000000
+                  description: The agreed total in minor units (NGN only).
+                milestones: { type: integer, minimum: 1, maximum: 12 }
+      responses:
+        "201": { description: Booked; returns the booking id. }
+        "400": { description: Invalid body. }
+        "403": { description: KYC required, blocked, or the rail gate is off. }
+        "404": { description: Unknown listing. }
+        "409": { description: The listing is not available. }
+        "422": { description: Not a service listing, self-booking, invalid amount or milestones, insufficient funds, or no active payee wallet. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/services/bookings/mine:
+    get:
+      summary: List my service bookings (AMD-SVC-02)
+      description: >-
+        The caller's bookings in either role (customer or provider), newest
+        first. Party only — RLS enforces it.
+      responses:
+        "200": { description: The caller's service bookings. }
+  /v1/services/bookings/{bookingId}:
+    get:
+      summary: Read one service booking (AMD-SVC-02/05)
+      description: >-
+        Party only; returns the booking plus its append-only event stream,
+        oldest first. A non-party read answers 404 — booking existence is
+        never leaked.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: The booking and its events. }
+        "404": { description: Unknown booking, or the caller is not a party. }
+  /v1/services/bookings/{bookingId}/start:
+    post:
+      summary: Start work on a booking (AMD-SVC-02)
+      description: >-
+        Provider-only, accepted bookings only. No value moves — starting
+        stops the AMD-SVC-04 168 h ghosting clock.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Started; returns the new state. }
+        "403": { description: The caller is not the provider. }
+        "404": { description: Unknown booking. }
+        "409": { description: The booking is not in the accepted state. }
+  /v1/services/bookings/{bookingId}/milestones/{milestone}/confirm:
+    post:
+      summary: Confirm a milestone (AMD-SVC-02)
+      description: >-
+        Customer-only, in-progress bookings only. Releases one escrow
+        milestone to the provider; the last release completes the escrow
+        and the booking together.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: milestone
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 12 }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Confirmed (or completed on the last milestone); returns the new state. }
+        "403": { description: The caller is not the customer. }
+        "404": { description: Unknown booking or milestone. }
+        "409": { description: The booking is not in progress. }
+        "503": { description: Wallet rail disabled (AMD-PAY-15). }
+  /v1/services/bookings/{bookingId}/dispute:
+    post:
+      summary: Dispute a service booking (AMD-SVC-03)
+      description: >-
+        Either party, live bookings only (accepted or in progress). The
+        escrow freezes until moderation resolves. No value moves — a
+        dispute is always available.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Disputed; returns the new state. }
+        "403": { description: The caller is not a party. }
+        "404": { description: Unknown booking. }
+        "409": { description: The booking is already closed or disputed. }
+  /v1/moderation/services/disputed:
+    get:
+      summary: List disputed service bookings (AMD-SVC-03)
+      description: >-
+        Moderator-only. The service dispute queue, oldest first — the
+        AMD-ESC-02 visibility discipline applied to services.
+      responses:
+        "200": { description: The disputed services queue. }
+        "403": { description: Moderator role required. }
+  /v1/moderation/services/{bookingId}/resolve:
+    post:
+      summary: Resolve a disputed service booking (AMD-SVC-03)
+      description: >-
+        Moderator-only, disputed only. "refund" returns the remaining
+        milestones to the customer and cancels the booking; "release" pays
+        them out and completes it. The AMD-ESC-01 four-eyes gate applies
+        unchanged above 1,000,000 minor of remaining value: the request is
+        recorded and answers 202 until a second moderator approves, and the
+        booking resolves identically on either path. Audited in the admin
+        audit log.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [refund, release] }
+      responses:
+        "200": { description: Resolved; returns the new state. }
+        "202": { description: Recorded; a second moderator must approve (AMD-ESC-01). }
+        "400": { description: Invalid decision. }
+        "403": { description: Moderator role required. }
+        "404": { description: Unknown booking. }
+        "409": { description: The booking is not disputed. }
         "503": { description: Wallet rail disabled (AMD-PAY-15). }
 components:
   parameters:

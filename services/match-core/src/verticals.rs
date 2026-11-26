@@ -2,12 +2,12 @@
 //!
 //! The SQL catalogue (db/migrations/0034_vertical_flags.sql) is the source
 //! of truth; services/edge/src/verticals.ts is the edge gate; this module
-//! is the match-core mirror so the Rust core reasons about the same nine
-//! verticals the edge enforces. The batch-59 tests pin the SQL seed, the
+//! is the match-core mirror so the Rust core reasons about the same ten
+//! verticals the edge enforces. The batch-59/61 tests pin the SQL seed, the
 //! edge mirror, the client mirror, the Go mirror and this module to the
 //! same keys, order, locked core and gates.
 
-/// The nine product verticals.
+/// The ten product verticals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Vertical {
     /// The locked core — never gateable.
@@ -16,6 +16,7 @@ pub enum Vertical {
     Groups,
     Dating,
     Marketplace,
+    Services,
     Payments,
     Trust,
     Introductions,
@@ -36,12 +37,13 @@ pub struct CatalogueEntry {
 }
 
 /// Mirror of the seed insert, in sort order.
-pub const CATALOGUE: [CatalogueEntry; 9] = [
+pub const CATALOGUE: [CatalogueEntry; 10] = [
     CatalogueEntry { vertical: Vertical::Discovery, locked: true, requires_kyc: false, requires_adult: false, default_enabled: true, sort_order: 0 },
     CatalogueEntry { vertical: Vertical::Venues, locked: false, requires_kyc: false, requires_adult: false, default_enabled: true, sort_order: 10 },
     CatalogueEntry { vertical: Vertical::Groups, locked: false, requires_kyc: true, requires_adult: false, default_enabled: true, sort_order: 20 },
     CatalogueEntry { vertical: Vertical::Dating, locked: false, requires_kyc: true, requires_adult: true, default_enabled: true, sort_order: 30 },
     CatalogueEntry { vertical: Vertical::Marketplace, locked: false, requires_kyc: true, requires_adult: false, default_enabled: true, sort_order: 40 },
+    CatalogueEntry { vertical: Vertical::Services, locked: false, requires_kyc: true, requires_adult: false, default_enabled: true, sort_order: 45 },
     CatalogueEntry { vertical: Vertical::Payments, locked: false, requires_kyc: true, requires_adult: false, default_enabled: true, sort_order: 50 },
     CatalogueEntry { vertical: Vertical::Trust, locked: false, requires_kyc: true, requires_adult: false, default_enabled: true, sort_order: 60 },
     CatalogueEntry { vertical: Vertical::Introductions, locked: false, requires_kyc: true, requires_adult: false, default_enabled: true, sort_order: 70 },
@@ -69,7 +71,7 @@ pub fn vertical_enabled(v: Vertical, explicit: Option<bool>) -> bool {
 /// One ordered route-template rule: a segment-boundary prefix and its
 /// vertical. `/v1/moderation/*` is deliberately absent — moderation
 /// surfaces answer to workforce roles, not to consumer flags.
-const TEMPLATE_RULES: [(&str, Vertical); 18] = [
+const TEMPLATE_RULES: [(&str, Vertical); 19] = [
     ("/v1/rooms", Vertical::Venues),
     ("/v1/tables", Vertical::Venues),
     ("/v1/slots", Vertical::Venues),
@@ -79,6 +81,7 @@ const TEMPLATE_RULES: [(&str, Vertical); 18] = [
     ("/v1/dating", Vertical::Dating),
     ("/v1/marketplace", Vertical::Marketplace),
     ("/v1/swaps", Vertical::Marketplace),
+    ("/v1/services", Vertical::Services),
     ("/v1/transfers", Vertical::Payments),
     ("/v1/wallets", Vertical::Payments),
     ("/v1/presence/bond", Vertical::Trust),

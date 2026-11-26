@@ -26,13 +26,14 @@
  *      toggle set never becomes a request.
  */
 
-/** AMD-VERT-01: the nine vertical keys, in catalogue sort order. */
+/** AMD-VERT-01: the ten vertical keys, in catalogue sort order. */
 export const VERTICALS = [
   "discovery",
   "venues",
   "groups",
   "dating",
   "marketplace",
+  "services",
   "payments",
   "trust",
   "introductions",
@@ -118,6 +119,16 @@ export const VERTICAL_CATALOGUE: readonly VerticalCatalogueEntry[] = [
     sortOrder: 40,
     labelKey: "ui.vertical.marketplace.label",
     summaryKey: "ui.vertical.marketplace.summary",
+  },
+  {
+    vertical: "services",
+    locked: false,
+    requiresKyc: true,
+    requiresAdult: false,
+    defaultEnabled: true,
+    sortOrder: 45,
+    labelKey: "ui.vertical.services.label",
+    summaryKey: "ui.vertical.services.summary",
   },
   {
     vertical: "payments",

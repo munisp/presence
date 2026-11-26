@@ -168,6 +168,9 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.vertical.marketplace.label": "Marketplace",
   "ui.vertical.marketplace.summary":
     "Structured listings and escrow-backed purchases between members.",
+  "ui.vertical.services.label": "Services",
+  "ui.vertical.services.summary":
+    "Local services and errands: book a vetted provider with milestone escrow — value is committed up-front and released as work completes.",
   "ui.vertical.payments.label": "Payments",
   "ui.vertical.payments.summary": "Wallets and person-to-person transfers.",
   "ui.vertical.trust.label": "Trust",
@@ -201,6 +204,20 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.swaps.agreement.state.completed": "Swap completed",
   "ui.swaps.agreement.state.cancelled": "Cancelled",
   "ui.swaps.agreement.state.disputed": "In dispute",
+  // SRS Addendum 001 (b61) — service booking surfaces (AMD-SVC).
+  "ui.services.title": "Service bookings",
+  "ui.services.book": "Book this service",
+  "ui.services.start": "Start work",
+  "ui.services.confirm-milestone": "Confirm milestone",
+  "ui.services.dispute": "Report a problem",
+  "ui.services.kyc-required": "Both sides must be verified to book",
+  "ui.services.milestones": "Milestones",
+  "ui.services.ghost-refund": "Unstarted bookings refund automatically after 7 days",
+  "ui.services.booking.state.accepted": "Booked — waiting for the provider",
+  "ui.services.booking.state.in_progress": "Work in progress",
+  "ui.services.booking.state.completed": "Completed",
+  "ui.services.booking.state.cancelled": "Cancelled",
+  "ui.services.booking.state.disputed": "In dispute",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

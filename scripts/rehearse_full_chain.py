@@ -470,15 +470,16 @@ def main() -> int:
     out = scalar("SELECT set_user_verticals(%s::jsonb, %s)",
                  ('{"dating": true}', "settings"), user=unv)
     r.check("verticals_enable_requires_kyc", out == "kyc_required", out)
-    # The read model: nine rows in catalogue order with effective state.
+    # The read model: ten rows in catalogue order with effective state.
     rows = q("SELECT vertical, locked, eligible, enabled, explicit_choice"
              " FROM list_my_verticals()", (), user=d1)
     r.check("verticals_read_model_shape",
-            len(rows) == 9
+            len(rows) == 10
             and rows[0][0] == "discovery" and rows[0][1] is True
             and [str(x[0]) for x in rows] == [
                 "discovery", "venues", "groups", "dating", "marketplace",
-                "payments", "trust", "introductions", "serendipity"],
+                "services", "payments", "trust", "introductions",
+                "serendipity"],
             str(rows[:2]))
 
     # -------------------------------------- phase 8c: barter swaps -------
@@ -734,6 +735,253 @@ def main() -> int:
                 "stuckSwaps"))
             and rec_swap["openSwapDisputes"] == 0,
             str(rec_swap)[:200])
+
+    # ------------------------- phase 8d: service bookings ----------------
+    # AMD-SVC-01..05: escrow-composed bookings on service-kind listings —
+    # the listing stays listed, the provider start stops the ghosting
+    # clock, milestone confirmation delegates to the escrow release, and
+    # moderation inherits the AMD-ESC-01 four-eyes gate with the booking
+    # resolved identically on the direct and the approved paths.
+    svc1, svc2, svc3 = mkuser(), mkuser(), mkuser()
+    wallets[svc1] = wallet_of(svc1)
+    wallets[svc2] = wallet_of(svc2)
+    wallets[svc3] = wallet_of(svc3)
+    FUNDED[svc1] = 4_000_000
+    fund(wallets[svc1], FUNDED[svc1], "rehearsal-fund-svc1-01")
+
+    rows = q("SELECT outcome, listing_id FROM create_listing"
+             " ('service', 'goods.electronics', %s, 'lagos')",
+             (500_000,), user=svc2)
+    r.check("svc_listing_created", rows[0][0] == "created", str(rows))
+    lst_svc = str(rows[0][1])
+    out = scalar("SELECT list_listing(%s)", (lst_svc,), user=svc2)
+    r.check("svc_listing_listed", out == "listed", out)
+    rows = q("SELECT outcome, listing_id FROM create_listing"
+             " ('item', 'goods.electronics', %s, 'lagos')",
+             (100_000,), user=seller)
+    lst_item = str(rows[0][1])
+    out = scalar("SELECT list_listing(%s)", (lst_item,), user=seller)
+    r.check("svc_item_listing_listed", out == "listed", out)
+
+    # Refusals the definer owns: gate off, wrong kind, self, bad milestone
+    # count, insufficient funds.
+    rows = q("SELECT outcome FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 100_000, 1), user=svc1)
+    r.check("svc_book_gate_off", rows[0][0] == "forbidden", str(rows))
+    rows = q("SELECT outcome FROM book_service(%s, %s, %s::smallint)",
+             (lst_item, 100_000, 1), user=svc1, settlement="on")
+    r.check("svc_book_not_a_service", rows[0][0] == "not_a_service", str(rows))
+    rows = q("SELECT outcome FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 100_000, 1), user=svc2, settlement="on")
+    r.check("svc_book_self_refused", rows[0][0] == "self", str(rows))
+    rows = q("SELECT outcome FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 100_000, 13), user=svc1, settlement="on")
+    r.check("svc_book_milestones_bound",
+            rows[0][0] == "invalid_milestones", str(rows))
+    rows = q("SELECT outcome FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 100_000, 1), user=svc3, settlement="on")
+    r.check("svc_book_insufficient_funds",
+            rows[0][0] == "insufficient_funds", str(rows))
+
+    # Flow A: the happy path — book 600k in 2 milestones, start, confirm
+    # both; the last release completes escrow and booking together.
+    rows = q("SELECT outcome, booking_id FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 600_000, 2), user=svc1, settlement="on")
+    r.check("svc_booked", rows[0][0] == "booked", str(rows))
+    bk_a = str(rows[0][1])
+    r.check("svc_booking_composed",
+            scalar("SELECT b.state FROM service_bookings b"
+                   " WHERE b.booking_id = %s", (bk_a,)) == "accepted"
+            and scalar("SELECT e.state FROM escrow_agreements e"
+                       " JOIN service_bookings b ON b.escrow_id = e.escrow_id"
+                       " WHERE b.booking_id = %s", (bk_a,)) == "active"
+            and scalar("SELECT state FROM marketplace_listings"
+                       " WHERE listing_id = %s", (lst_svc,)) == "listed")
+    r.check("svc_milestone_even_split",
+            scalar("SELECT array_agg(amount_minor ORDER BY seq)"
+                   " FROM escrow_milestones m"
+                   " JOIN service_bookings b ON b.escrow_id = m.escrow_id"
+                   " WHERE b.booking_id = %s", (bk_a,)) == [300_000, 300_000])
+    out = scalar("SELECT start_service(%s)", (bk_a,), user=svc1)
+    r.check("svc_start_provider_only", out == "forbidden", out)
+    out = scalar("SELECT start_service(%s)", (bk_a,), user=svc2)
+    r.check("svc_started", out == "started", out)
+    out = scalar("SELECT confirm_service_milestone(%s, 1::smallint)",
+                 (bk_a,), user=svc2, settlement="on")
+    r.check("svc_confirm_customer_only", out == "forbidden", out)
+    out = scalar("SELECT confirm_service_milestone(%s, 1::smallint)",
+                 (bk_a,), user=svc1, settlement="on")
+    r.check("svc_milestone_one_confirmed", out == "confirmed", out)
+    out = scalar("SELECT confirm_service_milestone(%s, 2::smallint)",
+                 (bk_a,), user=svc1, settlement="on")
+    r.check("svc_last_milestone_completes", out == "completed", out)
+    r.check("svc_completion_conservation",
+            balance(wallets[svc2]) == 600_000
+            and scalar("SELECT state FROM service_bookings"
+                       " WHERE booking_id = %s", (bk_a,)) == "completed"
+            and scalar("SELECT count(*) FROM service_events"
+                       " WHERE booking_id = %s"
+                       " AND to_state = 'milestone_confirmed'", (bk_a,)) == 1
+            and scalar("SELECT count(*) FROM service_events"
+                       " WHERE booking_id = %s AND to_state = 'completed'",
+                       (bk_a,)) == 1)
+
+    # Flow B: dispute mid-progress; a moderated refund returns the
+    # remaining milestone and cancels the booking (below the four-eyes
+    # threshold — resolves directly).
+    rows = q("SELECT outcome, booking_id FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 400_000, 2), user=svc1, settlement="on")
+    bk_b = str(rows[0][1])
+    out = scalar("SELECT start_service(%s)", (bk_b,), user=svc2)
+    r.check("svc_b_started", out == "started", out)
+    out = scalar("SELECT confirm_service_milestone(%s, 1::smallint)",
+                 (bk_b,), user=svc1, settlement="on")
+    r.check("svc_b_milestone_one", out == "confirmed", out)
+    out = scalar("SELECT dispute_service(%s)", (bk_b,), user=svc1)
+    r.check("svc_b_disputed", out == "disputed", out)
+    out = scalar("SELECT resolve_service(%s, 'refund')", (bk_b,),
+                 user=mod1, moderator="on", settlement="on")
+    r.check("svc_b_refund_resolved", out == "resolved", out)
+    r.check("svc_b_refund_conservation",
+            balance(wallets[svc2]) == 800_000
+            and scalar("SELECT state FROM service_bookings"
+                       " WHERE booking_id = %s", (bk_b,)) == "cancelled")
+
+    # Flow C: above the four-eyes floor — the release request is recorded,
+    # no value moves, the booking stays disputed; the second moderator's
+    # approval resolves the booking identically (the b58 lesson).
+    rows = q("SELECT outcome, booking_id FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 1_500_000, 1), user=svc1, settlement="on")
+    bk_c = str(rows[0][1])
+    out = scalar("SELECT dispute_service(%s)", (bk_c,), user=svc2)
+    r.check("svc_c_disputed", out == "disputed", out)
+    svc2_mid = balance(wallets[svc2])
+    out = scalar("SELECT resolve_service(%s, 'release')", (bk_c,),
+                 user=mod1, moderator="on", settlement="on")
+    r.check("svc_c_four_eyes_gate", out == "approval_required", out)
+    r.check("svc_c_no_value_on_gate",
+            balance(wallets[svc2]) == svc2_mid
+            and scalar("SELECT state FROM service_bookings"
+                       " WHERE booking_id = %s", (bk_c,)) == "disputed")
+    appr_svc = scalar("SELECT a.approval_id FROM escrow_resolve_approvals a"
+                      " JOIN service_bookings b ON b.escrow_id = a.escrow_id"
+                      " WHERE b.booking_id = %s AND a.state = 'pending'",
+                      (bk_c,))
+    r.check("svc_c_approval_recorded", appr_svc is not None)
+    out = scalar("SELECT approve_escrow_resolution(%s)", (appr_svc,),
+                 user=mod2, moderator="on", settlement="on")
+    r.check("svc_c_second_pair_resolves", out == "resolved", out)
+    r.check("svc_c_booking_propagated",
+            scalar("SELECT state FROM service_bookings"
+                   " WHERE booking_id = %s", (bk_c,)) == "completed"
+            and scalar("SELECT completed_at IS NOT NULL"
+                       " FROM service_bookings"
+                       " WHERE booking_id = %s", (bk_c,)) is True
+            and scalar("SELECT count(*) FROM service_events"
+                       " WHERE booking_id = %s AND to_state = 'completed'"
+                       " AND actor = %s", (bk_c, mod2)) == 1
+            and balance(wallets[svc2]) == svc2_mid + 1_500_000)
+
+    # Flow D: the ghosting clock — an accepted booking the provider never
+    # starts auto-refunds at 168 h. Aging bypasses the row guards via the
+    # replica role.
+    svc1_before_d = balance(wallets[svc1])
+    rows = q("SELECT outcome, booking_id FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 200_000, 1), user=svc1, settlement="on")
+    bk_d = str(rows[0][1])
+    conn.execute("SET session_replication_role = replica")
+    conn.execute("UPDATE service_bookings"
+                 "   SET created_at = now() - interval '169 hours'"
+                 " WHERE booking_id = %s", (bk_d,))
+    conn.execute("SET session_replication_role = DEFAULT")
+    n = scalar("SELECT expire_stale_services()", (), settlement="on")
+    r.check("svc_ghost_booking_expired", n == 1, str(n))
+    r.check("svc_ghost_refund_walks_legal_path",
+            scalar("SELECT state FROM service_bookings"
+                   " WHERE booking_id = %s", (bk_d,)) == "cancelled"
+            and scalar("SELECT e.state FROM escrow_agreements e"
+                       " JOIN service_bookings b ON b.escrow_id = e.escrow_id"
+                       " WHERE b.booking_id = %s", (bk_d,)) == "refunded"
+            and scalar("SELECT h.state FROM wallet_holds h"
+                       " JOIN escrow_agreements e ON e.hold_id = h.hold_id"
+                       " JOIN service_bookings b ON b.escrow_id = e.escrow_id"
+                       " WHERE b.booking_id = %s", (bk_d,)) == "voided"
+            and balance(wallets[svc1]) == svc1_before_d)
+
+    # Flow E: stalled work escalates — an in_progress booking with no
+    # completion for 30 days moves to disputed, then moderation refunds.
+    rows = q("SELECT outcome, booking_id FROM book_service(%s, %s, %s::smallint)",
+             (lst_svc, 200_000, 1), user=svc1, settlement="on")
+    bk_e = str(rows[0][1])
+    out = scalar("SELECT start_service(%s)", (bk_e,), user=svc2)
+    r.check("svc_e_started", out == "started", out)
+    conn.execute("SET session_replication_role = replica")
+    conn.execute("UPDATE service_bookings"
+                 "   SET started_at = now() - interval '31 days'"
+                 " WHERE booking_id = %s", (bk_e,))
+    conn.execute("SET session_replication_role = DEFAULT")
+    n = scalar("SELECT expire_stale_services()", (), settlement="on")
+    r.check("svc_stale_work_escalates", n == 1, str(n))
+    r.check("svc_e_disputed_by_clock",
+            scalar("SELECT state FROM service_bookings"
+                   " WHERE booking_id = %s", (bk_e,)) == "disputed")
+    out = scalar("SELECT resolve_service(%s, 'refund')", (bk_e,),
+                 user=mod1, moderator="on", settlement="on")
+    r.check("svc_e_refunded", out == "resolved", out)
+
+    # The expirer refuses to run with the settlement rail off (value moves
+    # on the refund path), and the event log is append-only.
+    try:
+        scalar("SELECT expire_stale_services()")
+        r.check("svc_expire_requires_settlement", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the expirer MUST raise
+        r.check("svc_expire_requires_settlement",
+                "AMD-SVC-04" in str(exc), str(exc)[:200])
+    try:
+        q("DELETE FROM service_events")
+        r.check("svc_events_guard_blocks_delete", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the guard MUST raise
+        r.check("svc_events_guard_blocks_delete",
+                "AMD-SVC-05" in str(exc), str(exc)[:200])
+
+    # AMD-SVC-05: the services surface joins the DSAR export and the
+    # service dispute queue joins reconciliation.
+    exp = scalar("SELECT dsar_export(%s)", (svc1,), user=svc1)
+    r.check("svc_dsar_export",
+            exp is not None and "services" in exp
+            and len(exp["services"]) >= 5
+            and all("role" in b and "counterparty" in b
+                    for b in exp["services"]),
+            str(exp)[:200])
+    rec_svc = scalar("SELECT wallet_reconciliation()", (),
+                     user=mod1, moderator="on")
+    r.check("svc_reconciliation_keys",
+            rec_svc is not None
+            and all(k in rec_svc for k in (
+                "openServiceDisputes", "oldestServiceDisputeSeconds",
+                "stuckServices"))
+            and rec_svc["openServiceDisputes"] == 0
+            and rec_svc["stuckServices"] == 0,
+            str(rec_svc)[:200])
+
+    # AMD-SVC-01: `services` is the tenth catalogue vertical (sort 45) and
+    # resolves through the vertical_enabled definer like every other.
+    r.check("svc_vertical_catalogue_row",
+            scalar("SELECT sort_order FROM vertical_catalogue"
+                   " WHERE vertical = 'services'") == 45
+            and scalar("SELECT count(*) FROM vertical_catalogue") == 10)
+    r.check("svc_vertical_default_on",
+            scalar("SELECT vertical_enabled('services')", (),
+                   user=svc1) is True)
+    out = scalar("SELECT set_user_verticals('{\"services\": false}'::jsonb,"
+                 " 'settings')", (), user=svc1)
+    r.check("svc_vertical_narrowed", out == "updated", out)
+    r.check("svc_vertical_narrowed_resolves_off",
+            scalar("SELECT vertical_enabled('services')", (),
+                   user=svc1) is False)
+    out = scalar("SELECT set_user_verticals('{\"services\": true}'::jsonb,"
+                 " 'settings')", (), user=svc1)
+    r.check("svc_vertical_restored", out == "updated", out)
 
     # ------------------------- phase 9: reconciliation + guards + ledger ---
     rec = scalar("SELECT wallet_reconciliation()", (),

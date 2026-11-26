@@ -7,7 +7,7 @@ import "strings"
 // The SQL catalogue (db/migrations/0034_vertical_flags.sql) is the source
 // of truth; services/edge/src/verticals.ts is the edge gate; this file is
 // the Go-services mirror so the presence/venue/consent cores reason about
-// the same nine verticals the edge enforces. The batch-59 tests pin the
+// the same ten verticals the edge enforces. The batch-59/61 tests pin the
 // SQL seed, the edge mirror, the client mirror, this file and the Rust
 // mirror to the same keys, order, locked core and gates.
 
@@ -20,6 +20,7 @@ const (
 	VerticalGroups        Vertical = "groups"
 	VerticalDating        Vertical = "dating"
 	VerticalMarketplace   Vertical = "marketplace"
+	VerticalServices      Vertical = "services"
 	VerticalPayments      Vertical = "payments"
 	VerticalTrust         Vertical = "trust"
 	VerticalIntroductions Vertical = "introductions"
@@ -46,6 +47,7 @@ var VerticalCatalogue = []VerticalCatalogueEntry{
 	{VerticalGroups, false, true, false, true, 20},
 	{VerticalDating, false, true, true, true, 30},
 	{VerticalMarketplace, false, true, false, true, 40},
+	{VerticalServices, false, true, false, true, 45},
 	{VerticalPayments, false, true, false, true, 50},
 	{VerticalTrust, false, true, false, true, 60},
 	{VerticalIntroductions, false, true, false, true, 70},
@@ -99,6 +101,7 @@ var templateRules = []templateRule{
 	{"/v1/dating", VerticalDating},
 	{"/v1/marketplace", VerticalMarketplace},
 	{"/v1/swaps", VerticalMarketplace},
+	{"/v1/services", VerticalServices},
 	{"/v1/transfers", VerticalPayments},
 	{"/v1/wallets", VerticalPayments},
 	{"/v1/presence/bond", VerticalTrust},

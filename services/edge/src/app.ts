@@ -37,6 +37,7 @@ import { registerInnovationRoutes, registerAttestationVerifyRoute } from "./rout
 import { registerDatingRoutes } from "./routes/dating.js";
 import { registerMarketplaceRoutes } from "./routes/marketplace.js";
 import { registerBarterRoutes } from "./routes/barter.js";
+import { registerServiceRoutes } from "./routes/services.js";
 import { registerWalletRailRoutes } from "./routes/walletRail.js";
 import { registerRoomRoutes } from "./routes/rooms.js";
 import { registerScanRoutes } from "./routes/scan.js";
@@ -204,6 +205,9 @@ export async function buildApp(ctx: EdgeContext) {
     // escrow definers inside withSettlement.
     registerMarketplaceRoutes(authed, ctx);
     registerBarterRoutes(authed, ctx);
+    // AMD-SVC-01..05: services — bookings compose the b56 milestone escrow
+    // inside withSettlement; start/dispute move no value (withRls).
+    registerServiceRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);

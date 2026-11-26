@@ -2,12 +2,12 @@
  * Vertical feature flags (SRS Addendum 001 — AMD-VERT-01..05).
  *
  * The SQL catalogue (0034_vertical_flags.sql) is the source of truth; this
- * module is the edge mirror: the same nine keys, the same locked core, and
+ * module is the edge mirror: the same ten keys, the same locked core, and
  * the route-template map the preHandler gate enforces. The client
  * (client/src/presence/verticalOnboarding.ts), the Go parity helper
  * (services/presence-go/verticals.go) and the Rust parity helper
  * (services/match-core/src/verticals.rs) carry the same catalogue — the
- * batch-59 tests pin all five together.
+ * batch-59/61 tests pin all five together.
  *
  * Gate semantics:
  *   - unmapped route templates are never gated (account, consent, profile,
@@ -24,13 +24,14 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { withRls } from "./auth.js";
 import { EdgeContext } from "./context.js";
 
-/** AMD-VERT-01: the nine verticals, in catalogue sort order. */
+/** AMD-VERT-01: the ten verticals, in catalogue sort order. */
 export const VERTICALS = [
   "discovery",
   "venues",
   "groups",
   "dating",
   "marketplace",
+  "services",
   "payments",
   "trust",
   "introductions",
@@ -65,6 +66,8 @@ const TEMPLATE_RULES: ReadonlyArray<readonly [RegExp, Vertical]> = [
   [/^\/v1\/marketplace(\/|$)/, "marketplace"],
   // marketplace (incl. barter swaps — a swap is a marketplace mode).
   [/^\/v1\/swaps(\/|$)/, "marketplace"],
+  // services — bookable service/errand listings with milestone escrow.
+  [/^\/v1\/services(\/|$)/, "services"],
   // payments — consumer wallet + transfer routes only; the moderation
   // wallet routes live under /v1/moderation and never match these.
   [/^\/v1\/transfers(\/|$)/, "payments"],

@@ -5,7 +5,7 @@ truth; services/edge/src/verticals.ts is the edge gate; this module is the
 Python reference the batch-59 pytest suite pins against, alongside the Go
 (services/presence-go/verticals.go) and Rust
 (services/match-core/src/verticals.rs) mirrors. All five carry the same
-nine keys, the same order, the same locked core and the same gates.
+ten keys, the same order, the same locked core and the same gates.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ VERTICALS: tuple[str, ...] = (
     "groups",
     "dating",
     "marketplace",
+    "services",
     "payments",
     "trust",
     "introductions",
@@ -33,6 +34,7 @@ CATALOGUE: tuple[tuple[str, bool, bool, bool, bool, int], ...] = (
     ("groups", False, True, False, True, 20),
     ("dating", False, True, True, True, 30),
     ("marketplace", False, True, False, True, 40),
+    ("services", False, True, False, True, 45),
     ("payments", False, True, False, True, 50),
     ("trust", False, True, False, True, 60),
     ("introductions", False, True, False, True, 70),
@@ -68,6 +70,7 @@ _TEMPLATE_RULES: tuple[tuple[str, str], ...] = (
     ("/v1/dating", "dating"),
     ("/v1/marketplace", "marketplace"),
     ("/v1/swaps", "marketplace"),
+    ("/v1/services", "services"),
     ("/v1/transfers", "payments"),
     ("/v1/wallets", "payments"),
     ("/v1/presence/bond", "trust"),

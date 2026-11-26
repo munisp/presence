@@ -1110,6 +1110,73 @@ def main() -> int:
         in (ROOT / "services" / "match-core" / "src" / "verticals.rs").read_text(),
     )
 
+    # ---------------------------------------------------- batch 61 --------
+    svc_path = ROOT / "db" / "migrations" / "0036_service_bookings.sql"
+    svc_src = svc_path.read_text() if svc_path.exists() else ""
+    check(
+        "AMD-SVC-01..05 schema: two tables, RLS, bounds, tenth vertical",
+        all(anchor in svc_src for anchor in (
+            "CREATE TABLE service_bookings",
+            "CREATE TABLE service_events",
+            "ALTER TABLE service_bookings ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE service_events ENABLE ROW LEVEL SECURITY",
+            "CHECK (milestones BETWEEN 1 AND 12)",
+            "CHECK (customer <> provider)",
+            "('services', 'Services',")),
+    )
+    check(
+        "AMD-SVC definers: six surfaces + the escrow resolver propagation",
+        all(anchor in svc_src for anchor in (
+            "CREATE OR REPLACE FUNCTION book_service(",
+            "CREATE OR REPLACE FUNCTION start_service(",
+            "CREATE OR REPLACE FUNCTION confirm_service_milestone(",
+            "CREATE OR REPLACE FUNCTION dispute_service(",
+            "CREATE OR REPLACE FUNCTION resolve_service(",
+            "CREATE OR REPLACE FUNCTION expire_stale_services(",
+            "CREATE OR REPLACE FUNCTION resolve_escrow(",
+            "interval '168 hours'",
+            "interval '30 days'",
+            "settlement gate required (AMD-SVC-04)")),
+    )
+    check(
+        "AMD-SVC-02/03 composition, gates, audit + recon keys",
+        svc_src.count("app.transfer_settlement") >= 4
+        and "create_escrow(v_listing.seller, v_amounts)" in svc_src
+        and "release_escrow_milestone(v_bk.escrow_id, p_milestone)" in svc_src
+        and "resolve_escrow(v_bk.escrow_id, p_decision)" in svc_src
+        and "admin_audit_log" in svc_src
+        and "openServiceDisputes" in svc_src
+        and "oldestServiceDisputeSeconds" in svc_src
+        and "stuckServices" in svc_src,
+    )
+    check(
+        "batch-61 migration rides both initdb mounts as 38",
+        "=db/migrations/0036_service_bookings.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/38_service_bookings.sql:ro" in compose_src,
+    )
+    check(
+        "batch-61 edge: service routes under the services vertical",
+        (ROOT / "services" / "edge" / "src" / "routes" / "services.ts").exists()
+        and "registerServiceRoutes(authed, ctx);"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and '[/^\\/v1\\/services(\\/|$)/, "services"]'
+        in (ROOT / "services" / "edge" / "src" / "verticals.ts").read_text()
+        and "SERVICE_MAX_MILESTONES"
+        in (ROOT / "services" / "edge" / "src" / "services.ts").read_text(),
+    )
+    check(
+        "batch-61 client contract + copy keys + parity mirror rows",
+        (ROOT / "client" / "src" / "presence" / "serviceBooking.ts").exists()
+        and "ui.services.title"
+        in (ROOT / "client" / "src" / "presence" / "copyRegistry.ts").read_text()
+        and '("/v1/services", "services")'
+        in (ROOT / "presence" / "verticals.py").read_text()
+        and '{"/v1/services", VerticalServices},'
+        in (ROOT / "services" / "presence-go" / "verticals.go").read_text()
+        and '("/v1/services", Vertical::Services),'
+        in (ROOT / "services" / "match-core" / "src" / "verticals.rs").read_text(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

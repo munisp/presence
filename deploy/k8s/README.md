@@ -67,6 +67,7 @@ kubectl -n presence create configmap postgres-initdb \
   --from-file=35_escrow_hardening.sql=db/migrations/0033_escrow_hardening.sql \
   --from-file=36_vertical_flags.sql=db/migrations/0034_vertical_flags.sql \
   --from-file=37_barter_swaps.sql=db/migrations/0035_barter_swaps.sql \
+  --from-file=38_service_bookings.sql=db/migrations/0036_service_bookings.sql \
   --from-file=zz_backup_access.sh=deploy/postgres/initdb/zz_backup_access.sh \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n presence create configmap keycloak-realms \

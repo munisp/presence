@@ -1,10 +1,11 @@
 """Batch 59 invariants — vertical feature flags (SRS Addendum 001,
 AMD-VERT-01..05):
 
-  AMD-VERT-01  vertical catalogue: nine governed verticals — the locked
+  AMD-VERT-01  vertical catalogue: ten governed verticals — the locked
                `discovery` core plus venues, groups, dating, marketplace,
-               payments, trust, introductions, serendipity — with KYC/adult
-               gates mirroring the proofs the feature definers demand.
+               services (batch 61), payments, trust, introductions,
+               serendipity — with KYC/adult gates mirroring the proofs the
+               feature definers demand.
   AMD-VERT-02  per-user flags: default-on (an absent row keeps today's
                behaviour for every existing account), explicit rows narrow,
                writes go through the definer alone (app role holds SELECT
@@ -26,7 +27,7 @@ AMD-VERT-01..05):
 Cross-language parity: the SQL seed, the edge mirror, the client mirror,
 the Go mirror (services/presence-go/verticals.go), the Rust mirror
 (services/match-core/src/verticals.rs) and the Python reference
-(presence/verticals.py) all carry the same nine keys in the same order
+(presence/verticals.py) all carry the same ten keys in the same order
 with the same locked core and gates — pinned here.
 
 The 306-requirement ledger stays untouched; amendments carry AMD-
@@ -46,6 +47,7 @@ EDGE = ROOT / "services/edge"
 
 ADDENDUM = (ROOT / "docs/spec/srs-addendum-001.md").read_text()
 MIGRATION = (ROOT / "db/migrations/0034_vertical_flags.sql").read_text()
+MIGRATION_61 = (ROOT / "db/migrations/0036_service_bookings.sql").read_text()
 EDGE_VERTICALS = (EDGE / "src/verticals.ts").read_text()
 EDGE_VERTICAL_ROUTES = (EDGE / "src/routes/verticals.ts").read_text()
 EDGE_APP = (EDGE / "src/app.ts").read_text()
@@ -60,7 +62,7 @@ K8S_README = (ROOT / "deploy/k8s/README.md").read_text()
 
 VERTICALS = (
     "discovery", "venues", "groups", "dating", "marketplace",
-    "payments", "trust", "introductions", "serendipity",
+    "services", "payments", "trust", "introductions", "serendipity",
 )
 
 from presence.verticals import (  # noqa: E402
@@ -90,8 +92,10 @@ def test_addendum_documents_the_amendment():
 
 def test_catalogue_table_and_seed():
     assert "CREATE TABLE vertical_catalogue" in MIGRATION
-    # Every vertical seeded, in display order.
-    positions = [MIGRATION.index(f"('{v}',") for v in VERTICALS]
+    # The batch-59 nine seeded in display order in 0034; batch 61's
+    # services row rides 0036 (sort 45 keeps the display order stable).
+    nine = [v for v in VERTICALS if v != "services"]
+    positions = [MIGRATION.index(f"('{v}',") for v in nine]
     assert positions == sorted(positions)
     # The locked core: locked=true, no gates, default on, sort 0.
     assert re.search(
@@ -105,6 +109,10 @@ def test_catalogue_table_and_seed():
     for tail in ("true, 20)", "true, 40)", "true, 50)", "true, 60)",
                  "true, 70)", "true, 80)"):
         assert tail in MIGRATION, tail
+    # Batch 61: the services row (KYC-gated, no adult gate, sort 45).
+    assert re.search(
+        r"\('services', 'Services',.*\n\s*false, true, false, true, 45\)",
+        MIGRATION_61, re.S)
 
 
 def test_flags_table_is_owner_read_definer_write():
@@ -302,16 +310,17 @@ def test_go_mirror_carries_the_catalogue():
     for v in VERTICALS:
         assert f'Vertical = "{v}"' in GO or f'"{v}"' in GO, v
     assert "const LockedVertical = VerticalDiscovery" in GO
-    # Nine seed rows (positional struct literals).
-    assert len(re.findall(r"\{Vertical[A-Za-z]+, (?:true|false),", GO)) == 9
+    # Ten seed rows (positional struct literals).
+    assert len(re.findall(r"\{Vertical[A-Za-z]+, (?:true|false),", GO)) == 10
     assert "VerticalForTemplate" in GO and "VerticalEnabled" in GO
 
 
 def test_rust_mirror_carries_the_catalogue():
     for name in ("Discovery", "Venues", "Groups", "Dating", "Marketplace",
-                 "Payments", "Trust", "Introductions", "Serendipity"):
+                 "Services", "Payments", "Trust", "Introductions",
+                 "Serendipity"):
         assert name in RUST, name
-    assert "pub const CATALOGUE: [CatalogueEntry; 9]" in RUST
+    assert "pub const CATALOGUE: [CatalogueEntry; 10]" in RUST
     assert "pub const LOCKED_VERTICAL: Vertical = Vertical::Discovery" in RUST
     assert "pub fn vertical_enabled" in RUST
     assert "pub fn vertical_for_template" in RUST
@@ -365,8 +374,9 @@ def test_openapi_documents_get_and_put_only():
     assert len(re.findall(r"\n    post:", OPENAPI[dating:esc])) == 10
     # Batch 60 re-bound: the 9 swap POSTs land after escrow-resolutions and
     # before components:, so this window grows 2 -> 11 (batch 60 pins the swap
-    # POSTs separately).
-    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 11
+    # POSTs separately). Batch 61 re-bounds again: the 5 service POSTs land
+    # in the same window, 11 -> 16 (batch 61 pins them separately).
+    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 16
 
 
 # ---------------------------------------------------------------- deploy ---

@@ -8,7 +8,7 @@ use match_core::verticals::{
 
 #[test]
 fn catalogue_shape() {
-    assert_eq!(CATALOGUE.len(), 9);
+    assert_eq!(CATALOGUE.len(), 10);
     assert_eq!(CATALOGUE[0].vertical, Vertical::Discovery);
     assert!(CATALOGUE[0].locked);
     assert_eq!(LOCKED_VERTICAL, Vertical::Discovery);
@@ -36,6 +36,7 @@ fn resolver_semantics() {
         Vertical::Groups,
         Vertical::Dating,
         Vertical::Marketplace,
+        Vertical::Services,
         Vertical::Payments,
         Vertical::Trust,
         Vertical::Introductions,
@@ -47,12 +48,14 @@ fn resolver_semantics() {
 
 #[test]
 fn template_mapping() {
-    let gated: [(&str, Vertical); 22] = [
+    let gated: [(&str, Vertical); 24] = [
         ("/v1/dating/preferences", Vertical::Dating),
         ("/v1/dating", Vertical::Dating),
         ("/v1/marketplace/listings/mine", Vertical::Marketplace),
         ("/v1/swaps/listings/mine", Vertical::Marketplace),
         ("/v1/swaps/proposals", Vertical::Marketplace),
+        ("/v1/services/bookings/mine", Vertical::Services),
+        ("/v1/services/bookings", Vertical::Services),
         ("/v1/transfers", Vertical::Payments),
         ("/v1/wallets/:walletId/entries", Vertical::Payments),
         ("/v1/presence/bond/release", Vertical::Trust),

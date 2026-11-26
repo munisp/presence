@@ -16,18 +16,20 @@ import {
 
 test("AMD-VERT-01: the catalogue mirrors the SQL seed and the edge mirror", () => {
   // Cross-pinned: the SQL seed is the source of truth; the edge mirrors it.
-  const migration = readFileSync("../db/migrations/0034_vertical_flags.sql", "utf8");
+  // The batch-59 nine seed in 0034; batch 61's services row rides 0036.
+  const migration = readFileSync("../db/migrations/0034_vertical_flags.sql", "utf8")
+    + readFileSync("../db/migrations/0036_service_bookings.sql", "utf8");
   const edge = readFileSync("../services/edge/src/verticals.ts", "utf8");
   assert.deepEqual([...VERTICALS], [
     "discovery", "venues", "groups", "dating", "marketplace",
-    "payments", "trust", "introductions", "serendipity",
+    "services", "payments", "trust", "introductions", "serendipity",
   ]);
   for (const v of VERTICALS) {
     assert.ok(migration.includes(`('${v}',`), `seed: ${v}`);
     assert.ok(edge.includes(`"${v}"`), `edge: ${v}`);
   }
   assert.equal(LOCKED_VERTICAL, "discovery");
-  assert.equal(VERTICAL_CATALOGUE.length, 9);
+  assert.equal(VERTICAL_CATALOGUE.length, 10);
   assert.equal(VERTICAL_CATALOGUE[0].vertical, "discovery");
   assert.equal(VERTICAL_CATALOGUE[0].locked, true);
   // Sort order is strictly increasing and matches the seed.
@@ -44,7 +46,7 @@ test("AMD-VERT-01: the catalogue mirrors the SQL seed and the edge mirror", () =
   );
   assert.equal(
     VERTICAL_CATALOGUE.filter((e) => e.requiresKyc).map((e) => e.vertical).join(","),
-    "groups,dating,marketplace,payments,trust,introductions",
+    "groups,dating,marketplace,services,payments,trust,introductions",
   );
 });
 
@@ -57,7 +59,7 @@ const ROWS: VerticalFlagState[] = [
 
 test("AMD-VERT-04: toggle items render locked, ineligible and live rows", () => {
   const items = verticalToggleItems(ROWS);
-  assert.equal(items.length, 9); // the full catalogue, always
+  assert.equal(items.length, 10); // the full catalogue, always
   const discovery = items[0];
   assert.equal(discovery.vertical, "discovery");
   assert.equal(discovery.toggleable, false);

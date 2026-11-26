@@ -5305,6 +5305,106 @@ paths:
         "403": { description: Venue-ops role required. }
         "404": { description: Unknown venue. }
         "409": { description: The venue is not a prospect. }
+  /v1/identity/kyc/session:
+    post:
+      summary: Open a verification session (SRS Addendum 001, AMD-KYC-07/08)
+      description: >-
+        Issues an OpenKYC verification session: a randomized liveness
+        challenge (3 of 5 actions, shuffled, per-action windows) whose
+        sha256 digest is pinned in kyc_sessions, plus the single-use
+        signed upload token the OpenKYC pipeline verifies before it
+        decodes a frame. Only a pending or rejected member may open a
+        session, at most one open session per member — a repeat while
+        one is open answers 200 with the open session. Unset
+        KYC_CHALLENGE_SECRET answers 503 (the wire exists; the credential
+        arrives with the deployment). The capture itself uploads to the
+        OpenKYC service directly — the platform API never carries a
+        capture (AMD-KYC-10).
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: {} }
+      responses:
+        "200": { description: A session is already open (idempotent repeat). }
+        "201": { description: Issued — sessionId, challenge, challengeToken, expiresAt, uploadUrl. }
+        "404": { description: Unknown account. }
+        "409": { description: Only a pending or rejected member opens a session. }
+        "503": { description: Verification not configured. }
+    get:
+      summary: Own verification session status (AMD-KYC-08)
+      description: >-
+        The member's own latest session — state and timestamps only; the
+        fused scores are never projected to the member (they would aid
+        spoof probing).
+      responses:
+        "200": { description: The latest session. }
+        "404": { description: No verification session. }
+  /v1/moderation/kyc-sessions:
+    get:
+      summary: Verification review worklist (AMD-KYC-09)
+      description: >-
+        Moderator-only. Pipeline-routed 'review' sessions, oldest first,
+        with the derived facts and fused scores the reviewer decides
+        from; a decision lands through the existing KYC decision route.
+      responses:
+        "200": { description: The verification review queue. }
+        "403": { description: Moderator role required. }
+  /v1/webhooks/kyc-verdict:
+    post:
+      summary: OpenKYC verdict callback (SRS Addendum 001, AMD-KYC-09)
+      description: >-
+        The verification pipeline's verdict wire, outside the authed
+        scope on purpose: the pipeline authenticates with an HMAC-SHA256
+        signature over the canonical
+        `timestamp|sessionId|challengeDigest|outcome|authenticityScore|livenessScore|providerRef`
+        string in the x-kyc-signature header, where the timestamp is the
+        unix epoch sent in x-kyc-timestamp — freshness (300 s skew) is
+        checked BEFORE the signature (the AMD-PAY-22 discipline).
+        complete_kyc_session runs under app.kyc_callback, re-checks the
+        challenge digest against the issued session, records the purge
+        receipt, and composes record_kyc_decision — including the legal
+        rejected -> pending -> verified walk; a 'review' verdict routes
+        to the AMD-ONB-06 manual queue instead of auto-deciding.
+        Idempotent: a replayed verdict answers ok with outcome replayed.
+        Unset KYC_VERDICT_SECRET answers 503.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: x-kyc-timestamp
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[0-9]{1,12}$" }
+        - name: x-kyc-signature
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [sessionId, challengeDigest, outcome, credentialKind, over18, credentialValid, authenticityScore, livenessScore, providerRef]
+              properties:
+                sessionId: { type: string, format: uuid }
+                challengeDigest: { type: string, pattern: "^[0-9a-f]{64}$" }
+                outcome: { type: string, enum: [verified, rejected, review] }
+                credentialKind: { type: string, enum: [id_card, driving_permit, travel_document] }
+                over18: { type: boolean }
+                credentialValid: { type: boolean }
+                authenticityScore: { type: number, minimum: 0, maximum: 1 }
+                livenessScore: { type: number, minimum: 0, maximum: 1 }
+                providerRef: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        "200": { description: Accepted (completed | review_routed | replayed). }
+        "401": { description: Stale timestamp, bad signature or challenge mismatch. }
+        "404": { description: Unknown session. }
+        "409": { description: Session not open, or expired. }
+        "422": { description: Malformed verdict or illegal outcome. }
+        "503": { description: Verdict callback not configured. }
 components:
   parameters:
     pairId:

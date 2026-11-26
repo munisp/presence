@@ -420,14 +420,15 @@ def test_openapi_post_windows():
     # The b59/b60 windows keep their counts; the escrow→components window
     # grew by exactly the five service POSTs (11 → 16), then by the six
     # batch-62 onboarding POSTs — apply, withdraw, approve, reject, KYC
-    # request, venue activate (16 → 22; batch 62 pins them separately).
+    # request, venue activate (16 → 22), batch-63 KYC session + verdict
+    # webhook (→ 24; batches 62/63 pin theirs separately).
     bond = OPENAPI.index("/v1/presence/bond:")
     dating = OPENAPI.index("/v1/dating/preferences:")
     esc = OPENAPI.index("/v1/moderation/escrow-resolutions:")
     comps = OPENAPI.index("components:")
     assert len(re.findall(r"\n    post:", OPENAPI[bond:dating])) == 18
     assert len(re.findall(r"\n    post:", OPENAPI[dating:esc])) == 10
-    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 22
+    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 24
 
 
 def test_every_service_openapi_post_declares_idempotency():

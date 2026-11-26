@@ -378,8 +378,8 @@ def test_openapi_documents_get_and_put_only():
     # in the same window, 11 -> 16 (batch 61 pins them separately). Batch 62
     # re-bounds again: the 6 onboarding POSTs (apply, withdraw, approve,
     # reject, KYC request, venue activate) land in the same window,
-    # 16 -> 22 (batch 62 pins them separately).
-    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 22
+    # 16 -> 22 -> 24 (batches 62/63 pin theirs separately).
+    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 24
 
 
 # ---------------------------------------------------------------- deploy ---

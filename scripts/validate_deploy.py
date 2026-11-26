@@ -1243,6 +1243,77 @@ def main() -> int:
         and (ROOT / "docs" / "ux" / "stakeholder-onboarding.md").exists(),
     )
 
+    # ---------------------------------------------------- batch 63 --------
+    oky_path = ROOT / "db" / "migrations" / "0038_openkyc.sql"
+    oky_src = oky_path.read_text() if oky_path.exists() else ""
+    check(
+        "AMD-KYC-08 schema: kyc_sessions + events, RLS, one-open, derived-facts-only CHECKs",
+        all(a in oky_src for a in (
+            "CREATE TABLE kyc_sessions",
+            "CREATE TABLE kyc_session_events",
+            "ALTER TABLE kyc_sessions ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE kyc_session_events ENABLE ROW LEVEL SECURITY",
+            "kyc_sessions_one_open",
+            "CHECK (state <> 'verified' OR (over_18 AND credential_valid))",
+            "kyc_session_events is append-only (AMD-KYC-08)",
+        )),
+    )
+    check(
+        "AMD-KYC-07/09 definers: issue/complete/expire/queue/my + callback gate + review routing",
+        all(a in oky_src for a in (
+            "CREATE OR REPLACE FUNCTION issue_kyc_session(",
+            "CREATE OR REPLACE FUNCTION complete_kyc_session(",
+            "CREATE OR REPLACE FUNCTION expire_kyc_sessions(",
+            "CREATE OR REPLACE FUNCTION kyc_session_queue(",
+            "CREATE OR REPLACE FUNCTION my_kyc_session(",
+            "current_setting('app.kyc_callback', true) IS DISTINCT FROM 'on'",
+            "current_setting('app.kyc_callback', true) IS NOT DISTINCT FROM 'on'",
+            "current_setting('app.moderator', true) IS NOT DISTINCT FROM 'on'",
+            "'challenge_mismatch'",
+            "'review_routed'",
+            "'replayed'",
+            "'capture_purged'",
+            "'kycSessions'",
+        )),
+    )
+    check(
+        "batch-63 migration rides both initdb mounts as 40",
+        "=db/migrations/0038_openkyc.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/40_openkyc.sql:ro" in compose_src,
+    )
+    check(
+        "batch-63 openkyc service: engines + pipeline + callback + stdlib server + image",
+        all((ROOT / "services" / "openkyc" / rel).exists() for rel in (
+            "openkyc/__init__.py", "openkyc/engines.py", "openkyc/liveness.py",
+            "openkyc/pipeline.py", "openkyc/callback.py", "openkyc/server.py",
+            "Dockerfile", "README.md",
+        ))
+        and "class PaddleOcrTextEngine"
+        in (ROOT / "services" / "openkyc" / "openkyc" / "engines.py").read_text()
+        and "class DoclingStructureEngine"
+        in (ROOT / "services" / "openkyc" / "openkyc" / "engines.py").read_text()
+        and "class VlmSemanticEngine"
+        in (ROOT / "services" / "openkyc" / "openkyc" / "engines.py").read_text(),
+    )
+    check(
+        "batch-63 edge: session/status/queue routes + HMAC webhook + compose service",
+        (ROOT / "services" / "edge" / "src" / "kycVerification.ts").exists()
+        and (ROOT / "services" / "edge" / "src" / "routes" / "kycVerification.ts").exists()
+        and "registerKycWebhookRoute(app, ctx);"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and "registerKycVerificationRoutes(authed, ctx);"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and "withKycCallback" in (ROOT / "services" / "edge" / "src" / "auth.ts").read_text()
+        and "openkyc:" in compose_src,
+    )
+    check(
+        "batch-63 client contract + copy keys + ops doc",
+        (ROOT / "client" / "src" / "presence" / "kycCapture.ts").exists()
+        and "ui.kycCapture.action.blink"
+        in (ROOT / "client" / "src" / "presence" / "copyRegistry.ts").read_text()
+        and (ROOT / "docs" / "ops" / "openkyc-verification.md").exists(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

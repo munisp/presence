@@ -324,3 +324,29 @@ export async function withRailCallback<T>(
     client.release();
   }
 }
+
+/**
+ * AMD-KYC-09: run `fn` in one transaction with app.kyc_callback set —
+ * the HMAC-verified OpenKYC verdict webhook authenticates with a shared
+ * secret, not a user token, so no app.user_id exists here. Unlike the
+ * wallet rail there is NO kill switch: identity verification is a
+ * safety surface and never depends on an operations toggle.
+ */
+export async function withKycCallback<T>(
+  pool: Postgres.Pool,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.kyc_callback', 'on', true)");
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}

@@ -237,6 +237,20 @@ export const ENGLISH_COPY: Readonly<Record<string, string>> = {
   "ui.onboarding.application.state.rejected": "Declined",
   "ui.onboarding.application.state.withdrawn": "Withdrawn",
   "ui.onboarding.withdraw": "Withdraw application",
+  // SRS Addendum 001 (b63) — OpenKYC verification capture (AMD-KYC).
+  "ui.kycCapture.title": "Verify your identity",
+  "ui.kycCapture.intro": "A quick liveness check, then a photo of your credential",
+  "ui.kycCapture.action.blink": "Blink",
+  "ui.kycCapture.action.turn_left": "Turn your head left",
+  "ui.kycCapture.action.turn_right": "Turn your head right",
+  "ui.kycCapture.action.smile": "Smile",
+  "ui.kycCapture.action.nod": "Nod",
+  "ui.kycCapture.capture": "Hold your credential in view",
+  "ui.kycCapture.uploading": "Checking…",
+  "ui.kycCapture.verified": "You're verified",
+  "ui.kycCapture.rejected": "We couldn't verify you — you can try again",
+  "ui.kycCapture.review": "Almost there — a reviewer will finish this shortly",
+  "ui.kycCapture.expired": "The session expired — start again",
 };
 
 /** A locale pack: pure data. Adding one never touches code. */

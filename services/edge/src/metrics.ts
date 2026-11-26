@@ -218,6 +218,16 @@ export const walletWebhookResults = () =>
     ["route", "result"],
   );
 
+// AMD-KYC-09: the OpenKYC verdict webhook is unauthed machine traffic —
+// every verdict is counted so a grinding spike (rejected) or a
+// misconfigured deployment (unconfigured) is visible.
+export const kycWebhookResults = () =>
+  metrics.counter(
+    "presence_kyc_webhook_results_total",
+    "OpenKYC verdict webhook results",
+    ["result"],
+  );
+
 // AMD-INN-09: attestation verification is an unauthed oracle — every verdict
 // is counted so a grinding spike (invalid) or a misconfigured deployment
 // (unconfigured) is visible.

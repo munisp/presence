@@ -69,6 +69,7 @@ services:
       - ../db/migrations/0035_barter_swaps.sql:/docker-entrypoint-initdb.d/37_barter_swaps.sql:ro
       - ../db/migrations/0036_service_bookings.sql:/docker-entrypoint-initdb.d/38_service_bookings.sql:ro
       - ../db/migrations/0037_onboarding.sql:/docker-entrypoint-initdb.d/39_onboarding.sql:ro
+      - ../db/migrations/0038_openkyc.sql:/docker-entrypoint-initdb.d/40_openkyc.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - ../deploy/postgres/initdb/zz_backup_access.sh:/docker-entrypoint-initdb.d/zz_backup_access.sh:ro
       - pgdata:/var/lib/postgresql/data
@@ -196,6 +197,12 @@ services:
       CENTRIFUGO_API_KEY: p0-dev-api-key
       JWT_SECRET: p0-dev-secret-change-me
       RECOVERY_HASH_KEY: p0-dev-recovery-key-change-me   # SEC-09 dev-only HMAC key (SEC-28)
+      # AMD-KYC-09: OpenKYC verification wires (SEC-28 managed-secrets in
+      # k8s; these are dev-only values). Unset in an environment answers
+      # 503 on both the session issue and the verdict webhook.
+      KYC_CHALLENGE_SECRET: p0-dev-kyc-challenge-key-change-me
+      KYC_VERDICT_SECRET: p0-dev-kyc-verdict-key-change-me
+      OPENKYC_UPLOAD_URL: http://openkyc:4200/v1/captures
       KEYCLOAK_ISSUER: http://keycloak:8080/realms/consumer
       # FR-01: the DEVICE-REACHABLE issuer the app signs in against, served
       # at GET /v1/client/config (the URL above is the in-cluster one the
@@ -216,6 +223,23 @@ services:
       - centrifugo
       - keycloak
     ports: ["4000:4000"]
+
+  # AMD-KYC-06..10: the OpenKYC verification pipeline — the in-house
+  # verification provider. Reference engines by default (zero deps);
+  # OPENKYC_ENGINES=real activates PaddleOCR + Docling + the VLM (see
+  # services/openkyc/README.md). It never writes OLTP — its only egress
+  # is the signed verdict callback.
+  openkyc:
+    build: ../services/openkyc
+    environment:
+      OPENKYC_PORT: "4200"
+      OPENKYC_ENGINES: reference
+      KYC_CHALLENGE_SECRET: p0-dev-kyc-challenge-key-change-me
+      KYC_VERDICT_SECRET: p0-dev-kyc-verdict-key-change-me
+      EDGE_VERDICT_URL: http://edge:4000/v1/webhooks/kyc-verdict
+    depends_on:
+      - edge
+    ports: ["4200:4200"]
 
 volumes:
   pgdata:

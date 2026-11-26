@@ -117,6 +117,7 @@ def main() -> int:
         "settlement": "app.transfer_settlement",
         "funding": "app.funding_callback",
         "venue_ops": "app.venue_ops",
+        "kyc_callback": "app.kyc_callback",
     }
 
     def q(sql, params=(), **gucs):
@@ -1189,6 +1190,239 @@ def main() -> int:
             and rec["onboardingApplications"][0]["status"] == "approved"
             and "kycReviewRequestedAt" in rec["user"],
             str(rec)[:200])
+
+    # ------------------------- phase 8f: OpenKYC verification sessions -----
+    # AMD-KYC-06..10: the session ledger, the liveness challenge digest,
+    # the verdict composition under app.kyc_callback, the review routing
+    # and the purge receipt — end to end on the real definer chain.
+    import hashlib  # noqa: PLC0415
+
+    def kyc_digest(seed: str) -> str:
+        return hashlib.sha256(seed.encode()).hexdigest()
+
+    def pending_user():
+        uid = mkuser()
+        q("UPDATE users SET kyc_state = 'pending' WHERE user_id = %s", (uid,))
+        return uid
+
+    def kyc_issue(uid, seed):
+        rows = q("SELECT outcome, session_id FROM issue_kyc_session(%s, %s)",
+                 (kyc_digest(seed), 600), user=uid)
+        return rows[0][0], (str(rows[0][1]) if rows[0][1] else None)
+
+    def kyc_complete(session, seed, outcome, kind="id_card", over18=True,
+                     valid=True, auth=0.9, live=0.9, **gucs):
+        rows = q("SELECT complete_kyc_session(%s, %s, %s, %s, %s, %s,"
+                 " %s::numeric, %s::numeric, %s)",
+                 (session, kyc_digest(seed), outcome, "travel_document"
+                  if outcome == "review" else "id_card",
+                  over18, valid, auth, live, "openkyc:rehearsal"), **gucs)
+        return rows[0][0]
+
+    k1 = pending_user()
+    out, k1_session = kyc_issue(k1, "k1-challenge")
+    r.check("ok_issue", out == "issued", out)
+    r.check("ok_digest_pinned", scalar(
+        "SELECT challenge_digest FROM kyc_sessions WHERE session_id = %s",
+        (k1_session,)) == kyc_digest("k1-challenge"))
+    out, _ = kyc_issue(k1, "k1-again")
+    r.check("ok_already_open", out == "already_open", out)
+    out, _ = kyc_issue(payer, "verified-user")
+    r.check("ok_verified_member_refused", out == "not_requestable", out)
+    rows = q("SELECT outcome FROM issue_kyc_session(%s, %s)",
+             ("not-a-digest", 600), user=pending_user())
+    r.check("ok_bad_digest_refused", rows[0][0] == "invalid_challenge", str(rows))
+    out, _ = kyc_issue(pending_user(), "bad-ttl")
+    rows = q("SELECT outcome FROM issue_kyc_session(%s, %s)",
+             (kyc_digest("bad-ttl-2"), 30), user=pending_user())
+    r.check("ok_bad_ttl_refused", rows[0][0] == "invalid_ttl", str(rows))
+
+    # AMD-KYC-09: the callback GUC is mandatory; the digest is re-checked.
+    out = kyc_complete(k1_session, "k1-challenge", "verified")
+    r.check("ok_complete_needs_callback", out == "forbidden", out)
+    out = kyc_complete(k1_session, "k1-wrong", "verified", kyc_callback="on")
+    r.check("ok_challenge_mismatch", out == "challenge_mismatch", out)
+
+    # The verified path composes record_kyc_decision and closes the row.
+    out = kyc_complete(k1_session, "k1-challenge", "verified", kyc_callback="on")
+    r.check("ok_verified_path", out == "completed", out)
+    r.check("ok_user_verified",
+            scalar("SELECT kyc_state FROM users WHERE user_id = %s", (k1,))
+            == "verified")
+    r.check("ok_session_closed",
+            scalar("SELECT state FROM kyc_sessions WHERE session_id = %s",
+                   (k1_session,)) == "verified")
+    out = kyc_complete(k1_session, "k1-challenge", "verified", kyc_callback="on")
+    r.check("ok_verdict_replay", out == "replayed", out)
+
+    # AMD-KYC-08: a verified verdict without the over-18 fact is
+    # unrepresentable — the storage CHECK refuses the whole transaction.
+    k2 = pending_user()
+    out, k2_session = kyc_issue(k2, "k2-challenge")
+    r.check("ok_k2_issued", out == "issued", out)
+    try:
+        kyc_complete(k2_session, "k2-challenge", "verified", over18=False,
+                     kyc_callback="on")
+        r.check("ok_verified_requires_over18", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the CHECK MUST raise
+        r.check("ok_verified_requires_over18",
+                "kyc_sessions" in str(exc), str(exc)[:200])
+    r.check("ok_failed_verdict_atomic",
+            scalar("SELECT kyc_state FROM users WHERE user_id = %s", (k2,))
+            == "pending")
+    r.check("ok_failed_session_still_open",
+            scalar("SELECT state FROM kyc_sessions WHERE session_id = %s",
+                   (k2_session,)) == "issued")
+
+    # The rejected path, then the legal rejected -> pending -> verified walk.
+    out = kyc_complete(k2_session, "k2-challenge", "rejected", over18=False,
+                       auth=0.2, live=0.2, kyc_callback="on")
+    r.check("ok_rejected_path", out == "completed", out)
+    r.check("ok_user_rejected",
+            scalar("SELECT kyc_state FROM users WHERE user_id = %s", (k2,))
+            == "rejected")
+    out, k2_second = kyc_issue(k2, "k2-second")
+    r.check("ok_rejected_member_reopens", out == "issued", out)
+    out = kyc_complete(k2_second, "k2-second", "verified", kyc_callback="on")
+    r.check("ok_walk_completed", out == "completed", out)
+    r.check("ok_walk_verified",
+            scalar("SELECT kyc_state FROM users WHERE user_id = %s", (k2,))
+            == "verified")
+
+    # AMD-KYC-09: the review verdict routes to the manual worklist instead
+    # of auto-deciding; a moderator decision then closes the loop.
+    k3 = pending_user()
+    out, k3_session = kyc_issue(k3, "k3-challenge")
+    out = kyc_complete(k3_session, "k3-challenge", "review",
+                       auth=0.66, live=0.65, kyc_callback="on")
+    r.check("ok_review_routed", out == "review_routed", out)
+    r.check("ok_review_not_decided",
+            scalar("SELECT kyc_state FROM users WHERE user_id = %s", (k3,))
+            == "pending")
+    r.check("ok_review_stamp",
+            scalar("SELECT kyc_review_requested_at IS NOT NULL FROM users"
+                   " WHERE user_id = %s", (k3,)) is True)
+    rows = q("SELECT session_id FROM kyc_session_queue()",
+             user=mod1, moderator="on")
+    r.check("ok_review_queue", str(rows[0][0]) == k3_session, str(rows))
+    q("SELECT record_kyc_decision(%s, %s, %s, %s)",
+      (k3, "mod-console", "verified", "manual-ref"),
+      user=mod1, moderator="on")
+    r.check("ok_review_manual_close",
+            scalar("SELECT kyc_state FROM users WHERE user_id = %s", (k3,))
+            == "verified")
+    r.check("ok_review_stamp_cleared",
+            scalar("SELECT kyc_review_requested_at IS NULL FROM users"
+                   " WHERE user_id = %s", (k3,)) is True)
+
+    # Expiry: the sweeper ages out an issued session; a late verdict is
+    # refused as expired.
+    k4 = pending_user()
+    out, k4_session = kyc_issue(k4, "k4-challenge")
+    q("UPDATE kyc_sessions SET expires_at = now() - interval '1 second'"
+      " WHERE session_id = %s", (k4_session,))
+    swept = scalar("SELECT expire_kyc_sessions()")
+    r.check("ok_expiry_sweep", swept >= 1, str(swept))
+    r.check("ok_session_expired",
+            scalar("SELECT state FROM kyc_sessions WHERE session_id = %s",
+                   (k4_session,)) == "expired")
+    out = kyc_complete(k4_session, "k4-challenge", "verified", kyc_callback="on")
+    r.check("ok_late_verdict_refused", out == "replayed", out)
+
+    # The ledger: events are append-only and the purge receipt precedes the
+    # decision; the audit trail covers the session lifecycle.
+    names = [row[0] for row in q(
+        "SELECT event FROM kyc_session_events WHERE session_id = %s"
+        " ORDER BY event_id", (k1_session,))]
+    r.check("ok_event_order",
+            names == ["issued", "capture_purged", "decided"], str(names))
+    try:
+        q("DELETE FROM kyc_session_events")
+        r.check("ok_events_guard", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the guard MUST raise
+        r.check("ok_events_guard", "AMD-KYC-08" in str(exc), str(exc)[:200])
+    audits = scalar("SELECT count(*) FROM admin_audit"
+                    " WHERE action LIKE %s", ("kyc.session.%",))
+    r.check("ok_session_audits", audits >= 4, str(audits))
+
+    # AMD-KYC-02/08: the ledger columns are exactly the pinned set — no
+    # capture, name, number or birth-date column can sneak in.
+    cols = {row[0] for row in q(
+        "SELECT column_name FROM information_schema.columns"
+        " WHERE table_name = 'kyc_sessions'")}
+    r.check("ok_minimisation_columns", cols == {
+        "session_id", "applicant", "state", "challenge_digest",
+        "issued_at", "expires_at", "decided_at", "credential_kind",
+        "over_18", "credential_valid", "authenticity_score",
+        "liveness_score", "provider_ref"}, str(sorted(cols)))
+
+    # The member read model projects state and timestamps only; the FR-62
+    # export gains the session record.
+    rows = q("SELECT session_id, state FROM my_kyc_session()", user=k1)
+    r.check("ok_my_session", str(rows[0][0]) == k1_session
+            and rows[0][1] == "verified", str(rows))
+    exp = str(scalar("SELECT dsar_export(%s)", (k1,), user=k1))
+    r.check("ok_dsar_kyc_sessions", "kycSessions" in exp
+            and k1_session in exp, exp[:200])
+
+    # ------------------------- phase 8g: NULL-safe GUC gates (hardening) ---
+    # The batch-63 finding: a custom GUC never set in a SESSION reads NULL
+    # through current_setting(..., true), and `IF NOT (NULL) THEN` skips a
+    # refusal. The main connection cannot prove the fix — its placeholders
+    # have stuck at '' since the first moderator call — so a fresh
+    # connection (no GUC ever set) exercises the production cold-connection
+    # case exactly.
+    conn2 = psycopg.connect(srv.get_uri(), autocommit=True)
+
+    def q2(sql, params=()):
+        cur = conn2.execute(sql, params)
+        if cur.pgresult.status == pq.ExecStatus.TUPLES_OK:
+            return cur.fetchall()
+        return []
+
+    # The console helpers answer FALSE, never NULL, on a cold session.
+    rows = q2("SELECT app_moderator(), app_taxonomist(),"
+              " app_analyst(), app_venue_ops()")
+    r.check("ok_helpers_false_not_null",
+            list(rows[0]) == [False, False, False, False], str(rows))
+
+    # record_kyc_decision refuses with neither gate set — pre-fix this
+    # bypassed and would have VERIFIED a pending member with no authority.
+    cold_user = pending_user()
+    rows = q2("SELECT record_kyc_decision(%s, 'cold-probe', 'verified',"
+              " NULL)", (cold_user,))
+    r.check("ok_decision_needs_gate_cold", rows[0][0] == "forbidden",
+            str(rows))
+    r.check("ok_cold_decision_noop",
+            scalar("SELECT kyc_state FROM users WHERE user_id = %s",
+                   (cold_user,)) == "pending")
+
+    # complete_kyc_session refuses without the callback GUC, cold.
+    cold_user2 = pending_user()
+    out, cold_session = kyc_issue(cold_user2, "cold-session")
+    r.check("ok_cold_issue", out == "issued", out)
+    rows = q2("SELECT complete_kyc_session(%s, %s, 'verified', 'id_card',"
+              " true, true, 0.9::numeric, 0.9::numeric, 'openkyc:cold')",
+              (cold_session, kyc_digest("cold-session")))
+    r.check("ok_complete_needs_callback_cold", rows[0][0] == "forbidden",
+            str(rows))
+
+    # A moderator gate and a venue-ops gate refuse cold — the systemic case
+    # the NULL hole exposed across every `IF NOT app_*()` call site. Only
+    # app.user_id is set, so the probes reach the gate itself.
+    conn2.execute("SELECT set_config('app.user_id', %s, false)", (mod1,))
+    rows = q2("SELECT outcome FROM decide_onboarding_application"
+              " (%s, 'approved', NULL)", (str(uuid.uuid4()),))
+    r.check("ok_moderator_gate_cold", rows[0][0] == "forbidden", str(rows))
+    rows = q2("SELECT redeem_disclosure_grant(%s, 'cold')",
+              (str(uuid.uuid4()),))
+    r.check("ok_venue_ops_gate_cold", rows[0][0] == "forbidden", str(rows))
+    conn2.close()
+
+    # The same refusals hold on a warm connection (placeholder stuck at '').
+    out = scalar("SELECT record_kyc_decision(%s, 'warm-probe', 'verified',"
+                 " NULL)", (pending_user(),))
+    r.check("ok_decision_needs_gate_warm", out == "forbidden", out)
 
     # ------------------------- phase 9: reconciliation + guards + ledger ---
     rec = scalar("SELECT wallet_reconciliation()", (),

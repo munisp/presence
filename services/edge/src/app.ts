@@ -31,6 +31,7 @@ import { registerPresenceRoutes } from "./routes/presence.js";
 import { registerProfileRoutes } from "./routes/profile.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerOnboardingRoutes } from "./routes/onboarding.js";
+import { registerKycVerificationRoutes, registerKycWebhookRoute } from "./routes/kycVerification.js";
 import { registerTransferRoutes } from "./routes/transfers.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerWalletGovernanceRoutes } from "./routes/walletGovernance.js";
@@ -125,6 +126,11 @@ export async function buildApp(ctx: EdgeContext) {
   // HMAC signature over the canonical payload, never a user token.
   registerWalletRailRoutes(app, ctx);
 
+  // AMD-KYC-09: OpenKYC verdict webhook — outside the authed scope on
+  // purpose: the caller is the verification pipeline, authenticated by
+  // HMAC signature over the canonical payload, never a user token.
+  registerKycWebhookRoute(app, ctx);
+
   // AMD-INN-09: attestation verification oracle — outside the authed scope on
   // purpose: the caller is a third-party verifier with no account; the
   // token itself is the credential. Answers valid | expired | invalid.
@@ -212,6 +218,10 @@ export async function buildApp(ctx: EdgeContext) {
     // AMD-ONB-01..06: stakeholder onboarding — applicant surface on plain
     // RLS, the decision surface under withModerator; no value moves.
     registerOnboardingRoutes(authed, ctx);
+    // AMD-KYC-06..10: OpenKYC verification — session issue/status on
+    // plain RLS, the review worklist under withModerator; the verdict
+    // itself arrives on the unauthed HMAC webhook above.
+    registerKycVerificationRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);

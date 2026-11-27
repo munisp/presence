@@ -110,8 +110,21 @@ data:
           request-id:
             header_name: X-Request-Id
             include_in_response: true
+      # AMD-PWA-01: the member PWA, host-matched. edge-api still matches
+      # /v1/* on this host (longer prefix wins) — one origin, no CORS
+      # surface. Keep in sync with deploy/apisix/apisix.yaml.
+      - id: member-pwa
+        host: app.presence.example
+        uris: ["/*"]
+        upstream:
+          type: roundrobin
+          nodes: { "pwa.presence.svc.cluster.local:8080": 1 }
+        plugins:
+          request-id:
+            header_name: X-Request-Id
+            include_in_response: true
     ssl:
-      - snis: ["api.presence.example", "ops.presence.example"]
+      - snis: ["api.presence.example", "ops.presence.example", "app.presence.example"]
         cert: __INJECTED_FROM_SECRET__   # cert.pem/key.pem mounted from the apisix-tls secret (cert-manager issued)
         key: __INJECTED_FROM_SECRET__
     #END

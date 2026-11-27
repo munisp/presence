@@ -45,6 +45,19 @@ routes:
       request-id:
         header_name: X-Request-Id
         include_in_response: true
+  # AMD-PWA-01: the member PWA, host-matched. The edge-api route above
+  # still matches /v1/* on this host (longer prefix wins), so the member
+  # client and the API share an origin at the gateway — no CORS surface.
+  - id: member-pwa
+    host: app.presence.example
+    uris: ["/*"]
+    upstream:
+      type: roundrobin
+      nodes: { "pwa:8080": 1 }
+    plugins:
+      request-id:
+        header_name: X-Request-Id
+        include_in_response: true
 ssl:
   - snis: ["localhost"]
     cert: /usr/local/apisix/conf/tls/dev-cert.pem   # SEC-06 dev-only cert from deploy/apisix/dev-tls.sh

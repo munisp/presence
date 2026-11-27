@@ -1,0 +1,491 @@
+/* Presence member PWA — AMD-PWA-01..06 design system.
+ *
+ * Warm-earth palette (forest / peach / sage / beige / cream on warm
+ * paper), a single system grotesque stack at a fluid scale (18px base,
+ * 20px on wide screens, xs floor 12px — zero font downloads, the 2G
+ * budget), surfaces divided by hairline rules instead of nested cards,
+ * and a bottom tab bar whose active item carries the sliding bullet.
+ * Motion is transform/opacity only, ≤280ms, and honours
+ * prefers-reduced-motion. */
+
+/* Tier 1 — primitives */
+:root {
+  --p-forest: oklch(0.538 0.116 159.2);
+  --p-forest-deep: oklch(0.42 0.09 159.2);
+  --p-peach: oklch(0.789 0.084 43);
+  --p-sage: oklch(0.866 0.019 106.8);
+  --p-beige: oklch(0.81 0.034 64.3);
+  --p-ink: oklch(0.218 0 89.9);
+  --p-cream: oklch(0.902 0.041 83.1);
+  --p-paper: oklch(0.955 0.018 80);
+
+  /* Tier 2 — semantic */
+  --bg: var(--p-paper);
+  --fg: var(--p-ink);
+  --muted: color-mix(in srgb, var(--p-ink) 58%, var(--p-paper));
+  --rule: color-mix(in srgb, var(--p-ink) 16%, var(--p-paper));
+  --accent: var(--p-forest);
+  --accent-strong: var(--p-forest-deep);
+  --on-accent: var(--p-cream);
+  --selection: var(--p-cream);
+  --danger: oklch(0.5 0.19 27);
+
+  /* Tier 3 — component */
+  --surface-tone: var(--p-forest);
+  --surface-on-tone: var(--p-cream);
+  --tab-size: 44px;
+}
+
+/* Per-tab tonal shift — the surface head carries the tab's earth tone. */
+#app[data-tab="wallet"] {
+  --surface-tone: var(--p-sage);
+  --surface-on-tone: var(--p-ink);
+}
+#app[data-tab="privacy"] {
+  --surface-tone: var(--p-beige);
+  --surface-on-tone: var(--p-ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--p-ink);
+}
+
+html {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  font-size: 18px;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 20px;
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+/* Mobile-first shell; on desktop the app centres as a phone column over
+   a tonal field. */
+#app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  body {
+    background: var(--p-sage);
+  }
+  #app {
+    max-width: 480px;
+    margin-inline: auto;
+    background: var(--bg);
+    box-shadow: 0 0 0 1px var(--rule);
+  }
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  min-height: var(--tab-size);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Sign-in ---- */
+
+.signin {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px 24px calc(32px + env(safe-area-inset-bottom));
+  background: var(--p-forest);
+  color: var(--p-cream);
+}
+
+.signin-mark {
+  margin: 0;
+  font-size: 28px;
+  color: var(--p-peach);
+}
+
+.signin-title {
+  margin: 0;
+  font-size: clamp(2.4rem, 11vw, 3.4rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+.signin-copy {
+  margin: 0;
+  max-width: 30ch;
+  color: color-mix(in srgb, var(--p-cream) 88%, var(--p-forest));
+}
+
+.signin-notice {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--p-peach);
+}
+
+.signin-foot {
+  margin: 24px 0 0;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--p-cream) 62%, var(--p-forest));
+}
+
+/* ---- Buttons ---- */
+
+.cta,
+.cta-small,
+.ghost,
+.danger {
+  border: 0;
+  border-radius: 0;
+  padding: 12px 20px;
+  transition:
+    background-color 180ms ease-out,
+    color 180ms ease-out,
+    transform 120ms ease-out;
+}
+
+.cta {
+  background: var(--p-cream);
+  color: var(--p-ink);
+  font-weight: 600;
+  align-self: flex-start;
+}
+
+.cta:active {
+  transform: scale(0.98);
+}
+
+.cta-small {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  font-size: 0.85rem;
+  min-height: 44px;
+}
+
+.cta-small:active {
+  transform: scale(0.97);
+  background: var(--accent-strong);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--fg);
+  border-top: 2px solid var(--rule);
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.ghost:hover {
+  background: color-mix(in srgb, var(--p-ink) 6%, var(--bg));
+}
+
+.signin .ghost {
+  border-color: color-mix(in srgb, var(--p-cream) 40%, var(--p-forest));
+  color: var(--p-cream);
+}
+
+.danger {
+  background: var(--danger);
+  color: var(--p-cream);
+  font-weight: 600;
+}
+
+.danger:disabled {
+  background: color-mix(in srgb, var(--p-ink) 25%, var(--bg));
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* ---- Shell ---- */
+
+.shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.link-banner {
+  display: none;
+  background: var(--p-peach);
+  color: var(--p-ink);
+  padding: 8px 20px;
+}
+
+.link-banner.banner-visible {
+  display: block;
+}
+
+.banner-line {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.surface {
+  flex: 1;
+  padding-bottom: calc(var(--tab-size) + 24px + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
+}
+
+.surface-head {
+  background: var(--surface-tone);
+  color: var(--surface-on-tone);
+  padding: 28px 20px 24px;
+  transition: background-color 280ms ease-in;
+}
+
+.surface-title {
+  margin: 0;
+  font-size: clamp(1.9rem, 8vw, 2.6rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+.surface-sub {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--surface-on-tone) 82%, var(--surface-tone));
+}
+
+/* Sections are demarcated by hairline rules — no nested cards. */
+.block {
+  padding: 20px;
+  border-top: 2px solid var(--rule);
+}
+
+.block-title {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.block-copy {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.attention-line {
+  margin: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+  font-weight: 600;
+}
+
+.attention-line:first-of-type {
+  border-top: 0;
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.stale-note {
+  margin: 0;
+  padding: 6px 20px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--p-beige) 45%, var(--bg));
+}
+
+/* ---- Pairs ---- */
+
+.pair-row {
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.pair-row:first-of-type {
+  border-top: 0;
+}
+
+.pair-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.pair-meta {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.pair-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.pair-actions .ghost {
+  border: 0;
+  padding: 12px 0;
+}
+
+/* ---- Wallet ---- */
+
+.wallet-row {
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.wallet-row:first-of-type {
+  border-top: 0;
+}
+
+.wallet-amount {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-meta {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ---- Privacy ---- */
+
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.device-row:first-of-type {
+  border-top: 0;
+}
+
+.device-title {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.device-row .ghost {
+  border: 0;
+  padding: 8px 0;
+  min-height: 44px;
+}
+
+.block-danger {
+  border-top-color: color-mix(in srgb, var(--danger) 35%, var(--bg));
+}
+
+.delete-input {
+  font: inherit;
+  width: 100%;
+  border: 0;
+  border-bottom: 2px solid var(--p-ink);
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  padding: 10px 0;
+  margin-bottom: 12px;
+}
+
+.delete-input:focus-visible {
+  outline: 0;
+  border-bottom-color: var(--danger);
+}
+
+/* ---- Tab bar ---- */
+
+.tabs {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  background: var(--bg);
+  border-top: 2px solid var(--p-ink);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+
+@media (min-width: 768px) {
+  .tabs {
+    inset-inline: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 480px;
+  }
+}
+
+.tab {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: color 180ms ease-out;
+}
+
+.tab-active {
+  color: var(--fg);
+}
+
+.tab-bullet {
+  color: var(--surface-tone);
+  font-size: 10px;
+  line-height: 1;
+  transition: color 240ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#app[data-tab="home"] .tab-bullet {
+  color: var(--p-forest);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

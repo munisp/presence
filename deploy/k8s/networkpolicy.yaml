@@ -125,6 +125,35 @@ spec:
     - to: [{ podSelector: { matchLabels: { app: edge } } }]
       ports: [{ protocol: TCP, port: 4000 }]
 ---
+# AMD-PWA-01: the member PWA is reachable from APISIX only (the app host
+# route); its /v1/ proxy is an EGRESS to the edge.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pwa-from-apisix
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: pwa }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: apisix } }
+      ports: [{ protocol: TCP, port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pwa-egress-allowlist
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: pwa }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: edge } } }]
+      ports: [{ protocol: TCP, port: 4000 }]
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

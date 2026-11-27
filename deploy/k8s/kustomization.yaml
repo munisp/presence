@@ -10,6 +10,7 @@ resources:
   - match.yaml
   - edge.yaml
   - console.yaml
+  - pwa.yaml
   - apisix.yaml
   - networkpolicy.yaml
   - backup.yaml

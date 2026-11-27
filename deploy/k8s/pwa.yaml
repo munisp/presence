@@ -1,0 +1,114 @@
+# AMD-PWA-01: the member PWA (see pwa/ and docs/ux/member-pwa.md). The
+# static shell is served by the pwa image (nginx); two ConfigMaps make
+# the same image work in-cluster: one pins the environment's OIDC
+# issuer/redirect (config.json), one repoints the /v1/ proxy at the
+# cluster edge service.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pwa-config
+  namespace: presence
+data:
+  config.json: |
+    {
+      "issuer": "https://auth.presence.example/realms/consumer",
+      "clientId": "presence-web",
+      "redirectUri": "https://app.presence.example/auth/callback",
+      "scope": "openid profile",
+      "apiBase": ""
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pwa-nginx
+  namespace: presence
+data:
+  default.conf: |
+    server {
+        listen 8080;
+        server_name _;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        types {
+            application/manifest+json webmanifest;
+        }
+
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Referrer-Policy no-referrer always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://auth.presence.example; frame-ancestors 'none'; base-uri 'self'" always;
+
+        location = /sw.js {
+            add_header Cache-Control "no-cache" always;
+            try_files $uri =404;
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-cache" always;
+        }
+
+        location /icons/ {
+            add_header Cache-Control "public, max-age=604800, immutable" always;
+        }
+
+        location /dist/ {
+            add_header Cache-Control "no-cache, must-revalidate" always;
+        }
+
+        location /v1/ {
+            proxy_pass http://edge.presence.svc.cluster.local:4000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Request-Id $request_id;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pwa
+  namespace: presence
+  labels: { app: pwa }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: pwa }
+  template:
+    metadata:
+      labels: { app: pwa }
+    spec:
+      containers:
+        - name: pwa
+          image: presence/pwa:p0   # built from pwa/ (Dockerfile, nginx:1.27-alpine)
+          ports: [{ containerPort: 8080 }]
+          readinessProbe:
+            httpGet: { path: /index.html, port: 8080 }
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 250m, memory: 128Mi }
+          volumeMounts:
+            - name: pwa-config
+              mountPath: /usr/share/nginx/html/config.json
+              subPath: config.json
+            - name: pwa-nginx
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+      volumes:
+        - name: pwa-config
+          configMap: { name: pwa-config }
+        - name: pwa-nginx
+          configMap: { name: pwa-nginx }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pwa
+  namespace: presence
+spec:
+  selector: { app: pwa }
+  ports: [{ port: 8080, targetPort: 8080 }]

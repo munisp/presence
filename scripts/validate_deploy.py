@@ -1411,6 +1411,35 @@ def main() -> int:
         and "AMD-CON-06" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
         and (ROOT / "docs" / "ux" / "ops-console.md").exists(),
     )
+    check(
+        "batch-68 member PWA: zero-dep pwa package + shell/SW contract + compose/k8s/apisix/keycloak wiring",
+        (ROOT / "pwa" / "package.json").exists()
+        and '"@presence/member-pwa"' in (ROOT / "pwa" / "package.json").read_text()
+        and '"dependencies"' not in (ROOT / "pwa" / "package.json").read_text()
+        and (ROOT / "pwa" / "web" / "app.ts").exists()
+        and (ROOT / "pwa" / "test" / "memberPwa.test.ts").exists()
+        and 'PWA_SW_VERSION = "presence-member-pwa-v1"'
+        in (ROOT / "pwa" / "src" / "pwa.ts").read_text()
+        and 'VERSION = "presence-member-pwa-v1"'
+        in (ROOT / "pwa" / "public" / "sw.js").read_text()
+        and "viewport-fit=cover" in (ROOT / "pwa" / "public" / "index.html").read_text()
+        and (ROOT / "pwa" / "public" / "icons" / "icon-512.png").exists()
+        and "FROM nginx:1.27-alpine" in (ROOT / "pwa" / "Dockerfile").read_text()
+        and "proxy_pass http://edge:4000;" in (ROOT / "pwa" / "nginx.conf").read_text()
+        and "build: ../pwa" in (ROOT / "deploy" / "docker-compose.yml").read_text()
+        and '"8081:8080"' in (ROOT / "deploy" / "docker-compose.yml").read_text()
+        and (ROOT / "deploy" / "k8s" / "pwa.yaml").exists()
+        and "pwa.yaml" in (ROOT / "deploy" / "k8s" / "kustomization.yaml").read_text()
+        and "name: pwa-from-apisix" in (ROOT / "deploy" / "k8s" / "networkpolicy.yaml").read_text()
+        and "name: pwa-egress-allowlist" in (ROOT / "deploy" / "k8s" / "networkpolicy.yaml").read_text()
+        and "id: member-pwa" in (ROOT / "deploy" / "apisix" / "apisix.yaml").read_text()
+        and "id: member-pwa" in (ROOT / "deploy" / "k8s" / "apisix.yaml").read_text()
+        and "app.presence.example" in (ROOT / "deploy" / "k8s" / "apisix.yaml").read_text()
+        and '"presence-web"' in (ROOT / "deploy" / "keycloak" / "realm-consumer.json").read_text()
+        and "npm test --prefix pwa" in (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        and "AMD-PWA-06" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
+        and (ROOT / "docs" / "ux" / "member-pwa.md").exists(),
+    )
 
     print()
     if failures:

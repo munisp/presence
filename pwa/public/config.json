@@ -1,0 +1,7 @@
+{
+  "issuer": "http://localhost:8080/realms/consumer",
+  "clientId": "presence-web",
+  "redirectUri": "http://localhost:8081/auth/callback",
+  "scope": "openid profile",
+  "apiBase": ""
+}

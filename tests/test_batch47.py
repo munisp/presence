@@ -221,6 +221,7 @@ def test_ux_doc_declares_what_is_not_here():
 
 def test_traceability_counts_unchanged():
     # Batch 47 renders closed contracts — no status moves.
-    assert "| implemented | 234 |" in TRACEABILITY
+    # Batch 70 closed TR-44 (the final phase-gated requirement): 234 → 235, phase-gated 1 → 0.
+    assert "| implemented | 235 |" in TRACEABILITY
     assert "| partial | 6 |" in TRACEABILITY
     assert "| gap-p0 | 0 |" in TRACEABILITY

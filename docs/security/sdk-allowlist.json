@@ -77,10 +77,10 @@
     {
       "name": "typescript",
       "ecosystem": "npm",
-      "versionConstraint": "5.6.3",
-      "justification": "Build toolchain — pinned with the services for one compiler across the repo.",
+      "versionConstraint": "5.9.3",
+      "justification": "Build toolchain — pinned with the services for one compiler across the repo. Raised 5.6.3 -> 5.9.3 in batch 70: expo ~58's metro stack declares a peer on typescript >=5.8.0, which npm 10.9 (CI) resolved to a lockfile-breaking typescript@7; 5.9.3 satisfies the peer while staying on the TS5 line the services pin.",
       "dataAccess": "none — build-time only",
-      "approvedBy": "batch-34 client foundation PR"
+      "approvedBy": "batch-34 client foundation PR; batch-70 version raise (SEC-18 gate re-run)"
     },
     {
       "name": "@types/node",

@@ -1485,6 +1485,102 @@ def main() -> int:
         and (ROOT / "tests" / "test_batch69.py").exists(),
     )
 
+    # ---------------------------------------------------- batch 70 --------
+    map_mig_path = ROOT / "db" / "migrations" / "0040_map_bundles.sql"
+    map_mig_src = map_mig_path.read_text() if map_mig_path.exists() else ""
+    check(
+        "AMD-MAP-02 registry: bundles + append-only events, one-published index, RLS",
+        all(anchor in map_mig_src for anchor in (
+            "CREATE TABLE map_tile_bundles",
+            "CREATE TABLE map_tile_bundle_events",
+            "map_tile_bundles_one_published",
+            "CHECK (state IN ('draft', 'published', 'archived'))",
+            "ALTER TABLE map_tile_bundles ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE map_tile_bundle_events ENABLE ROW LEVEL SECURITY",
+        )),
+    )
+    check(
+        "AMD-MAP-02/05 definers: register/publish/list/manifest/estate/venues + NULL-safe venue-ops gates + monotonic publish",
+        all(anchor in map_mig_src for anchor in (
+            "CREATE OR REPLACE FUNCTION register_tile_bundle(",
+            "CREATE OR REPLACE FUNCTION publish_tile_bundle(",
+            "CREATE OR REPLACE FUNCTION active_tile_manifest()",
+            "CREATE OR REPLACE FUNCTION list_tile_bundles()",
+            "CREATE OR REPLACE FUNCTION estate_geofence_geojson()",
+            "CREATE OR REPLACE FUNCTION venues_near_cell(",
+            "'version_not_monotonic'",
+            "GRANT EXECUTE ON FUNCTION venues_near_cell(h3index, integer)"
+            " TO presence_app;",
+        ))
+        and map_mig_src.count(
+            "current_setting('app.venue_ops', true) IS DISTINCT FROM 'on'") == 4,
+    )
+    check(
+        "batch-70 migration rides both initdb mounts as 42",
+        "=db/migrations/0040_map_bundles.sql" in k8s_readme_src
+        and "/docker-entrypoint-initdb.d/42_map_bundles.sql:ro" in compose_src,
+    )
+    check(
+        "AMD-MAP-01 deterministic builder + governed Lagos basemap",
+        (ROOT / "scripts" / "build_tiles.py").exists()
+        and "--check" in (ROOT / "scripts" / "build_tiles.py").read_text()
+        and '"presence-basemap/1"'
+        in (ROOT / "maps" / "basemap" / "lagos.json").read_text()
+        and "University of Lagos"
+        in (ROOT / "maps" / "basemap" / "lagos.json").read_text(),
+    )
+    check(
+        "AMD-MAP-03/04/05 surfaces: client engine + console/pwa mirrors + edge routes + bootstrap",
+        (ROOT / "client" / "src" / "presence" / "mapSurface.ts").exists()
+        and "MAP_OFFLINE_NOTICE"
+        in (ROOT / "client" / "src" / "presence" / "mapSurface.ts").read_text()
+        and (ROOT / "console" / "src" / "mapEngine.ts").exists()
+        and (ROOT / "pwa" / "src" / "mapEngine.ts").exists()
+        and (ROOT / "services" / "edge" / "src" / "maps.ts").exists()
+        and (ROOT / "services" / "edge" / "src" / "routes" / "maps.ts").exists()
+        and "registerMapRoutes(authed, ctx);" in edge_app_src
+        and "registerMapOpsRoutes(authed, ctx);" in edge_app_src
+        and "MAPS_TILES_BASE_URL" in client_config_src
+        and "MAPS_TILES_BASE_URL" in k8s_edge_src
+        and "MAPS_TILES_BASE_URL" in compose_src
+        and "async function viewMaps("
+        in (ROOT / "console" / "web" / "app.ts").read_text()
+        and "async function renderExplore("
+        in (ROOT / "pwa" / "web" / "app.ts").read_text(),
+    )
+    check(
+        "AMD-MAP-06 static-tile tier: builder-verified image, nginx cache contract, compose/k8s/apisix/netpol wiring",
+        (ROOT / "tiles" / "Dockerfile").exists()
+        and 'Pillow==11.3.0' in (ROOT / "tiles" / "Dockerfile").read_text()
+        and "FROM nginx:1.27-alpine"
+        in (ROOT / "tiles" / "Dockerfile").read_text()
+        and "--check" in (ROOT / "tiles" / "Dockerfile").read_text()
+        and "access_log off" in (ROOT / "tiles" / "nginx.conf").read_text()
+        and "max-age=31536000, immutable"
+        in (ROOT / "tiles" / "nginx.conf").read_text()
+        and "dockerfile: tiles/Dockerfile" in compose_src
+        and '"8083:8080"' in compose_src
+        and (ROOT / "deploy" / "k8s" / "tiles.yaml").exists()
+        and "- tiles.yaml" in (ROOT / "deploy" / "k8s" / "kustomization.yaml").read_text()
+        and "/current/manifest.json" in (ROOT / "deploy" / "k8s" / "tiles.yaml").read_text()
+        and "tiles.presence.example" in (ROOT / "deploy" / "apisix" / "apisix.yaml").read_text()
+        and "tiles.presence.example" in (ROOT / "deploy" / "k8s" / "apisix.yaml").read_text()
+        and "name: tiles-from-gateways" in (K8S / "networkpolicy.yaml").read_text()
+        and "name: pwa-egress-tiles" in (K8S / "networkpolicy.yaml").read_text()
+        and "name: console-egress-tiles" in (K8S / "networkpolicy.yaml").read_text()
+        and "proxy_pass http://tiles:8080/current/;" in (ROOT / "pwa" / "nginx.conf").read_text()
+        and "proxy_pass http://tiles:8080/current/;" in (ROOT / "console" / "nginx.conf").read_text(),
+    )
+    check(
+        "batch-70 docs + tests: addendum AMD-MAP, UX contract, OpenAPI paths, pytest mirror",
+        "AMD-MAP-06" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
+        and (ROOT / "docs" / "ux" / "maps.md").exists()
+        and "/v1/maps/manifest:" in (ROOT / "docs" / "api" / "openapi.yaml").read_text()
+        and "/v1/maps/venues:" in (ROOT / "docs" / "api" / "openapi.yaml").read_text()
+        and "/v1/ops/maps/bundles:" in (ROOT / "docs" / "api" / "openapi.yaml").read_text()
+        and (ROOT / "tests" / "test_batch70.py").exists(),
+    )
+
     print()
     if failures:
         print(f"{len(failures)} check(s) FAILED")

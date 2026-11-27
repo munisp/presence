@@ -1,0 +1,39 @@
+# AMD-MAP-06: the static-tile tier (TR-44). The image renders the
+# governed basemap at BUILD time (tiles/Dockerfile — deterministic
+# builder + --check verification) and nginx serves the verified bytes;
+# there is no runtime tile server. Stateless and HPA-free by design: two
+# replicas behind the Service is the whole availability story, and the
+# immutable year-long cache headers mean a CDN in front is a config
+# change, not a code change (the cost model's TR-44 lever).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tiles
+  namespace: presence
+  labels: { app: tiles }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: tiles }
+  template:
+    metadata:
+      labels: { app: tiles }
+    spec:
+      containers:
+        - name: tiles
+          image: presence/tiles:1.0.0   # built from repo root (tiles/Dockerfile); tag = bundle version
+          ports: [{ containerPort: 8080 }]
+          readinessProbe:
+            httpGet: { path: /current/manifest.json, port: 8080 }
+          resources:
+            requests: { cpu: 10m, memory: 24Mi }
+            limits: { cpu: 200m, memory: 96Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiles
+  namespace: presence
+spec:
+  selector: { app: tiles }
+  ports: [{ port: 8080, targetPort: 8080 }]

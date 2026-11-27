@@ -343,6 +343,83 @@ select {
   flex-wrap: wrap;
 }
 
+/* AMD-MAP-04: the estate map. Tiles absolutely positioned in a clipped
+ * stage; the QA-styled geofence overlay above them; placeholders carry
+ * the basemap ground tone so a missing tile reads as map, not a hole. */
+.estate-map {
+  position: relative;
+  width: 720px;
+  max-width: 100%;
+  height: 440px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f2efe6;
+  border: 1px solid var(--line, #d8d2c0);
+  margin: 12px 0;
+}
+
+.estate-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.estate-tile-placeholder {
+  background: #e7e2d2;
+}
+
+.estate-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.estate-geofence {
+  fill: rgba(46, 125, 87, 0.18);
+  stroke: #2e7d57;
+  stroke-width: 2;
+}
+
+.estate-geofence-density {
+  fill: rgba(196, 138, 24, 0.2);
+  stroke: #c48a00;
+}
+
+.estate-geofence-conflict {
+  fill: rgba(180, 50, 40, 0.22);
+  stroke: #b43228;
+}
+
+.estate-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 16px;
+}
+
+/* AMD-MAP-04: the editor's basemap backdrop — a fixed-size preview stage
+ * under the geometry canvas; empty until the polygon has three vertices
+ * and a bundle is serving. */
+.editor-backdrop {
+  position: relative;
+  width: 640px;
+  max-width: 100%;
+  height: 300px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f2efe6;
+  border: 1px solid var(--line, #d8d2c0);
+  margin: 8px 0;
+}
+
+.editor-backdrop:empty {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

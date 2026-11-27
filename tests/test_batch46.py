@@ -198,7 +198,8 @@ def test_traceability_reclassifies_batch_46():
     assert "| BR-07 | implemented |" in rows["BR-07"]
     assert "| FR-89 | implemented |" in rows["FR-89"]
     # Batch 46: BR-07 + FR-89 client halves → implemented: 232 → 234, 8 → 6, 0 → 0.
-    assert "| implemented | 234 |" in TRACEABILITY
+    # Batch 70 closed TR-44 (the final phase-gated requirement): 234 → 235, phase-gated 1 → 0.
+    assert "| implemented | 235 |" in TRACEABILITY
     assert "| partial | 6 |" in TRACEABILITY
     assert "| client | 0 |" in TRACEABILITY
 

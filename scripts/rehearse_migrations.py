@@ -20,6 +20,15 @@ Knobs:
     REHEARSAL_BUDGET_S  total budget (default 900)
 
 The lint half (lint_forward_only) needs no database and is pinned by pytest.
+
+Stub semantics (same as scripts/rehearse_full_chain.py): the CI service
+image is vanilla Postgres, so CREATE EXTENSION lines are stripped and the
+extension surface (postgis / h3 / pgvector / pgcrypto) is replaced by the
+shared STUB_SQL + transform() layer. What this rehearsal still proves on
+every push: every migration parses and applies in order, forward-only,
+against a production-sized snapshot, with data survival, FK validation and
+RLS coverage asserted afterwards. Real-PostGIS geofence behaviour is gated
+separately by the geofence-gates job (postgis/postgis image).
 """
 
 from __future__ import annotations
@@ -140,10 +149,13 @@ def snapshot_statements(scale: float) -> list[tuple[str, str]]:
              LIMIT {messages}
         """),
         ("consent ledger", f"""
+            -- Mirrors the real write path (0030): pairs are born with
+            -- matches.state = 'DETECTED'; the ledger opens DETECTED->EXPRESSED
+            -- and continues EXPRESSED->MUTUAL (FR-29 legal transitions only).
             INSERT INTO consent_ledger (pair_id, actor, from_state, to_state)
-            SELECT pair_id, NULL, NULL, 'DETECTED' FROM matches
+            SELECT pair_id, user_lo, 'DETECTED'::consent_state, 'EXPRESSED'::consent_state FROM matches
             UNION ALL
-            SELECT pair_id, NULL, 'DETECTED', 'EXPRESSED' FROM matches
+            SELECT pair_id, user_hi, 'EXPRESSED'::consent_state, 'MUTUAL'::consent_state FROM matches
              LIMIT {ledger}
         """),
         ("reports", f"""
@@ -180,13 +192,15 @@ def main() -> int:
 
     import psycopg
 
+    from rehearse_full_chain import STUB_SQL, transform
+
     baseline, release = migrations[:-NEWEST], migrations[-NEWEST:]
     started_all = time.monotonic()
 
     def apply(conn, path: Path) -> float:
         t = time.monotonic()
         with conn.cursor() as cur:
-            cur.execute(path.read_text())
+            cur.execute(transform(path.read_text()))
         return time.monotonic() - t
 
     populated = [
@@ -195,6 +209,12 @@ def main() -> int:
     ]
 
     with psycopg.connect(url, autocommit=True) as conn:
+        # 0. Stub the extension surface (postgis/h3/vector/pgcrypto) — see
+        #    the module docstring; transform() strips the CREATE EXTENSIONs.
+        with conn.cursor() as cur:
+            for stmt in STUB_SQL:
+                cur.execute(stmt)
+
         # 1. Bring the database to the previous release.
         t0 = time.monotonic()
         for m in baseline:

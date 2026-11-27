@@ -13,6 +13,7 @@ export const CONSOLE_SECTIONS = [
   "onboarding",
   "elevation",
   "geofences",
+  "maps",
   "security-events",
 ] as const;
 
@@ -26,6 +27,7 @@ export const SECTION_TITLES: Record<ConsoleSection, string> = {
   onboarding: "Onboarding",
   elevation: "Elevation",
   geofences: "Geofences",
+  maps: "Maps",
   "security-events": "Security events",
 };
 
@@ -43,6 +45,8 @@ const SECTION_ROLES: Record<ConsoleSection, readonly string[]> = {
   onboarding: ["moderator"],
   elevation: ["moderator"],
   geofences: ["venue-ops", "moderator"],
+  // AMD-MAP-04: the estate map and the bundle registry are venue-ops.
+  maps: ["venue-ops"],
   "security-events": ["moderator", "analyst"],
 };
 

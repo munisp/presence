@@ -3942,6 +3942,29 @@ paths:
       responses:
         "200": { description: Per-venue QA rows for the whole estate. }
         "403": { description: Venue-ops role required. }
+  /v1/ops/geofences/qa/geojson:
+    get:
+      summary: Estate geofences as GeoJSON (venue-ops; AMD-MAP-04)
+      description: >-
+        The console estate map's overlay source: every active venue's
+        published geofence as a GeoJSON polygon with venue identity.
+        Operational geometry only — no personal data — but still behind
+        the venue-ops gate, so the estate view is a workforce surface by
+        construction.
+      responses:
+        "200":
+          description: Active geofenced venues, name-ordered.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    venueId: { type: string, format: uuid }
+                    label: { type: string }
+                    geofence: { type: object }
+        "403": { description: Venue-ops role required. }
   /v1/presence/bond:
     post:
       summary: Place a presence bond (SRS Addendum 001, AMD-INN-01)
@@ -5645,6 +5668,132 @@ paths:
         "409": { description: No pending verification. }
         "410": { description: Code expired. }
         "429": { description: Attempt ceiling reached. }
+  /v1/maps/manifest:
+    get:
+      summary: The serving tile bundle's manifest (SRS Addendum 001, AMD-MAP-05; TR-44)
+      description: >-
+        Discovery for the static-tile tier: which governed bundle the
+        platform serves (version, bbox, zoom range, tile count, the
+        registry-pinned tiles hash, attribution, URL template). Tiles
+        themselves are static files served by nginx (AMD-MAP-06) — this
+        route governs discovery only. {available:false} when no bundle
+        is published — clients keep their last cached manifest or stay
+        geometry-only, never broken. Cache-Control: no-cache — the
+        version inside is the client's cache key.
+      responses:
+        "200":
+          description: The serving manifest, or {available:false}.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available]
+                properties:
+                  available: { type: boolean }
+                  bundleId: { type: string, format: uuid }
+                  version: { type: string, pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+                  label: { type: string }
+                  bbox:
+                    type: object
+                    properties:
+                      west: { type: number }
+                      south: { type: number }
+                      east: { type: number }
+                      north: { type: number }
+                  minZoom: { type: integer }
+                  maxZoom: { type: integer }
+                  tileCount: { type: integer }
+                  tilesSha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+                  attribution: { type: string }
+                  urlTemplate: { type: string, example: "/tiles/{z}/{x}/{y}.png" }
+                  vectorsUrl: { type: string, example: "/tiles/vectors.json" }
+                  publishedAt: { type: string }
+  /v1/maps/venues:
+    get:
+      summary: Partner venues near the member's own cell (AMD-MAP-05)
+      description: >-
+        The explore map's read model. Two honest modes, both
+        coordinate-free (TR-15/SEC-08): the RN client passes ?cell= with
+        the resolution-9 H3 cell it computed on-device (TR-29 — the cell
+        it already publishes); the zero-dependency PWA passes NO cell
+        and the edge resolves the member's live presence server-side
+        (presence:"live"), so the lite client's cell never crosses the
+        wire. No live presence answers presence:"absent" with an empty
+        venue list — a first-class state, not an error. The projection
+        carries venue identity and the published geofence (already
+        member-visible through check-in), capped at 40, nearest first.
+        Cache-Control: private, no-store.
+      parameters:
+        - name: cell
+          in: query
+          required: false
+          schema: { type: string, pattern: "^[0-9a-f]{15}$" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 40 }
+      responses:
+        "200":
+          description: The cell used (null when absent) and the venues.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cell, presence, venues]
+                properties:
+                  cell: { type: string, nullable: true }
+                  presence: { type: string, enum: [presented, live, absent] }
+                  venues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        venueId: { type: string, format: uuid }
+                        label: { type: string }
+                        geofence: { type: object }
+                        floors: { type: array, items: { type: string } }
+        "422": { description: Malformed cell or limit. }
+  /v1/ops/maps/bundles:
+    get:
+      summary: Tile bundle registry (venue-ops; AMD-MAP-02)
+      description: >-
+        Every registered bundle, newest first, with its state
+        (draft/published/archived) and the pinned tiles hash.
+      responses:
+        "200": { description: The registry listing. }
+        "403": { description: Venue-ops role required. }
+    post:
+      summary: Register a rendered bundle as a draft (venue-ops; AMD-MAP-02)
+      description: >-
+        Attests a rendered bundle's manifest: version, bbox, zoom range,
+        tile count and the builder's tilesSha256. The draft is inert
+        until published.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "201": { description: Draft registered. }
+        "403": { description: Venue-ops role required. }
+        "409": { description: Version already registered. }
+        "422": { description: Malformed registration. }
+  /v1/ops/maps/bundles/{bundleId}/publish:
+    post:
+      summary: Publish a draft bundle (venue-ops; AMD-MAP-02)
+      description: >-
+        Version-monotonic publication: the draft must be NEWER than the
+        serving bundle; the superseded bundle is archived in the same
+        transaction. Exactly one published bundle exists at any time
+        (registry partial unique index).
+      parameters:
+        - name: bundleId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Published — the bundle now serves. }
+        "403": { description: Venue-ops role required. }
+        "404": { description: Unknown bundle. }
+        "409": { description: Not a draft, or not newer than the serving bundle. }
 components:
   parameters:
     pairId:

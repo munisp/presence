@@ -72,15 +72,31 @@ import {
   shouldReloadOnControllerChange,
   swSupported,
 } from "../src/pwa.js";
+import {
+  MAP_OFFLINE_NOTICE,
+  MAP_OUTSIDE_NOTICE,
+  TileCache,
+  clampZoom,
+  insideFootprint,
+  planTileFetch,
+  projectPolygon,
+  tileCover,
+  tilePlacement,
+  tileUrl,
+  type BundleFootprint,
+  type LonLat,
+  type MapViewport,
+} from "../src/mapEngine.js";
 
 interface PwaConfig extends OidcConfig {
   apiBase: string;
 }
 
-type Tab = "home" | "wallet" | "privacy";
+type Tab = "home" | "explore" | "wallet" | "privacy";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "home", label: "Home" },
+  { id: "explore", label: "Explore" },
   { id: "wallet", label: "Wallet" },
   { id: "privacy", label: "Privacy" },
 ];
@@ -91,6 +107,27 @@ const oidcEffects = {
     new Uint8Array(await crypto.subtle.digest("SHA-256", data as BufferSource)),
   nowMs: () => Date.now(),
 };
+
+/** AMD-MAP-05: the explore map's fetched state (per session, in memory). */
+interface MapState {
+  manifest:
+    | { available: false }
+    | (BundleFootprint & {
+        available: true;
+        version: string;
+        attribution: string;
+        urlTemplate: string;
+      })
+    | null;
+  venues: {
+    venueId: string;
+    label: string;
+    geofence: { coordinates?: number[][][] };
+  }[];
+  presence: "presented" | "live" | "absent" | null;
+  viewport: MapViewport | null;
+  loaded: boolean;
+}
 
 const state: {
   config: PwaConfig | null;
@@ -104,6 +141,7 @@ const state: {
   reloaded: boolean;
   installPrompt: { prompt(): Promise<void> } | null;
   busy: boolean;
+  map: MapState;
 } = {
   config: null,
   api: null,
@@ -116,7 +154,17 @@ const state: {
   reloaded: false,
   installPrompt: null,
   busy: false,
+  map: {
+    manifest: null,
+    venues: [],
+    presence: null,
+    viewport: null,
+    loaded: false,
+  },
 };
+
+/** AMD-MAP-05: the session tile cache — wipes on bundle version change. */
+const tileCache = new TileCache<HTMLImageElement>();
 
 const root = document.getElementById("app") as HTMLElement;
 
@@ -416,6 +464,7 @@ function renderShell(): void {
   const main = el("main", "surface");
   main.id = "surface";
   if (state.tab === "home") renderHome(main);
+  else if (state.tab === "explore") void renderExplore(main);
   else if (state.tab === "wallet") renderWallet(main);
   else renderPrivacy(main);
   shell.append(main);
@@ -564,6 +613,220 @@ function pairRow(pair: PairSummary): HTMLElement {
   }
   row.append(actions);
   return row;
+}
+
+// ------------------------------------------------------------- explore ---
+
+/**
+ * AMD-MAP-05: the explore map. The basemap is the static tile tier
+ * (TR-44); overlays are the venue geofences from /v1/maps/venues and the
+ * member's own halo — the cell the edge resolved server-side (the lite
+ * client never computes or transmits one). The fetch discipline is the
+ * pinned LINK_SURFACE_MAP contract: degraded runs cache-only silently,
+ * offline runs cache-only with the pinned notice.
+ */
+async function renderExplore(main: HTMLElement): Promise<void> {
+  const head = el("header", "surface-head");
+  head.append(el("h1", "surface-title", "Explore"));
+  main.append(head);
+
+  if (!state.api) {
+    main.append(el("p", "empty", "Sign in to see the map."));
+    return;
+  }
+
+  // First visit: fan out manifest + venues. Both tolerate failure — a
+  // map with no manifest is geometry-only, a map with no venues is
+  // still a map.
+  if (!state.map.loaded) {
+    state.map.loaded = true;
+    const section = el("p", "empty", "Loading the map…");
+    main.append(section);
+    try {
+      const manifest = (await state.api.get("/v1/maps/manifest")) as MapState["manifest"];
+      state.map.manifest = manifest;
+      if (manifest && manifest.available) {
+        // A bundle change wipes the tile cache wholesale (AMD-MAP-03).
+        tileCache.setBundleVersion(manifest.version);
+      }
+    } catch {
+      state.map.manifest = null;
+    }
+    try {
+      const venues = (await state.api.get("/v1/maps/venues")) as {
+        cell: string | null;
+        presence: MapState["presence"];
+        venues: MapState["venues"];
+      };
+      state.map.venues = Array.isArray(venues.venues) ? venues.venues : [];
+      state.map.presence = venues.presence ?? null;
+    } catch {
+      state.map.venues = [];
+      state.map.presence = null;
+    }
+    main.replaceChildren();
+    return renderExplore(main);
+  }
+
+  const manifest = state.map.manifest;
+  if (!manifest || !manifest.available) {
+    main.append(
+      el(
+        "p",
+        "empty",
+        "The map isn't available in your city yet — check back soon.",
+      ),
+    );
+    return;
+  }
+
+  // The viewport: first open centres on the bundle; pan/zoom controls
+  // move it (clamped to the bundle's zoom range).
+  if (!state.map.viewport) {
+    const b = manifest.bbox;
+    state.map.viewport = {
+      center: { lng: (b.west + b.east) / 2, lat: (b.south + b.north) / 2 },
+      zoom: 12,
+      width: 640,
+      height: 420,
+    };
+  }
+  const viewport = state.map.viewport;
+
+  if (!insideFootprint(manifest, viewport.center)) {
+    main.append(el("p", "stale-note", MAP_OUTSIDE_NOTICE));
+  }
+  if (featureGateForLink(state.link.state) === "none") {
+    main.append(el("p", "stale-note", MAP_OFFLINE_NOTICE));
+  }
+
+  const mapEl = el("div", "explore-map");
+  mapEl.setAttribute("role", "img");
+  mapEl.setAttribute(
+    "aria-label",
+    "Map of the launch market with nearby partner venues",
+  );
+
+  // Tiles: the cover at the clamped zoom, per the fetch discipline.
+  const zoom = clampZoom(manifest, viewport.zoom);
+  const planViewport = { ...viewport, zoom };
+  for (const tile of tileCover(manifest, planViewport)) {
+    const cached = tileCache.has(tile);
+    const plan = planTileFetch(state.link.state, cached);
+    const pos = tilePlacement(tile, planViewport);
+    if (plan.action === "fetch" || (plan.action === "cache-only" && cached)) {
+      const hit = tileCache.get(tile);
+      const img = hit ?? el("img", "explore-tile");
+      if (!hit) {
+        img.src = tileUrl(manifest.urlTemplate, tile);
+        img.alt = "";
+        img.width = 256;
+        img.height = 256;
+        tileCache.put(tile, img);
+      }
+      img.style.left = `${pos.left}px`;
+      img.style.top = `${pos.top}px`;
+      mapEl.append(img);
+    } else {
+      // Styled placeholder — never a broken-image hole.
+      const ph = el("div", "explore-tile explore-tile-placeholder");
+      ph.style.left = `${pos.left}px`;
+      ph.style.top = `${pos.top}px`;
+      mapEl.append(ph);
+    }
+  }
+
+  // Venue overlays: published geofences as polygons.
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("class", "explore-overlay");
+  svg.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
+  for (const venue of state.map.venues) {
+    const ring = venue.geofence?.coordinates?.[0] as
+      | Array<[number, number]>
+      | undefined;
+    if (!Array.isArray(ring) || ring.length < 3) continue;
+    const pts = projectPolygon(ring, planViewport);
+    const poly = document.createElementNS(svgNS, "polygon");
+    poly.setAttribute(
+      "points",
+      pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "),
+    );
+    poly.setAttribute("class", "explore-geofence");
+    const title = document.createElementNS(svgNS, "title");
+    title.textContent = venue.label;
+    poly.append(title);
+    svg.append(poly);
+  }
+  mapEl.append(svg);
+
+  // No halo on the lite client BY DESIGN: the member's cell boundary
+  // needs h3 (the PWA is zero-dependency) and the honest alternatives —
+  // a dot at a venue centroid, a guessed ring — would LIE about what the
+  // platform knows. The member's presence is expressed by the venue
+  // list itself (resolved from their live cell server-side) and the
+  // copy below; the RN client draws the true boundary (AMD-MAP-03).
+  main.append(mapEl);
+
+  // Pan/zoom controls — dead controls are forbidden, each moves the
+  // viewport and re-renders.
+  const controls = el("section", "explore-controls");
+  const pan = (dlng: number, dlat: number) => () => {
+    const b = manifest.bbox;
+    const next: LonLat = {
+      lng: Math.min(b.east, Math.max(b.west, viewport.center.lng + dlng)),
+      lat: Math.min(b.north, Math.max(b.south, viewport.center.lat + dlat)),
+    };
+    state.map.viewport = { ...viewport, center: next };
+    render();
+  };
+  controls.append(button("▲", "ghost", pan(0, 0.04)));
+  controls.append(button("▼", "ghost", pan(0, -0.04)));
+  controls.append(button("◀", "ghost", pan(-0.05, 0)));
+  controls.append(button("▶", "ghost", pan(0.05, 0)));
+  controls.append(
+    button("+", "ghost", () => {
+      state.map.viewport = { ...viewport, zoom: clampZoom(manifest, viewport.zoom + 1) };
+      render();
+    }),
+  );
+  controls.append(
+    button("−", "ghost", () => {
+      state.map.viewport = { ...viewport, zoom: clampZoom(manifest, viewport.zoom - 1) };
+      render();
+    }),
+  );
+  main.append(controls);
+
+  // Venue list under the map: tappable names, check-in pointer.
+  const list = el("section", "block");
+  list.append(el("h2", "block-title", "Nearby partner venues"));
+  if (state.map.presence === "absent") {
+    list.append(
+      el(
+        "p",
+        "empty",
+        "Go live from the mobile app and venues around you appear here.",
+      ),
+    );
+  } else if (state.map.venues.length === 0) {
+    list.append(el("p", "empty", "No partner venues around your cell yet."));
+  } else {
+    for (const v of state.map.venues.slice(0, 8)) {
+      list.append(el("p", "attention-line", v.label));
+    }
+    list.append(
+      el(
+        "p",
+        "stale-note",
+        "Inside a venue, checking in with its code is the stronger path.",
+      ),
+    );
+  }
+  main.append(list);
+
+  const attr = el("p", "stale-note", manifest.attribution);
+  main.append(attr);
 }
 
 function renderWallet(main: HTMLElement): void {

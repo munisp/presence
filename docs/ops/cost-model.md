@@ -27,7 +27,9 @@ Total EUR 1 400 ≤ the EUR 1 500 budget with headroom intact.
 1. Spot/interruptible nodes for the stateless tier (edge/match are HPA-driven
    and tolerate churn; the stateful set stays on-demand).
 2. Egress is the swing item: cells-not-coordinates (TR-15) already minimises
-   payload size; the next lever is CDN-backed static assets (TR-44 tiles).
+   payload size; the TR-44 static-tile tier (AMD-MAP-06) now serves map
+   imagery as immutable year-cached static assets — a CDN in front of
+   tiles.presence.example is a config change, not a code change.
 3. Observability retention tiering (traces 7 d hot / 30 d cold).
 
 ## Standing duty

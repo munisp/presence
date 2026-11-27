@@ -168,6 +168,53 @@ spec:
     - to: [{ podSelector: { matchLabels: { app: valkey } } }]
       ports: [{ protocol: TCP, port: 6379 }]
 ---
+# AMD-MAP-06: the tiles tier is reachable from APISIX (the tiles host)
+# and from the two PWAs' same-origin /tiles/ proxies. It serves static
+# files and has NO egress of its own — a map tile never calls home.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tiles-from-gateways
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: tiles }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: apisix } }
+        - podSelector: { matchLabels: { app: pwa } }
+        - podSelector: { matchLabels: { app: console } }
+      ports: [{ protocol: TCP, port: 8080 }]
+  egress: []
+---
+# AMD-MAP-06: the PWAs' /tiles/ proxies are an EGRESS to the tiles tier.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pwa-egress-tiles
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: pwa }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: tiles } } }]
+      ports: [{ protocol: TCP, port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: console-egress-tiles
+  namespace: presence
+spec:
+  podSelector:
+    matchLabels: { app: console }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: tiles } } }]
+      ports: [{ protocol: TCP, port: 8080 }]
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

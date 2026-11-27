@@ -43,6 +43,10 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_TOKEN_HMAC_SECRET_KEY } }
             - name: REALTIME_PUBLIC_WS_URL
               value: wss://rt.presence.example/connection/websocket   # per environment
+            # AMD-MAP-06: the static-tile base ships in the bootstrap
+            # config (empty = geometry-only maps, never broken).
+            - name: MAPS_TILES_BASE_URL
+              value: https://tiles.presence.example/current   # per environment
             - name: RECOVERY_HASH_KEY   # SEC-09: HMAC key for recovery-phone hashes — rotation is a rolling restart
               valueFrom: { secretKeyRef: { name: presence-secrets, key: RECOVERY_HASH_KEY } }
             - name: KEYCLOAK_ISSUER

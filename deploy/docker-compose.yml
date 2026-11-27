@@ -71,6 +71,7 @@ services:
       - ../db/migrations/0037_onboarding.sql:/docker-entrypoint-initdb.d/39_onboarding.sql:ro
       - ../db/migrations/0038_openkyc.sql:/docker-entrypoint-initdb.d/40_openkyc.sql:ro
       - ../db/migrations/0039_whatsapp.sql:/docker-entrypoint-initdb.d/41_whatsapp.sql:ro
+      - ../db/migrations/0040_map_bundles.sql:/docker-entrypoint-initdb.d/42_map_bundles.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - ../deploy/postgres/initdb/zz_backup_access.sh:/docker-entrypoint-initdb.d/zz_backup_access.sh:ro
       - pgdata:/var/lib/postgresql/data
@@ -203,6 +204,10 @@ services:
       # centrifugo is not published on the host (networkpolicy parity).
       CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: p0-dev-secret-change-me
       REALTIME_PUBLIC_WS_URL: wss://localhost:9443/connection/websocket
+      # AMD-MAP-06: the static-tile base ships in the bootstrap config
+      # (empty = geometry-only maps). Dev traffic goes through the
+      # host-matched APISIX route; the PWAs use their same-origin proxy.
+      MAPS_TILES_BASE_URL: https://localhost:9443
       JWT_SECRET: p0-dev-secret-change-me
       RECOVERY_HASH_KEY: p0-dev-recovery-key-change-me   # SEC-09 dev-only HMAC key (SEC-28)
       # AMD-KYC-09: OpenKYC verification wires (SEC-28 managed-secrets in
@@ -269,13 +274,24 @@ services:
     build: ../console
     depends_on:
       - edge
+      - tiles
     ports: ["8082:8080"]
 
   pwa:
     build: ../pwa
     depends_on:
       - edge
+      - tiles
     ports: ["8081:8080"]
+
+  # AMD-MAP-06: static-tile serving (TR-44). The image renders the
+  # governed basemap at build time and nginx serves the verified bytes —
+  # there is no runtime tile server. The console and PWA proxy /tiles/
+  # here in-network, so map imagery stays same-origin (CSP 'self').
+  tiles:
+    build: ..
+    dockerfile: tiles/Dockerfile
+    ports: ["8083:8080"]
 
 volumes:
   pgdata:

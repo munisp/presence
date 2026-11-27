@@ -213,7 +213,8 @@ test("the console api types 401 and 403 distinctly and bounds the timeout", asyn
 
 test("surfaces gate by role and refuse role-less sign-ins", () => {
   assert.deepEqual(visibleSections(["moderator"]).includes("moderation"), true);
-  assert.deepEqual(visibleSections(["venue-ops"]), ["dashboard", "geofences"]);
+  // Batch 70: the maps estate view joined the venue-ops sections (AMD-MAP-04).
+  assert.deepEqual(visibleSections(["venue-ops"]), ["dashboard", "geofences", "maps"]);
   assert.deepEqual(visibleSections(["analyst"]), ["dashboard", "security-events"]);
   assert.equal(defaultSection(["venue-ops"]), "dashboard");
   assert.equal(hasConsoleAccess(["member"]), false);

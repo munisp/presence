@@ -381,7 +381,9 @@ def test_openapi_documents_get_and_put_only():
     # 16 -> 22 -> 24 (batches 62/63 pin theirs separately). Batch 69
     # re-bounds again: the 3 WhatsApp POSTs (webhook intake, link, verify)
     # land in the same window, 24 -> 27 (batch 69 pins them separately).
-    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 27
+    # Batch 70 re-bounds again: the 2 tile-bundle POSTs (register, publish)
+    # land in the same window, 27 -> 29 (batch 70 pins them separately).
+    assert len(re.findall(r"\n    post:", OPENAPI[esc:comps])) == 29
 
 
 # ---------------------------------------------------------------- deploy ---

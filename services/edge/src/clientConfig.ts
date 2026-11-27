@@ -67,6 +67,14 @@ export interface ClientConfig {
    * POST /v1/realtime/token, never from this unauthenticated payload.
    */
   realtime: { wsUrl: string };
+  /**
+   * AMD-MAP-06: the static-tile tier's public base URL (TR-44). Empty
+   * string means no tile tier is deployed — the map surfaces stay
+   * geometry-only (geofences, halos), never broken. The bundle VERSION
+   * and URL template come from the authed GET /v1/maps/manifest; this
+   * block carries only the host the manifest's paths resolve against.
+   */
+  maps: { tilesBaseUrl: string };
 }
 
 export interface ClientConfigEnv extends VersionEnv {
@@ -78,6 +86,8 @@ export interface ClientConfigEnv extends VersionEnv {
   KEYCLOAK_ISSUER?: string | undefined;
   /** AMD-CRT-04: public Centrifugo websocket URL; empty disables realtime. */
   REALTIME_PUBLIC_WS_URL?: string | undefined;
+  /** AMD-MAP-06: public static-tile base URL; empty keeps maps geometry-only. */
+  MAPS_TILES_BASE_URL?: string | undefined;
 }
 
 /** Resolve the live config from the environment (read per request). */
@@ -99,6 +109,7 @@ export function resolveClientConfig(env: ClientConfigEnv = process.env): ClientC
     api: { version: API_VERSION, minClientVersion: resolveMinClientVersion(env) },
     auth: { issuer, clientId },
     realtime: { wsUrl: (env.REALTIME_PUBLIC_WS_URL ?? "").trim() },
+    maps: { tilesBaseUrl: (env.MAPS_TILES_BASE_URL ?? "").trim() },
   };
 }
 
@@ -143,7 +154,7 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
         response: {
           200: {
             type: "object",
-            required: ["configVersion", "pinning", "api", "auth", "realtime"],
+            required: ["configVersion", "pinning", "api", "auth", "realtime", "maps"],
             properties: {
               configVersion: { type: "integer" },
               pinning: {
@@ -175,6 +186,13 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
                 required: ["wsUrl"],
                 properties: {
                   wsUrl: { type: "string" },
+                },
+              },
+              maps: {
+                type: "object",
+                required: ["tilesBaseUrl"],
+                properties: {
+                  tilesBaseUrl: { type: "string" },
                 },
               },
             },

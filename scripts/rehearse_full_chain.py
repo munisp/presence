@@ -23,6 +23,14 @@ before the chain is applied — the stubs, named here as the addendum requires:
   * ST_* over text: ST_IsValid = true, ST_NPoints = 100, ST_Area = 0,
     ST_Segmentize = identity, ST_Intersection = identity,
     ST_Intersects = false.
+  * AMD-MAP (0040): h3_is_valid_cell = the 15-hex format check;
+    h3_grid_disk = the centre cell only; h3_latlng_to_cell = the constant
+    rehearsal cell, so venues_near_cell's match/no-match cases are
+    exercised by cell choice; h3_cell_to_latlng / ST_Centroid /
+    ST_AsGeoJSON = identity (fixtures store GeoJSON text, so the ::jsonb
+    casts in the definers see real GeoJSON); ST_Distance = geofence text
+    length — deterministic and distinct per fixture, so nearest-first
+    ordering is assertable.
 
 None of the stubs weaken the escrow checks: the rehearsal asserts outcomes,
 states, holds, balances, and the four-eyes gate, none of which touch
@@ -71,6 +79,22 @@ STUB_SQL = [
        LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$""",
     """CREATE FUNCTION ST_Intersects(text, text) RETURNS boolean
        LANGUAGE sql IMMUTABLE AS $$ SELECT false $$""",
+    # AMD-MAP (0040) — see the module docstring for the stub semantics.
+    """CREATE FUNCTION h3_is_valid_cell(h3index) RETURNS boolean
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1::text ~ '^[0-9a-f]{15}$' $$""",
+    """CREATE FUNCTION h3_grid_disk(h3index, integer) RETURNS SETOF h3index
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$""",
+    """CREATE FUNCTION h3_latlng_to_cell(text, integer) RETURNS h3index
+       LANGUAGE sql IMMUTABLE AS $$ SELECT '8928342e20fffff'::h3index $$""",
+    """CREATE FUNCTION h3_cell_to_latlng(h3index) RETURNS text
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1::text $$""",
+    """CREATE FUNCTION ST_AsGeoJSON(text) RETURNS text
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$""",
+    """CREATE FUNCTION ST_Centroid(text) RETURNS text
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$""",
+    """CREATE FUNCTION ST_Distance(text, text) RETURNS double precision
+       LANGUAGE sql IMMUTABLE AS $$
+       SELECT char_length($1)::double precision $$""",
 ]
 
 
@@ -1626,6 +1650,239 @@ def main() -> int:
     exp = str(scalar("SELECT dsar_export(%s)", (wa,), user=wa))
     r.check("wa_dsar_block", "whatsapp" in exp and wa_phone in exp
             and "stopped_inbound" in exp, exp[:200])
+
+    # ------------------------- phase 8i: next-gen maps (AMD-MAP) ----------
+    # TR-44 / AMD-MAP-02/05 on the real definer chain: the venue-ops-gated
+    # register, the version-monotonic publish with the supersede pair, the
+    # member-facing manifest read, and the venues-near-cell read model over
+    # the stubbed h3 surface (the stub disk is the centre cell only and
+    # every centroid hashes to the constant rehearsal cell, so match and
+    # no-match are exercised by cell choice — see STUB_SQL). Then the
+    # phase-8g discipline: cold-connection probes on every gate.
+    map_op = mkuser()
+
+    def tiles_hash(tag: str) -> str:
+        return hashlib.sha256(
+            f"presence-rehearsal-tiles-{tag}".encode()).hexdigest()
+
+    lagos_bbox = json.dumps({"type": "Polygon", "coordinates": [[
+        [3.20, 6.38], [3.70, 6.38], [3.70, 6.66],
+        [3.20, 6.66], [3.20, 6.38]]]})
+
+    # Nothing published yet: the member read is NULL (clients keep their
+    # last cached manifest — the AMD-MAP-03 cache contract).
+    r.check("map_manifest_empty_initially",
+            scalar("SELECT active_tile_manifest()") is None)
+
+    bid1 = str(scalar(
+        "SELECT register_tile_bundle(%s, %s, %s, 10, 14, 465, %s, %s)",
+        ("1.0.0", "Lagos launch basemap", lagos_bbox, tiles_hash("1.0.0"),
+         "Presence cartography"), user=map_op, venue_ops="on"))
+    r.check("map_register_returns_id", bid1 is not None)
+    r.check("map_register_state_draft",
+            scalar("SELECT state FROM map_tile_bundles WHERE bundle_id = %s",
+                   (bid1,)) == "draft")
+    r.check("map_registered_event",
+            scalar("SELECT event FROM map_tile_bundle_events"
+                   " WHERE bundle_id = %s", (bid1,)) == "registered")
+    r.check("map_draft_not_serving",
+            scalar("SELECT active_tile_manifest()") is None)
+
+    out = scalar("SELECT publish_tile_bundle(%s)", (bid1,),
+                 user=map_op, venue_ops="on")
+    r.check("map_publish", out == "published", out)
+    man = scalar("SELECT active_tile_manifest()")
+    r.check("map_manifest_version",
+            man is not None and man["version"] == "1.0.0", str(man)[:300])
+    r.check("map_manifest_shape",
+            man["urlTemplate"] == "/tiles/{z}/{x}/{y}.png"
+            and man["vectorsUrl"] == "/tiles/vectors.json"
+            and man["minZoom"] == 10 and man["maxZoom"] == 14
+            and man["tileCount"] == 465
+            and man["tilesSha256"] == tiles_hash("1.0.0")
+            and man["publishedAt"] is not None, str(man)[:300])
+    r.check("map_manifest_bbox_geojson",
+            man["bbox"]["type"] == "Polygon"
+            and man["bbox"]["coordinates"][0][0] == [3.2, 6.38],
+            str(man["bbox"])[:200])
+
+    # The supersede: publishing 1.1.0 archives 1.0.0 in the same
+    # transaction, with the event pair on both sides.
+    bid2 = str(scalar(
+        "SELECT register_tile_bundle(%s, %s, %s, 10, 14, 465, %s, %s)",
+        ("1.1.0", "Lagos basemap refresh", lagos_bbox, tiles_hash("1.1.0"),
+         "Presence cartography"), user=map_op, venue_ops="on"))
+    out = scalar("SELECT publish_tile_bundle(%s)", (bid2,),
+                 user=map_op, venue_ops="on")
+    r.check("map_publish_supersede", out == "published", out)
+    r.check("map_old_archived",
+            scalar("SELECT state = 'archived' AND archived_at IS NOT NULL"
+                   " FROM map_tile_bundles WHERE bundle_id = %s", (bid1,))
+            is True)
+    names = [row[0] for row in q(
+        "SELECT event FROM map_tile_bundle_events WHERE bundle_id = %s"
+        " ORDER BY event_id", (bid1,))]
+    r.check("map_superseded_event_order",
+            names == ["registered", "published", "superseded"], str(names))
+    r.check("map_v2_published_event",
+            scalar("SELECT detail->>'supersedes' FROM map_tile_bundle_events"
+                   " WHERE bundle_id = %s AND event = 'published'", (bid2,))
+            == "1.0.0")
+    man = scalar("SELECT active_tile_manifest()")
+    r.check("map_manifest_after_supersede", man["version"] == "1.1.0",
+            str(man)[:200])
+
+    # Version-monotonic: a stale render can never displace a newer serving
+    # bundle, and the refusal leaves both sides untouched.
+    bid0 = str(scalar(
+        "SELECT register_tile_bundle(%s, %s, %s, 10, 14, 465, %s, %s)",
+        ("1.0.9", "Stale render", lagos_bbox, tiles_hash("1.0.9"),
+         "Presence cartography"), user=map_op, venue_ops="on"))
+    r.check("map_register_stale", len(bid0) == 36)
+    out = scalar("SELECT publish_tile_bundle(%s)", (bid0,),
+                 user=map_op, venue_ops="on")
+    r.check("map_publish_not_monotonic", out == "version_not_monotonic", out)
+    out = scalar("SELECT publish_tile_bundle(%s)", (bid0,),
+                 user=map_op, venue_ops="on")
+    r.check("map_publish_not_monotonic_retry",
+            out == "version_not_monotonic", out)
+    r.check("map_stale_stays_draft",
+            scalar("SELECT state FROM map_tile_bundles WHERE bundle_id = %s",
+                   (bid0,)) == "draft")
+    r.check("map_serving_unchanged",
+            scalar("SELECT active_tile_manifest()->>'version'") == "1.1.0")
+    out = scalar("SELECT publish_tile_bundle(%s)", (bid1,),
+                 user=map_op, venue_ops="on")
+    r.check("map_publish_archived_refused", out == "not_draft", out)
+    out = scalar("SELECT publish_tile_bundle(%s)", (str(uuid.uuid4()),),
+                 user=map_op, venue_ops="on")
+    r.check("map_publish_unknown", out == "unknown", out)
+
+    bundles = scalar("SELECT list_tile_bundles()", (),
+                     user=map_op, venue_ops="on")
+    r.check("map_list_bundles",
+            {b["version"]: b["state"] for b in bundles}
+            == {"1.0.0": "archived", "1.1.0": "published",
+                "1.0.9": "draft"}, str(bundles)[:300])
+
+    # The venues-near-cell read model. The 8e venue is offboarded (the
+    # venues_sync_active trigger dropped its active flag), so exactly the
+    # two live fixtures below match. Geofences are GeoJSON text (the
+    # ST_AsGeoJSON stub is identity); the shorter polygon is the nearer one
+    # under the length-as-distance stub.
+    roof_cell = "8928342e20fffff"
+    geo_a = json.dumps({"type": "Polygon", "coordinates": [[
+        [3.38, 6.50], [3.40, 6.50], [3.40, 6.52],
+        [3.38, 6.52], [3.38, 6.50]]]})
+    geo_b = json.dumps({"type": "Polygon", "coordinates": [[
+        [3.3000, 6.4400], [3.3600, 6.4400], [3.3600, 6.4700],
+        [3.3300, 6.4900], [3.3000, 6.4700], [3.3000, 6.4400]]]})
+    r.check("map_fixture_lengths_differ", len(geo_a) < len(geo_b))
+    va, vb = str(uuid.uuid4()), str(uuid.uuid4())
+    q("INSERT INTO venues (venue_id, name, geofence, partner_status)"
+      " VALUES (%s, 'Rehearsal Rooftop', %s, 'active')", (va, geo_a))
+    q("INSERT INTO venues (venue_id, name, geofence, partner_status)"
+      " VALUES (%s, 'Rehearsal Garden Terrace', %s, 'active')", (vb, geo_b))
+    q("INSERT INTO venue_floors (venue_id, floor_id, label)"
+      " VALUES (%s, 'G', 'Ground'), (%s, 'L1', 'Level 1')", (va, va))
+    q("INSERT INTO venues (name, geofence, partner_status)"
+      " VALUES ('Rehearsal Shuttered', %s, 'suspended')", (geo_a,))
+    q("INSERT INTO venues (name, partner_status)"
+      " VALUES ('Rehearsal Unfenced', 'active')")
+    r.check("map_fixture_active_flags",
+            scalar("SELECT count(*) FROM venues WHERE active") == 3)
+
+    near = scalar("SELECT venues_near_cell(%s::h3index, 40)", (roof_cell,))
+    r.check("map_near_count", len(near) == 2, str(near)[:300])
+    r.check("map_near_nearest_first",
+            [v["label"] for v in near]
+            == ["Rehearsal Rooftop", "Rehearsal Garden Terrace"],
+            str(near)[:300])
+    r.check("map_near_floors", near[0]["floors"] == ["G", "L1"],
+            str(near[0])[:200])
+    r.check("map_near_floorless_null", near[1]["floors"] is None,
+            str(near[1])[:200])
+    r.check("map_near_payload",
+            near[0]["venueId"] == va
+            and near[0]["geofence"]["type"] == "Polygon",
+            str(near[0])[:200])
+    r.check("map_near_cap_low",
+            len(scalar("SELECT venues_near_cell(%s::h3index, 1)",
+                       (roof_cell,))) == 1)
+    r.check("map_near_cap_high",
+            len(scalar("SELECT venues_near_cell(%s::h3index, 999)",
+                       (roof_cell,))) == 2)
+    r.check("map_near_null_limit",
+            len(scalar("SELECT venues_near_cell(%s::h3index, NULL)",
+                       (roof_cell,))) == 2)
+    r.check("map_near_other_cell_empty",
+            scalar("SELECT venues_near_cell('8928342e21fffff'::h3index, 40)")
+            == [])
+    r.check("map_near_invalid_cell_empty",
+            scalar("SELECT venues_near_cell('bogus'::h3index, 40)") == [])
+    r.check("map_near_null_cell_empty",
+            scalar("SELECT venues_near_cell(NULL::h3index, 40)") == [])
+
+    estate = scalar("SELECT estate_geofence_geojson()", (),
+                    user=map_op, venue_ops="on")
+    r.check("map_estate_geojson",
+            {e["label"] for e in estate}
+            == {"Rehearsal Rooftop", "Rehearsal Garden Terrace"},
+            str(estate)[:300])
+    r.check("map_estate_payload",
+            all(e["geofence"]["type"] == "Polygon" and e["venueId"]
+                for e in estate), str(estate)[:200])
+
+    # Cold-connection probes (the phase-8g discipline): a fresh connection
+    # with NO GUC ever set must be refused by every venue-ops gate — these
+    # definers RAISE (42501), unlike the outcome-returning helpers — while
+    # the member-facing reads work with no gate at all.
+    conn4 = psycopg.connect(srv.get_uri(), autocommit=True)
+
+    def q4(sql, params=()):
+        cur = conn4.execute(sql, params)
+        if cur.pgresult.status == pq.ExecStatus.TUPLES_OK:
+            return cur.fetchall()
+        return []
+
+    cold_gated = (
+        ("map_register_needs_ops_cold",
+         "SELECT register_tile_bundle('9.9.9', 'cold', 'cold-bbox', 10, 14,"
+         " 1, '" + "a" * 64 + "', 'cold')"),
+        ("map_publish_needs_ops_cold",
+         f"SELECT publish_tile_bundle('{bid2}')"),
+        ("map_list_needs_ops_cold", "SELECT list_tile_bundles()"),
+        ("map_estate_needs_ops_cold", "SELECT estate_geofence_geojson()"),
+    )
+    for probe, sql in cold_gated:
+        try:
+            q4(sql)
+            r.check(probe, False, "no exception")
+        except Exception as exc:  # noqa: BLE001 — the gate MUST raise
+            r.check(probe, "venue-ops gate required" in str(exc),
+                    str(exc)[:200])
+    rows = q4("SELECT venues_near_cell(%s::h3index, 40)", (roof_cell,))
+    r.check("map_near_needs_no_gate_cold", len(rows[0][0]) == 2,
+            str(rows)[:200])
+    rows = q4("SELECT active_tile_manifest()")
+    r.check("map_manifest_needs_no_gate_cold",
+            rows[0][0]["version"] == "1.1.0", str(rows)[:200])
+    conn4.close()
+
+    # The warm connection (venue-ops placeholder stuck at '') refuses too.
+    try:
+        q("SELECT list_tile_bundles()", (), user=map_op)
+        r.check("map_list_needs_ops_warm", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the gate MUST raise
+        r.check("map_list_needs_ops_warm",
+                "venue-ops gate required" in str(exc), str(exc)[:200])
+    try:
+        q("SELECT register_tile_bundle('8.8.8', 'warm', 'warm-bbox', 10, 14,"
+          " 1, %s, 'warm')", ("b" * 64,), user=map_op)
+        r.check("map_register_needs_ops_warm", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the gate MUST raise
+        r.check("map_register_needs_ops_warm",
+                "venue-ops gate required" in str(exc), str(exc)[:200])
 
     # ------------------------- phase 9: reconciliation + guards + ledger ---
     rec = scalar("SELECT wallet_reconciliation()", (),

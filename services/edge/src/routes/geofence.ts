@@ -286,4 +286,17 @@ export function registerGeofenceRoutes(app: FastifyInstance, ctx: EdgeContext): 
       });
     },
   );
+
+  // AMD-MAP-04: the estate map's geometries — every published venue
+  // geofence as GeoJSON, venue-ops gated (the definer enforces it).
+  app.get(
+    "/v1/ops/geofences/qa/geojson",
+    { preHandler: requireVenueOps },
+    async (_req, reply) => {
+      const r = await withVenueOps(ctx.pg, (c) =>
+        c.query("SELECT estate_geofence_geojson() AS venues"),
+      );
+      return reply.send({ venues: r.rows[0]?.venues ?? [] });
+    },
+  );
 }

@@ -209,7 +209,8 @@ def test_client_config_carries_the_auth_block() -> None:
     assert 'auth: { issuer, clientId },' in EDGE_CLIENT_CONFIG
     # The route schema requires the block.
     # Batch 66 (AMD-CRT-04): the realtime block joined the schema.
-    assert 'required: ["configVersion", "pinning", "api", "auth", "realtime"]' in EDGE_CLIENT_CONFIG
+    # Batch 70 (AMD-MAP-05): the maps block (tilesBaseUrl) joined it.
+    assert 'required: ["configVersion", "pinning", "api", "auth", "realtime", "maps"]' in EDGE_CLIENT_CONFIG
 
 
 def test_client_config_tests_pin_the_auth_block() -> None:
@@ -267,6 +268,7 @@ def test_traceability_reclassifies_fr01() -> None:
     # Batch 44: NFR-27 + NFR-28 client → implemented: 229 → 231, 8 → 8, 3 → 1.
     # Batch 45: TECH-08 client → implemented: 231 → 232, 8 → 8, 1 → 0.
     # Batch 46: BR-07 + FR-89 client halves → implemented: 232 → 234, 8 → 6, 0 → 0.
-    assert counts["implemented"] == 234
+    # Batch 70 closed TR-44 (the final phase-gated requirement): 234 → 235, phase-gated 1 → 0.
+    assert counts["implemented"] == 235
     assert counts["partial"] == 6
     assert counts["client"] == 0

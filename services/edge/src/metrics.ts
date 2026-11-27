@@ -255,3 +255,13 @@ export const attestationVerifyResults = () =>
     "Attestation verification verdicts",
     ["result"],
   );
+
+// AMD-MAP-05: map discovery traffic — manifest reads (empty = unpublished
+// bundle, an ops-visible state), venue lookups (rejected = bad cell shape)
+// and the venue-ops registry verbs.
+export const mapQueries = () =>
+  metrics.counter(
+    "presence_map_queries_total",
+    "Map manifest, venues and registry queries",
+    ["route", "result"],
+  );

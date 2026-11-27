@@ -58,7 +58,7 @@ def test_console_package_is_zero_runtime_dependency():
     # nothing to admit for this package
     assert "dependencies" not in pkg
     assert set(pkg["devDependencies"]) == {"@types/node", "typescript"}
-    assert pkg["scripts"]["test"] == "npm run build && node --test dist/test/"
+    assert pkg["scripts"]["test"] == "npm run build && node --test dist/test/*.test.js"
     assert (CONSOLE / "tsconfig.json").exists()
     assert (CONSOLE / "tsconfig.build.json").exists()
     assert (CONSOLE / "test" / "opsConsole.test.ts").exists()

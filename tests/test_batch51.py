@@ -202,9 +202,10 @@ def test_traceability_artifacts_added_counts_unchanged():
         row = next(l for l in TRACEABILITY.splitlines() if l.startswith(f"| {rid} |"))
         assert "| external-evidence |" in row, rid
         assert "backup" in row or "backup-restore" in row, rid
-    assert "| implemented | 234 |" in TRACEABILITY
+    # Batch 70 closed TR-44 (the final phase-gated requirement): 234 → 235, phase-gated 1 → 0.
+    assert "| implemented | 235 |" in TRACEABILITY
     assert "| partial | 6 |" in TRACEABILITY
     assert "| gap-p0 | 0 |" in TRACEABILITY
-    assert "| phase-gated | 1 |" in TRACEABILITY
+    assert "| phase-gated | 0 |" in TRACEABILITY
     assert "| external-evidence | 29 |" in TRACEABILITY
     assert "Total requirements: **306**" in TRACEABILITY

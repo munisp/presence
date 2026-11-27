@@ -482,6 +482,58 @@ button {
   color: var(--p-forest);
 }
 
+/* AMD-MAP-05: the explore map. Tiles are absolutely positioned inside a
+ * clipped stage; the SVG overlay sits above them; geofences stroke in
+ * the surface tone; placeholders carry the basemap's flat ground tone so
+ * a never-cached tile reads as map, not as a hole. */
+.explore-map {
+  position: relative;
+  width: 640px;
+  max-width: 100%;
+  height: 420px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f2efe6;
+  margin: 8px 0;
+}
+
+.explore-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.explore-tile-placeholder {
+  background: #e7e2d2;
+}
+
+.explore-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.explore-geofence {
+  fill: rgba(61, 90, 128, 0.16);
+  stroke: #3d5a80;
+  stroke-width: 2;
+}
+
+.explore-controls {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.explore-controls button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -17,6 +17,9 @@ test("defaults: pinning disabled, version 1, API posture at floor 1, no auth iss
     auth: { issuer: "", clientId: "presence-app" },
     // AMD-CRT-04: no realtime tier configured by default — fail closed.
     realtime: { wsUrl: "" },
+    // AMD-MAP-06: no tile tier configured by default — maps stay
+    // geometry-only, never broken.
+    maps: { tilesBaseUrl: "" },
   });
 });
 
@@ -83,12 +86,14 @@ test("GET /v1/client/config answers without any credentials", async () => {
   const prevIssuer = process.env.KEYCLOAK_PUBLIC_ISSUER_URL;
   const prevClientId = process.env.KEYCLOAK_CLIENT_ID;
   const prevRealtime = process.env.REALTIME_PUBLIC_WS_URL;
+  const prevMaps = process.env.MAPS_TILES_BASE_URL;
   try {
     process.env.CLIENT_TLS_PINS = "pinX,pinY";
     process.env.CLIENT_CONFIG_VERSION = "42";
     process.env.CLIENT_MIN_VERSION = "2";
     process.env.KEYCLOAK_PUBLIC_ISSUER_URL = "https://auth.example/realms/consumer";
     process.env.REALTIME_PUBLIC_WS_URL = "wss://rt.example/connection/websocket";
+    process.env.MAPS_TILES_BASE_URL = "https://tiles.presence.example/current";
     delete process.env.KEYCLOAK_CLIENT_ID;
     const res = await app.inject({ method: "GET", url: "/v1/client/config" });
     assert.equal(res.statusCode, 200);
@@ -99,6 +104,8 @@ test("GET /v1/client/config answers without any credentials", async () => {
       auth: { issuer: "https://auth.example/realms/consumer", clientId: "presence-app" },
       // AMD-CRT-04: the public websocket URL ships in the bootstrap.
       realtime: { wsUrl: "wss://rt.example/connection/websocket" },
+      // AMD-MAP-06: the static-tile base ships alongside it (TR-44).
+      maps: { tilesBaseUrl: "https://tiles.presence.example/current" },
     });
   } finally {
     if (prevPins === undefined) delete process.env.CLIENT_TLS_PINS;
@@ -113,6 +120,8 @@ test("GET /v1/client/config answers without any credentials", async () => {
     else process.env.KEYCLOAK_CLIENT_ID = prevClientId;
     if (prevRealtime === undefined) delete process.env.REALTIME_PUBLIC_WS_URL;
     else process.env.REALTIME_PUBLIC_WS_URL = prevRealtime;
+    if (prevMaps === undefined) delete process.env.MAPS_TILES_BASE_URL;
+    else process.env.MAPS_TILES_BASE_URL = prevMaps;
     await app.close();
   }
 });

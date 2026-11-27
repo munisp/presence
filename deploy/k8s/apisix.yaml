@@ -123,8 +123,21 @@ data:
           request-id:
             header_name: X-Request-Id
             include_in_response: true
+      # AMD-MAP-06: static-tile serving (TR-44), host-matched. nginx
+      # upstream; immutable caching lives in the tiles service itself.
+      # Keep in sync with deploy/apisix/apisix.yaml.
+      - id: static-tiles
+        host: tiles.presence.example
+        uris: ["/*"]
+        upstream:
+          type: roundrobin
+          nodes: { "tiles.presence.svc.cluster.local:8080": 1 }
+        plugins:
+          request-id:
+            header_name: X-Request-Id
+            include_in_response: true
     ssl:
-      - snis: ["api.presence.example", "ops.presence.example", "app.presence.example"]
+      - snis: ["api.presence.example", "ops.presence.example", "app.presence.example", "tiles.presence.example"]
         cert: __INJECTED_FROM_SECRET__   # cert.pem/key.pem mounted from the apisix-tls secret (cert-manager issued)
         key: __INJECTED_FROM_SECRET__
     #END

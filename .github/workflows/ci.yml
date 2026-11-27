@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -q pytest pyyaml jsonschema -r analytics/requirements.txt
+      - run: pip install -q pytest pyyaml jsonschema openpyxl -r analytics/requirements.txt
       - run: python -m pytest tests/ -q
 
   edge:
@@ -97,10 +97,12 @@ jobs:
         run: npm audit --prefix services/match --audit-level=high
       - name: Licence policy (SEC-25)
         run: |
-          ALLOWED="MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;0BSD;CC0-1.0;Python-2.0;Unlicense"
+          ALLOWED="MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;0BSD;CC0-1.0;Python-2.0;Unlicense;BlueOak-1.0.0"
           npm install --prefix services/edge --no-audit --no-fund
-          npx --yes license-checker --production --onlyAllow "$ALLOWED" --summary --start services/edge
-          npx --yes license-checker --production --onlyAllow "$ALLOWED" --summary --start services/match
+          # --excludePrivatePackages: the first-party @presence/* packages are
+          # private and carry no OSS licence; the policy gates third-party deps.
+          npx --yes license-checker --production --excludePrivatePackages true --onlyAllow "$ALLOWED" --summary --start services/edge
+          npx --yes license-checker --production --excludePrivatePackages true --onlyAllow "$ALLOWED" --summary --start services/match
 
   # SEC-18: third-party SDK allowlist — fail-closed over the client
   # dependency manifests (client/).

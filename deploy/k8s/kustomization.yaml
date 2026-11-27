@@ -11,6 +11,7 @@ resources:
   - edge.yaml
   - console.yaml
   - pwa.yaml
+  - tiles.yaml
   - apisix.yaml
   - networkpolicy.yaml
   - backup.yaml

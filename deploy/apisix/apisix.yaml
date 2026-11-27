@@ -58,6 +58,21 @@ routes:
       request-id:
         header_name: X-Request-Id
         include_in_response: true
+  # AMD-MAP-06: static-tile serving (TR-44), host-matched for direct
+  # clients (the RN client fetches tiles.cross-origin-free through the
+  # PWA proxies; this host serves native/standalone traffic). nginx
+  # upstream — immutable year-long caching lives in the tiles service's
+  # own config, so the gateway adds only the request id.
+  - id: static-tiles
+    host: tiles.presence.example
+    uris: ["/*"]
+    upstream:
+      type: roundrobin
+      nodes: { "tiles:8080": 1 }
+    plugins:
+      request-id:
+        header_name: X-Request-Id
+        include_in_response: true
 ssl:
   - snis: ["localhost"]
     cert: /usr/local/apisix/conf/tls/dev-cert.pem   # SEC-06 dev-only cert from deploy/apisix/dev-tls.sh

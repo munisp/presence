@@ -138,10 +138,11 @@ def test_tr41_console_auth_pattern() -> None:
     assert 'await requireWorkforceRole(req, reply, "venue-ops")' in AUTH
     assert 'withGuc(pool, "app.venue_ops", fn)' in AUTH
     assert '"venue-ops"' in REALM
-    # Every route is gated (8: authoring workflow ×6 + TECH-24 QA ×2).
-    assert ROUTE.count("preHandler: requireVenueOps") == 8
+    # Every route is gated (9: authoring workflow ×6 + TECH-24 QA ×2 +
+    # AMD-MAP-04 estate GeoJSON ×1, batch 70).
+    assert ROUTE.count("preHandler: requireVenueOps") == 9
     # Every DB touch runs under the GUC.
-    assert ROUTE.count("withVenueOps(ctx.pg") == 8
+    assert ROUTE.count("withVenueOps(ctx.pg") == 9
 
 
 def test_tr41_four_eyes_in_the_edge_transitions() -> None:

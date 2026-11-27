@@ -70,7 +70,7 @@ def test_platform_floors_and_permissions() -> None:
 
 def test_rn_surface_typechecks_and_tests_like_the_services() -> None:
     assert PKG["scripts"]["typecheck"] == "tsc --noEmit -p tsconfig.json"
-    assert PKG["scripts"]["test"] == "npm run build && node --test dist/test/"
+    assert PKG["scripts"]["test"] == "npm run build && node --test dist/test/*.test.js"
     # The build config compiles only the framework-free modules — the RN
     # surface is typechecked, never executed under node.
     build = json.loads((CLIENT / "tsconfig.build.json").read_text())

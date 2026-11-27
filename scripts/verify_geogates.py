@@ -38,10 +38,14 @@ ships:
                     symmetric overlap conflicts
 
 Only the non-spatial extension surface is degraded: vector(n) -> text, the
-taxonomy HNSW index -> btree, and the h3index domain plus the only two h3
-functions the chain calls (h3_cell_to_parent identity, h3_get_resolution =
-9). CREATE EXTENSION lines are stripped — the gate pre-creates postgis and
-pgcrypto itself. geography/geometry and every ST_* predicate are REAL.
+taxonomy HNSW index -> btree, and the h3index domain plus the h3 surface
+the chain calls (h3_cell_to_parent identity, h3_get_resolution = 9, and
+the 0040 map-bundle reads: h3_is_valid_cell format check, h3_grid_disk
+centre-only, h3_latlng_to_cell constant rehearsal cell, h3_cell_to_latlng
+identity — the h3-pg extension is not in the postgis CI image, and this
+gate asserts geofence behaviour, never h3 geometry). CREATE EXTENSION
+lines are stripped — the gate pre-creates postgis and pgcrypto itself.
+geography/geometry and every ST_* predicate are REAL.
 
 Usage (CI — the geofence-gates job in .github/workflows/ci.yml):
 
@@ -70,9 +74,10 @@ SCRATCH_DB = "presence_geogates"
 # Lagos Island — the launch metro; every fixture polygon lives here.
 LON, LAT = 3.3792, 6.5244
 
-# Applied before the chain, INSTEAD of CREATE EXTENSION h3: the only h3
-# surface the migrations use is the h3index domain and two functions
-# (market_for_cell in 0014). postgis + pgcrypto are created for real.
+# Applied before the chain, INSTEAD of CREATE EXTENSION h3: the h3index
+# domain plus the h3 functions the migrations call (market_for_cell in
+# 0014; the AMD-MAP-05 read model in 0040 — same semantics as the
+# full-chain rehearsal stubs). postgis + pgcrypto are created for real.
 PRE_SQL = [
     "SET check_function_bodies = off",  # pg_dump style: forward references
     "CREATE DOMAIN h3index AS text",
@@ -80,6 +85,16 @@ PRE_SQL = [
        LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$""",
     """CREATE FUNCTION h3_get_resolution(h3index) RETURNS integer
        LANGUAGE sql IMMUTABLE AS $$ SELECT 9 $$""",
+    # AMD-MAP-05 (0040): same rehearsal semantics — centre-only disk,
+    # constant centroid cell. This gate never asserts h3 geometry.
+    """CREATE FUNCTION h3_is_valid_cell(h3index) RETURNS boolean
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1::text ~ '^[0-9a-f]{15}$' $$""",
+    """CREATE FUNCTION h3_grid_disk(h3index, integer) RETURNS SETOF h3index
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$""",
+    """CREATE FUNCTION h3_latlng_to_cell(text, integer) RETURNS h3index
+       LANGUAGE sql IMMUTABLE AS $$ SELECT '8928342e20fffff'::h3index $$""",
+    """CREATE FUNCTION h3_cell_to_latlng(h3index) RETURNS text
+       LANGUAGE sql IMMUTABLE AS $$ SELECT $1::text $$""",
 ]
 
 # Geodesic fixture builders (gate-local, installed after the chain). The

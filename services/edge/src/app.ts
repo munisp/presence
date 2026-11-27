@@ -19,6 +19,7 @@ import { registerElevationRoutes } from "./routes/elevation.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerGeofenceRoutes } from "./routes/geofence.js";
+import { registerMapOpsRoutes, registerMapRoutes } from "./routes/maps.js";
 import { registerAnnouncementRoutes } from "./routes/announcements.js";
 import { registerContentRoutes } from "./routes/content.js";
 import { registerDeviceRoutes } from "./routes/devices.js";
@@ -257,6 +258,10 @@ export async function buildApp(ctx: EdgeContext) {
     registerTaxonomyRoutes(authed, ctx);
     registerTelemetryRoutes(authed, ctx);
     registerGeofenceRoutes(authed, ctx);
+    // AMD-MAP-02/05: next-gen maps — member discovery (manifest +
+    // venues-near-cell) and the venue-ops bundle registry.
+    registerMapRoutes(authed, ctx);
+    registerMapOpsRoutes(authed, ctx);
     // AMD-CRT-04: Centrifugo connection tokens — authed, rate-limited,
     // fail closed when the HMAC secret is unconfigured.
     registerRealtimeTokenRoute(authed, ctx);

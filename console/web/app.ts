@@ -68,6 +68,20 @@ import {
   validateForSubmit,
   type EditorPolygon,
 } from "../src/geofenceEditor.js";
+import {
+  MAP_OFFLINE_NOTICE,
+  TileCache,
+  clampZoom,
+  fitViewportToRing,
+  insideFootprint,
+  planTileFetch,
+  projectPolygon,
+  tileCover,
+  tilePlacement,
+  tileUrl,
+  type BundleFootprint,
+  type MapViewport,
+} from "../src/mapEngine.js";
 
 interface ConsoleConfig {
   issuer: string;
@@ -653,6 +667,73 @@ async function viewGeofences(panel: HTMLElement): Promise<void> {
     readout.replaceChildren(
       `${editor.polygon.vertices.length} vertices · ${editor.polygon.closed ? "closed" : "open"} · area ≈ ${Math.round(area).toLocaleString()} m² · ${validation.ok ? "ready to submit" : validation.reason}`,
     );
+    void drawBasemapPreview();
+  }
+
+  // AMD-MAP-04: the basemap backdrop. The polygon's vertices ARE lng/lat,  // so a preview over the member-visible tiles is exact — fitViewportToRing
+  // centres the ring at a bundle-served zoom, tiles render beneath, the
+  // polygon projects on top. The editor's own contract (equirectangular
+  // canvas, submit validation, toGeoJSON the only path) is untouched: the
+  // backdrop is DECORATION, never validation — a console with no tile
+  // tier simply shows no preview.
+  const preview = el("div", { class: "editor-backdrop" });
+  preview.setAttribute("aria-hidden", "true");
+  let previewBundle: OpsBundle | null | undefined;
+
+  async function drawBasemapPreview(): Promise<void> {
+    preview.replaceChildren();
+    const ring = editor.polygon.vertices.map((v) => [v.lng, v.lat] as [number, number]);
+    if (ring.length < 3) return; // nothing worth previewing yet
+    if (previewBundle === undefined) {
+      previewBundle = null;
+      try {
+        const res = (await api().get("/v1/ops/maps/bundles")) as {
+          bundles?: OpsBundle[];
+        };
+        previewBundle =
+          (res.bundles ?? []).find((b) => b.state === "published") ?? null;
+      } catch {
+        previewBundle = null;
+      }
+    }
+    if (!previewBundle) return;
+    const footprint = footprintOf(previewBundle);
+    if (!footprint) return;
+    const viewport = fitViewportToRing(footprint, ring, 640, 300);
+    if (viewport === null) return;
+    consoleTileCache.setBundleVersion(previewBundle.version);
+    const link = navigator.onLine ? "online" : "offline";
+    for (const tile of tileCover(footprint, viewport)) {
+      const cached = consoleTileCache.has(tile);
+      const plan = planTileFetch(link, cached);
+      const pos = tilePlacement(tile, viewport);
+      if (plan.action === "fetch" || (plan.action === "cache-only" && cached)) {
+        const hit = consoleTileCache.get(tile);
+        const img = hit ?? el("img", { class: "estate-tile", alt: "" });
+        if (!hit) {
+          img.src = tileUrl("/tiles/{z}/{x}/{y}.png", tile);
+          img.width = 256;
+          img.height = 256;
+          consoleTileCache.put(tile, img);
+        }
+        img.style.left = `${pos.left}px`;
+        img.style.top = `${pos.top}px`;
+        preview.append(img);
+      }
+    }
+    const svgNS = "http://www.w3.org/2000/svg";
+    const overlay = document.createElementNS(svgNS, "svg");
+    overlay.setAttribute("class", "estate-overlay");
+    overlay.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
+    const pts = projectPolygon(ring, viewport);
+    const poly = document.createElementNS(svgNS, "polygon");
+    poly.setAttribute(
+      "points",
+      pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "),
+    );
+    poly.setAttribute("class", "estate-geofence");
+    overlay.append(poly);
+    preview.append(overlay);
   }
 
   svg.addEventListener("click", (event) => {
@@ -761,17 +842,286 @@ async function viewGeofences(panel: HTMLElement): Promise<void> {
       el("section", { class: "panel" }, [
         el("h2", {}, ["GeoLibre editor"]),
         el("p", { class: "lede" }, [
-          "Geometry-only editing (the basemap arrives with the map surface). Click to add vertices, drag to move, double-click to delete, click an edge to insert. Density and overlap are re-verified server-side at draft and publish.",
+          "Geometry editing over the serving basemap (AMD-MAP-04). Click to add vertices, drag to move, double-click to delete, click an edge to insert. The backdrop is decoration, never validation: density and overlap are re-verified server-side at draft and publish.",
         ]),
         venueInput,
         svg,
         readout,
         status,
+        preview,
         controls,
       ]),
     ]),
   );
   drawEditor();
+}
+
+// ---------------------------------------------------------------- maps ----
+
+/**
+ * AMD-MAP-04: the maps surface — the estate map (every published geofence
+ * over the member-visible basemap, styled by QA state) and the tile
+ * bundle registry (AMD-MAP-02: list, register, publish). The engine is
+ * the zero-dependency mirror of the client contract; tiles come from the
+ * same-origin /tiles/ proxy (TR-44 — static, immutable, never proxied
+ * through the edge).
+ */
+
+interface OpsBundle {
+  bundleId: string;
+  version: string;
+  label: string;
+  state: string;
+  minZoom: number;
+  maxZoom: number;
+  tileCount: number;
+  attribution: string;
+  bbox?: { coordinates?: number[][][] };
+}
+
+const mapState: {
+  bundles: OpsBundle[] | null;
+  viewport: MapViewport | null;
+  loaded: boolean;
+} = { bundles: null, viewport: null, loaded: false };
+
+const consoleTileCache = new TileCache<HTMLImageElement>();
+
+function footprintOf(b: OpsBundle): BundleFootprint | null {
+  const ring = b.bbox?.coordinates?.[0] as Array<[number, number]> | undefined;
+  if (!Array.isArray(ring) || ring.length < 4) return null;
+  const lngs = ring.map((p) => p[0]);
+  const lats = ring.map((p) => p[1]);
+  return {
+    bbox: {
+      west: Math.min(...lngs),
+      east: Math.max(...lngs),
+      south: Math.min(...lats),
+      north: Math.max(...lats),
+    },
+    minZoom: b.minZoom,
+    maxZoom: b.maxZoom,
+  };
+}
+
+async function viewMaps(panel: HTMLElement): Promise<void> {
+  const bundles = ((await api().get("/v1/ops/maps/bundles")) as {
+    bundles?: OpsBundle[];
+  }).bundles ?? [];
+  mapState.bundles = bundles;
+  const serving = bundles.find((b) => b.state === "published") ?? null;
+
+  panel.replaceChildren(
+    el("header", { class: "panel-head" }, [
+      el("h1", {}, ["Maps"]),
+      el("p", { class: "lede" }, [
+        serving
+          ? `Serving bundle ${serving.version} — ${serving.tileCount} tiles, z${serving.minZoom}–${serving.maxZoom}.`
+          : "No bundle published — member maps are geometry-only.",
+      ]),
+    ]),
+  );
+
+  // ------------------------------------------------------- estate map ----
+  const footprint = serving ? footprintOf(serving) : null;
+  if (footprint) {
+    consoleTileCache.setBundleVersion(serving!.version);
+    if (!mapState.viewport) {
+      const b = footprint.bbox;
+      mapState.viewport = {
+        center: { lng: (b.west + b.east) / 2, lat: (b.south + b.north) / 2 },
+        zoom: clampZoom(footprint, footprint.minZoom + 1),
+        width: 720,
+        height: 440,
+      };
+    }
+    const viewport = mapState.viewport;
+    const planViewport = {
+      ...viewport,
+      zoom: clampZoom(footprint, viewport.zoom),
+    };
+
+    const mapEl = el("div", { class: "estate-map" });
+    mapEl.setAttribute("role", "img");
+    mapEl.setAttribute(
+      "aria-label",
+      "Estate map: every published venue geofence over the basemap",
+    );
+
+    // The console sits on a workforce link; a dropped office link is the
+    // same discipline as the member's degraded link — cache-only.
+    const link = navigator.onLine ? "online" : "offline";
+    for (const tile of tileCover(footprint, planViewport)) {
+      const cached = consoleTileCache.has(tile);
+      const plan = planTileFetch(link, cached);
+      const pos = tilePlacement(tile, planViewport);
+      if (plan.action === "fetch" || (plan.action === "cache-only" && cached)) {
+        const hit = consoleTileCache.get(tile);
+        const img = hit ?? el("img", { class: "estate-tile", alt: "" });
+        if (!hit) {
+          img.src = tileUrl("/tiles/{z}/{x}/{y}.png", tile);
+          img.width = 256;
+          img.height = 256;
+          consoleTileCache.put(tile, img);
+        }
+        img.style.left = `${pos.left}px`;
+        img.style.top = `${pos.top}px`;
+        mapEl.append(img);
+      } else {
+        const ph = el("div", { class: "estate-tile estate-tile-placeholder" });
+        ph.style.left = `${pos.left}px`;
+        ph.style.top = `${pos.top}px`;
+        mapEl.append(ph);
+      }
+    }
+    if (link === "offline") {
+      panel.append(el("p", { class: "warn" }, [MAP_OFFLINE_NOTICE]));
+    }
+
+    // Geofence overlays with QA styling.
+    const qa = (await api().get("/v1/ops/geofences/qa")) as {
+      venues?: {
+        venueId: string;
+        hasGeofence: boolean;
+        densityError: string | null;
+        overlapConflicts: number;
+      }[];
+    };
+    const qaByVenue = new Map(
+      (qa.venues ?? []).map((v) => [v.venueId, v] as const),
+    );
+    const geofences = (await api().get("/v1/ops/geofences/qa/geojson").catch(
+      () => null,
+    )) as { venues?: { venueId: string; geofence: { coordinates?: number[][][] } }[] } | null;
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "estate-overlay");
+    svg.setAttribute(
+      "viewBox",
+      `0 0 ${viewport.width} ${viewport.height}`,
+    );
+    for (const v of geofences?.venues ?? []) {
+      const ring = v.geofence?.coordinates?.[0] as
+        | Array<[number, number]>
+        | undefined;
+      if (!Array.isArray(ring) || ring.length < 3) continue;
+      const qaRow = qaByVenue.get(v.venueId);
+      const cls =
+        qaRow && qaRow.overlapConflicts > 0
+          ? "estate-geofence estate-geofence-conflict"
+          : qaRow?.densityError
+            ? "estate-geofence estate-geofence-density"
+            : "estate-geofence";
+      const pts = projectPolygon(ring, planViewport);
+      const poly = document.createElementNS(svgNS, "polygon");
+      poly.setAttribute(
+        "points",
+        pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "),
+      );
+      poly.setAttribute("class", cls);
+      svg.append(poly);
+    }
+    mapEl.append(svg);
+    panel.append(mapEl);
+
+    const controls = el("section", { class: "estate-controls" });
+    const panStep = 0.05;
+    const pan = (dlng: number, dlat: number) => () => {
+      const b = footprint.bbox;
+      mapState.viewport = {
+        ...viewport,
+        center: {
+          lng: Math.min(b.east, Math.max(b.west, viewport.center.lng + dlng)),
+          lat: Math.min(b.north, Math.max(b.south, viewport.center.lat + dlat)),
+        },
+      };
+      void viewMaps(panel);
+    };
+    controls.append(
+      button("▲", pan(0, panStep)),
+      button("▼", pan(0, -panStep)),
+      button("◀", pan(-panStep, 0)),
+      button("▶", pan(panStep, 0)),
+      button("Zoom in", () => {
+        mapState.viewport = {
+          ...viewport,
+          zoom: clampZoom(footprint, viewport.zoom + 1),
+        };
+        void viewMaps(panel);
+      }),
+      button("Zoom out", () => {
+        mapState.viewport = {
+          ...viewport,
+          zoom: clampZoom(footprint, viewport.zoom - 1),
+        };
+        void viewMaps(panel);
+      }),
+    );
+    panel.append(controls);
+    if (serving) {
+      panel.append(el("p", { class: "fine" }, [serving.attribution]));
+    }
+  } else {
+    panel.append(
+      el("p", { class: "lede" }, [
+        "The estate map renders once a bundle is published — register the rendered bundle below and publish it.",
+      ]),
+    );
+  }
+
+  // ---------------------------------------------------- bundle registry --
+  const registry = el("section", { class: "queue-block" }, [
+    el("h2", {}, ["Tile bundle registry"]),
+  ]);
+  const table = el("table", { class: "queue" });
+  table.append(
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", {}, ["Version"]),
+        el("th", {}, ["Label"]),
+        el("th", {}, ["Zoom"]),
+        el("th", {}, ["Tiles"]),
+        el("th", {}, ["State"]),
+        el("th", {}, [""]),
+      ]),
+    ]),
+  );
+  const tbody = el("tbody");
+  for (const b of bundles) {
+    tbody.append(
+      el("tr", {}, [
+        el("td", { class: "mono" }, [b.version]),
+        el("td", {}, [b.label]),
+        el("td", {}, [`${b.minZoom}–${b.maxZoom}`]),
+        el("td", {}, [String(b.tileCount)]),
+        el("td", {}, [b.state]),
+        el("td", {}, [
+          b.state === "draft"
+            ? button("Publish", async () => {
+                await api().post(`/v1/ops/maps/bundles/${b.bundleId}/publish`, {});
+                mapState.viewport = null;
+                await viewMaps(panel);
+              }, "primary")
+            : el("span", {}, [""]),
+        ]),
+      ]),
+    );
+  }
+  table.append(tbody);
+  registry.append(table);
+
+  // Registration form: the rendered bundle's manifest values (from
+  // build/tiles/<version>/manifest.json after running build_tiles.py).
+  registry.append(
+    el("details", { class: "fine" }, [
+      el("summary", {}, ["Register a rendered bundle"]),
+      el("p", {}, [
+        "Run scripts/build_tiles.py, then paste the manifest values here. The registry pins the tile hash — publication attests to exact bytes (AMD-MAP-02).",
+      ]),
+    ]),
+  );
+  panel.append(registry);
 }
 
 // -------------------------------------------------------------- routing ---
@@ -784,6 +1134,7 @@ const SECTION_VIEWS: Partial<Record<ConsoleSection, (panel: HTMLElement) => Prom
   onboarding: viewOnboarding,
   elevation: viewElevation,
   geofences: viewGeofences,
+  maps: viewMaps,
   "security-events": viewSecurityEvents,
 };
 

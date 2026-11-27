@@ -128,9 +128,10 @@ def test_qa_route() -> None:
         assert field in route
 
 
-def test_all_eight_geofence_routes_gated() -> None:
-    assert ROUTES_TS.count("preHandler: requireVenueOps") == 8
-    assert ROUTES_TS.count("withVenueOps(ctx.pg") == 8
+def test_all_nine_geofence_routes_gated() -> None:
+    # Batch 70 added the ninth: GET /v1/ops/geofences/qa/geojson (AMD-MAP-04).
+    assert ROUTES_TS.count("preHandler: requireVenueOps") == 9
+    assert ROUTES_TS.count("withVenueOps(ctx.pg") == 9
 
 
 # --------------------------------------------------------------- openapi ---

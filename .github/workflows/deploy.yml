@@ -53,7 +53,7 @@ jobs:
 
       - name: Build, attest and push (SBOM + provenance)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: services/${{ matrix.service }}
           push: true

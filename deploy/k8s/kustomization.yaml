@@ -9,6 +9,7 @@ resources:
   - keycloak.yaml
   - match.yaml
   - edge.yaml
+  - console.yaml
   - apisix.yaml
   - networkpolicy.yaml
   - backup.yaml

@@ -1373,6 +1373,44 @@ def main() -> int:
         and "REALTIME_PUBLIC_WS_URL"
         in (ROOT / "deploy" / "k8s" / "edge.yaml").read_text(),
     )
+    check(
+        "batch-67 ops console PWA: zero-dep console package + shell/SW contract + compose/k8s/apisix wiring",
+        (ROOT / "console" / "package.json").exists()
+        and '"@presence/console"' in (ROOT / "console" / "package.json").read_text()
+        and '"dependencies"' not in (ROOT / "console" / "package.json").read_text()
+        and (ROOT / "console" / "web" / "app.ts").exists()
+        and (ROOT / "console" / "test" / "opsConsole.test.ts").exists()
+        and 'CONSOLE_SW_VERSION = "presence-console-v1"'
+        in (ROOT / "console" / "src" / "pwa.ts").read_text()
+        and 'VERSION = "presence-console-v1"'
+        in (ROOT / "console" / "public" / "sw.js").read_text()
+        and "viewport-fit=cover"
+        in (ROOT / "console" / "public" / "index.html").read_text()
+        and (ROOT / "console" / "public" / "icons" / "icon-512.png").exists()
+        and "FROM nginx:1.27-alpine" in (ROOT / "console" / "Dockerfile").read_text()
+        and "proxy_pass http://edge:4000;"
+        in (ROOT / "console" / "nginx.conf").read_text()
+        and "build: ../console"
+        in (ROOT / "deploy" / "docker-compose.yml").read_text()
+        and '"8082:8080"' in (ROOT / "deploy" / "docker-compose.yml").read_text()
+        and (ROOT / "deploy" / "k8s" / "console.yaml").exists()
+        and "console.yaml"
+        in (ROOT / "deploy" / "k8s" / "kustomization.yaml").read_text()
+        and "name: console-from-apisix"
+        in (ROOT / "deploy" / "k8s" / "networkpolicy.yaml").read_text()
+        and "name: console-egress-allowlist"
+        in (ROOT / "deploy" / "k8s" / "networkpolicy.yaml").read_text()
+        and "id: ops-console"
+        in (ROOT / "deploy" / "apisix" / "apisix.yaml").read_text()
+        and "id: ops-console"
+        in (ROOT / "deploy" / "k8s" / "apisix.yaml").read_text()
+        and "ops.presence.example"
+        in (ROOT / "deploy" / "k8s" / "apisix.yaml").read_text()
+        and "npm test --prefix console"
+        in (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        and "AMD-CON-06" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
+        and (ROOT / "docs" / "ux" / "ops-console.md").exists(),
+    )
 
     print()
     if failures:

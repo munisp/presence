@@ -248,6 +248,17 @@ services:
       - edge
     ports: ["4200:4200"]
 
+  # AMD-CON-01: the workforce ops console PWA. nginx serves the static
+  # shell and proxies /v1/ to the edge in-network, so the console and the
+  # API share an origin — the edge has no CORS surface (by design), and
+  # none is needed here. Sign-in runs against the workforce realm as the
+  # public PKCE client workforce-console (no secret in the bundle).
+  console:
+    build: ../console
+    depends_on:
+      - edge
+    ports: ["8082:8080"]
+
 volumes:
   pgdata:
   pgbackups:

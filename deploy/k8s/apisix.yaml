@@ -97,8 +97,21 @@ data:
             time_window: 60
             key: remote_addr
             rejected_code: 429
+      # AMD-CON-01: the workforce console PWA, host-matched. edge-api still
+      # matches /v1/* on this host (longer prefix wins) — one origin, no
+      # CORS surface. Keep in sync with deploy/apisix/apisix.yaml.
+      - id: ops-console
+        host: ops.presence.example
+        uris: ["/*"]
+        upstream:
+          type: roundrobin
+          nodes: { "console.presence.svc.cluster.local:8080": 1 }
+        plugins:
+          request-id:
+            header_name: X-Request-Id
+            include_in_response: true
     ssl:
-      - snis: ["api.presence.example"]
+      - snis: ["api.presence.example", "ops.presence.example"]
         cert: __INJECTED_FROM_SECRET__   # cert.pem/key.pem mounted from the apisix-tls secret (cert-manager issued)
         key: __INJECTED_FROM_SECRET__
     #END

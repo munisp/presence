@@ -1,0 +1,15 @@
+{
+  "name": "@presence/console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Presence ops console (AMD-CON-01..06) — workforce PWA. Zero runtime dependencies by design: contract modules compile straight to browser ESM, the render half is a thin DOM layer, and the TECH-16 gate has nothing to admit.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "npm run build && node --test dist/test/"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.6.3"
+  }
+}

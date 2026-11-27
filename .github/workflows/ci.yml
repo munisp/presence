@@ -42,6 +42,17 @@ jobs:
       - run: npm ci --prefix services/match
       - run: npm test --prefix services/match
 
+  # AMD-CON: the ops console — zero runtime dependencies, npm ci + tsc + node:test.
+  console:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix console
+      - run: npm test --prefix console
+
   deploy-invariants:
     runs-on: ubuntu-latest
     steps:

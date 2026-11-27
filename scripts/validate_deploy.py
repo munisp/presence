@@ -1440,6 +1440,50 @@ def main() -> int:
         and "AMD-PWA-06" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
         and (ROOT / "docs" / "ux" / "member-pwa.md").exists(),
     )
+    check(
+        "batch-69 WhatsApp channel: contract module + migration + webhook/member routes + leg wiring + deploy env",
+        (ROOT / "services" / "edge" / "src" / "whatsapp.ts").exists()
+        and (ROOT / "services" / "edge" / "src" / "whatsappDispatch.ts").exists()
+        and (ROOT / "services" / "edge" / "src" / "routes" / "whatsapp.ts").exists()
+        and (ROOT / "services" / "edge" / "test" / "whatsapp.test.ts").exists()
+        and (ROOT / "db" / "migrations" / "0039_whatsapp.sql").exists()
+        and "CREATE TABLE whatsapp_opt_ins"
+        in (ROOT / "db" / "migrations" / "0039_whatsapp.sql").read_text()
+        and "CREATE OR REPLACE FUNCTION whatsapp_apply_inbound"
+        in (ROOT / "db" / "migrations" / "0039_whatsapp.sql").read_text()
+        and "'whatsapp'"
+        in (ROOT / "db" / "migrations" / "0039_whatsapp.sql").read_text()
+        and "registerWhatsAppWebhookRoutes(app, ctx)"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and "registerWhatsAppRoutes(authed, ctx)"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and "withWhatsAppCallback"
+        in (ROOT / "services" / "edge" / "src" / "auth.ts").read_text()
+        and "dispatchWhatsAppNotice"
+        in (ROOT / "services" / "edge" / "src" / "notifications.ts").read_text()
+        and "dispatchWhatsAppNotice"
+        in (ROOT / "services" / "edge" / "src" / "routes" / "consent.ts").read_text()
+        and "PHONE_KEY_RE"
+        in (ROOT / "services" / "edge" / "src" / "logscrub.ts").read_text()
+        and "presence_whatsapp_webhook_results_total"
+        in (ROOT / "services" / "edge" / "src" / "metrics.ts").read_text()
+        and "WHATSAPP_APP_SECRET: p0-dev-whatsapp-app-secret-change-me"
+        in (ROOT / "deploy" / "docker-compose.yml").read_text()
+        and 'WHATSAPP_DEV_ECHO: "1"'
+        in (ROOT / "deploy" / "docker-compose.yml").read_text()
+        and "key: WHATSAPP_APP_SECRET, optional: true"
+        in (ROOT / "deploy" / "k8s" / "edge.yaml").read_text()
+        and "- name: WHATSAPP_DEV_ECHO"
+        not in (ROOT / "deploy" / "k8s" / "edge.yaml").read_text()
+        and "/v1/webhooks/whatsapp:"
+        in (ROOT / "docs" / "api" / "openapi.yaml").read_text()
+        and "/v1/whatsapp/verify:"
+        in (ROOT / "docs" / "api" / "openapi.yaml").read_text()
+        and "AMD-WA-06"
+        in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
+        and (ROOT / "docs" / "ux" / "whatsapp-channel.md").exists()
+        and (ROOT / "tests" / "test_batch69.py").exists(),
+    )
 
     print()
     if failures:

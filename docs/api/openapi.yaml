@@ -5466,6 +5466,185 @@ paths:
         "409": { description: Session not open, or expired. }
         "422": { description: Malformed verdict or illegal outcome. }
         "503": { description: Verdict callback not configured. }
+  /v1/webhooks/whatsapp:
+    get:
+      summary: WhatsApp verify handshake (SRS Addendum 001, AMD-WA-02)
+      security: []
+      description: >-
+        Meta's subscription challenge, outside the authed scope on
+        purpose: the caller proves nothing beyond holding the verify
+        token. mode must be subscribe and hub.verify_token must equal
+        WHATSAPP_VERIFY_TOKEN; a match answers the challenge as
+        text/plain. Unset WHATSAPP_VERIFY_TOKEN answers 503.
+      parameters:
+        - name: hub.mode
+          in: query
+          required: true
+          schema: { type: string, enum: [subscribe] }
+        - name: hub.verify_token
+          in: query
+          required: true
+          schema: { type: string }
+        - name: hub.challenge
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The challenge, echoed as text/plain.
+          content:
+            text/plain:
+              schema: { type: string }
+        "400": { description: Malformed handshake (missing fields or mode is not subscribe). }
+        "403": { description: Verify token mismatch. }
+        "503": { description: Webhook not configured. }
+    post:
+      summary: WhatsApp Cloud API intake (SRS Addendum 001, AMD-WA-02)
+      security: []
+      description: >-
+        The signed inbound wire, outside the authed scope on purpose:
+        Meta authenticates with X-Hub-Signature-256, the HMAC-SHA256 of
+        the RAW request body under WHATSAPP_APP_SECRET. Inbound text is
+        never stored — the parser reduces each message to its keyword
+        (stop | start | help | other) and only the keyword, the sender
+        phone and the timestamp reach the ledger. Meta redelivers on any
+        non-2xx, so after signature and JSON validation the intake ALWAYS
+        answers 200; idempotency is the wamid primary key inside
+        whatsapp_apply_inbound. STOP revokes the opt-in from any state;
+        START resumes only a stopped row that once verified. Delivery
+        statuses advance the delivery ledger monotonically by wamid.
+        Unset WHATSAPP_APP_SECRET answers 503.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - name: x-hub-signature-256
+          in: header
+          required: true
+          schema: { type: string, pattern: "^sha256=[0-9a-f]{64}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              description: >-
+                The Cloud API webhook envelope. The top level is strict;
+                WITHIN entry[].changes[].value the parser is deliberately
+                tolerant (unknown change fields and malformed entries are
+                skipped, never fatal) so a poison entry cannot stall the
+                redelivery queue behind it.
+              properties:
+                object: { type: string }
+                entry:
+                  type: array
+                  items: { type: object }
+      responses:
+        "200": { description: Accepted and persisted (duplicates collapse on the wamid). }
+        "400": { description: Body is not valid JSON. }
+        "401": { description: Bad or missing signature. }
+        "503": { description: Webhook not configured. }
+  /v1/whatsapp:
+    get:
+      summary: My WhatsApp opt-in state (SRS Addendum 001, AMD-WA-03)
+      description: >-
+        The member's own opt-in row, minimal projection: the state, the
+        phone ALWAYS masked (+ccc****last4), and the link/verify
+        timestamps. The verify digest never leaves the database.
+      responses:
+        "200":
+          description: The opt-in state (linked:false when no row exists).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linked]
+                properties:
+                  linked: { type: boolean }
+                  state: { type: string, enum: [pending, active, stopped] }
+                  phone: { type: string, example: "+234****5678" }
+                  linkedAt: { type: string, format: date-time }
+                  verifiedAt: { type: string, format: date-time, nullable: true }
+  /v1/whatsapp/link:
+    post:
+      summary: Link a phone and send the verify code (AMD-WA-03)
+      description: >-
+        Puts the opt-in row into pending and sends the 6-digit verify
+        code via the presence_verify_code template (10-minute TTL, 5
+        attempts). The phone is normalized to strict E.164 — anything
+        else is a 400. A repeat link of the SAME phone within 60 seconds
+        answers 429 (the resend cooldown, enforced in the definer); a
+        phone bound to another account answers 409. In compose
+        (WHATSAPP_DEV_ECHO=1) the response carries devCode so the flow is
+        walkable without Meta credentials — never in a deployed
+        environment.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone]
+              properties:
+                phone: { type: string, example: "+2348012345678" }
+      responses:
+        "202":
+          description: Code sent (or the documented unconfigured no-op).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, state, verification]
+                properties:
+                  ok: { type: boolean }
+                  state: { type: string, enum: [pending] }
+                  verification:
+                    type: object
+                    properties:
+                      sent: { type: boolean }
+                      reason: { type: string }
+                  devCode: { type: string, description: compose dev-echo only }
+        "400": { description: Phone is not strict E.164. }
+        "409": { description: Phone is linked to another account. }
+        "429": { description: Resend cooldown (60 s). }
+    delete:
+      summary: Unlink the WhatsApp channel (AMD-WA-03)
+      description: >-
+        The member's own revocation: any state goes stopped and the
+        verification fields clear. No WhatsApp notice is ever sent to the
+        phone again — a re-link demands a fresh verification.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "200": { description: Unlinked. }
+        "404": { description: No link exists. }
+  /v1/whatsapp/verify:
+    post:
+      summary: Redeem the verify code (AMD-WA-03)
+      description: >-
+        A digest match moves pending -> active. A mismatch counts an
+        attempt; the fifth strike kills the code (request a fresh one).
+        Expired codes answer 410, a missing pending row 409.
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: "^[0-9]{6}$" }
+      responses:
+        "200": { description: Verified — the opt-in is active. }
+        "400": { description: Code mismatch (an attempt is counted). }
+        "409": { description: No pending verification. }
+        "410": { description: Code expired. }
+        "429": { description: Attempt ceiling reached. }
 components:
   parameters:
     pairId:

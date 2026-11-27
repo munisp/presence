@@ -73,6 +73,19 @@ spec:
               valueFrom: { secretKeyRef: { name: presence-secrets, key: FCM_PROJECT_ID, optional: true } }
             - name: FCM_ACCESS_TOKEN
               valueFrom: { secretKeyRef: { name: presence-secrets, key: FCM_ACCESS_TOKEN, optional: true } }
+            # AMD-WA-02/04: WhatsApp Cloud API wires. Unset app secret /
+            # verify token answers 503 on the webhook; unset access token /
+            # phone number id makes the notification leg a documented
+            # no-op. WHATSAPP_DEV_ECHO deliberately has NO k8s entry — the
+            # echo sender is compose-only and must never exist here.
+            - name: WHATSAPP_APP_SECRET
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: WHATSAPP_APP_SECRET, optional: true } }
+            - name: WHATSAPP_VERIFY_TOKEN
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: WHATSAPP_VERIFY_TOKEN, optional: true } }
+            - name: WHATSAPP_ACCESS_TOKEN
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: WHATSAPP_ACCESS_TOKEN, optional: true } }
+            - name: WHATSAPP_PHONE_NUMBER_ID
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: WHATSAPP_PHONE_NUMBER_ID, optional: true } }
             # SEC-03: the JIT elevation role binding. Without the client
             # credentials the binding is a documented no-op and operators
             # bind manually (deploy/keycloak/README.md).

@@ -100,7 +100,10 @@ def openapi_path(fastify: str) -> str:
 def edge_routes() -> set[tuple[str, str]]:
     """(method, path) pairs registered in the edge sources."""
     routes: set[tuple[str, str]] = set()
-    pattern = re.compile(r"""app\.(get|post|put|delete|patch)\(\s*["'](/v1/[^"']*|/healthz)["']""")
+    # `scope.` covers routes inside an encapsulated app.register scope
+    # (the batch-69 WhatsApp webhook's raw-body parser scope) — both
+    # directions of the contract still apply to them.
+    pattern = re.compile(r"""(?:app|scope)\.(get|post|put|delete|patch)\(\s*["'](/v1/[^"']*|/healthz)["']""")
     for src in list(EDGE_SRC.glob("*.ts")) + list((EDGE_SRC / "routes").glob("*.ts")):
         for method, path in pattern.findall(src.read_text()):
             routes.add((method, openapi_path(path)))

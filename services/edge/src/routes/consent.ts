@@ -23,6 +23,7 @@ import { CloseReason, maskCloseReason } from "../lifecycle.js";
 import { NUDGE_DAILY_MAX } from "../moderation.js";
 import { shouldNotify } from "../notifications.js";
 import { recordTelemetry } from "../telemetry.js";
+import { dispatchWhatsAppNotice } from "../whatsappDispatch.js";
 import { WAVE_DAILY_MAX } from "../velocity.js";
 
 type State = "DETECTED" | "NUDGED" | "EXPRESSED" | "MUTUAL" | "OPEN";
@@ -100,12 +101,49 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
           "UPDATE matches SET expires_at = now() + interval '30 minutes' WHERE pair_id = $1 AND closed_at IS NULL",
           [pairId],
         );
-        return { to, lo: cur.rows[0].user_lo as string, hi: cur.rows[0].user_hi as string };
+        // AMD-WA-04: on MUTUAL the WhatsApp leg fires per member, each
+        // gated by that member's own matches switch (FR-58) — read both
+        // preference rows in the same transaction (the nudge route's
+        // recipient-prefs pattern).
+        let loPrefs: unknown = null;
+        let hiPrefs: unknown = null;
+        if (to === "MUTUAL") {
+          const prefs = await c.query(
+            "SELECT user_id, notification_prefs FROM users WHERE user_id = ANY($1::uuid[])",
+            [[cur.rows[0].user_lo, cur.rows[0].user_hi]],
+          );
+          for (const p of prefs.rows) {
+            if (p.user_id === cur.rows[0].user_lo) loPrefs = p.notification_prefs;
+            else hiPrefs = p.notification_prefs;
+          }
+        }
+        return {
+          to,
+          lo: cur.rows[0].user_lo as string,
+          hi: cur.rows[0].user_hi as string,
+          loPrefs,
+          hiPrefs,
+        };
       });
       // FR-91: an acted-on offer rotates out of both users' scan results for
       // seven days — a declined or expired offer is not re-served.
       await ctx.valkey.set(rotationKey(state.lo, state.hi), "1", "EX", ROTATION_TTL_S);
-      if (state.to === "MUTUAL") await publish(ctx, pairId, { type: "mutual" });
+      if (state.to === "MUTUAL") {
+        await publish(ctx, pairId, { type: "mutual" });
+        // AMD-WA-04: the WhatsApp leg mirrors the realtime notice — one per
+        // member; the category gate is the member's own switch, the opt-in
+        // gate lives inside the leg.
+        if (shouldNotify(state.loPrefs, "matches")) {
+          dispatchWhatsAppNotice(ctx, state.lo, "matches", "mutual", pairId).catch((err) =>
+            console.error("whatsapp dispatch failed", err),
+          );
+        }
+        if (shouldNotify(state.hiPrefs, "matches")) {
+          dispatchWhatsAppNotice(ctx, state.hi, "matches", "mutual", pairId).catch((err) =>
+            console.error("whatsapp dispatch failed", err),
+          );
+        }
+      }
       // NFR-32/TR-34: funnel step, target state only.
       recordTelemetry(ctx, "consent.transitioned", { to: state.to });
       return reply.send({ pairId, state: state.to });
@@ -163,6 +201,10 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
         // FR-30: the event carries no actor identity — pre-OPEN the pair
         // channel is the only address, and the payload is just the type.
         await publish(ctx, pairId, { type: "nudged" });
+        // AMD-WA-04: the WhatsApp leg mirrors the gated realtime notice.
+        dispatchWhatsAppNotice(ctx, out.recipient, "nudges", "nudged", pairId).catch((err) =>
+          console.error("whatsapp dispatch failed", err),
+        );
       }
       recordTelemetry(ctx, "consent.transitioned", { to: "NUDGED" });
       return reply.send({ pairId, state: "NUDGED" });
@@ -204,12 +246,16 @@ export function registerConsentRoutes(app: FastifyInstance, ctx: EdgeContext): v
             ? (cur.rows[0].user_hi as string)
             : (cur.rows[0].user_lo as string);
         const prefs = await c.query("SELECT notification_prefs FROM users WHERE user_id = $1", [recipient]);
-        return { stored: prefs.rows[0]?.notification_prefs };
+        return { recipient, stored: prefs.rows[0]?.notification_prefs };
       });
       // FR-58: the state change always happens; only the realtime notice is
       // gated on the recipient's matches switch and quiet window.
       if (shouldNotify(out.stored, "matches")) {
         await publish(ctx, pairId, { type: "open" });
+        // AMD-WA-04: the WhatsApp leg mirrors the gated realtime notice.
+        dispatchWhatsAppNotice(ctx, out.recipient, "matches", "open", pairId).catch((err) =>
+          console.error("whatsapp dispatch failed", err),
+        );
       }
       recordTelemetry(ctx, "consent.transitioned", { to: "OPEN" });
       return reply.send({ pairId, state: "OPEN" });

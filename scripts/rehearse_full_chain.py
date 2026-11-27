@@ -118,6 +118,7 @@ def main() -> int:
         "funding": "app.funding_callback",
         "venue_ops": "app.venue_ops",
         "kyc_callback": "app.kyc_callback",
+        "whatsapp_callback": "app.whatsapp_callback",
     }
 
     def q(sql, params=(), **gucs):
@@ -1423,6 +1424,208 @@ def main() -> int:
     out = scalar("SELECT record_kyc_decision(%s, 'warm-probe', 'verified',"
                  " NULL)", (pending_user(),))
     r.check("ok_decision_needs_gate_warm", out == "forbidden", out)
+
+    # ------------------------- phase 8h: WhatsApp channel (AMD-WA) --------
+    # The full member lifecycle on the real definer chain: link with the
+    # digest-only code, cooldown, mismatch counting, verify, the dispatch
+    # leg's reserve/finalize with dedupe and cap, the monotonic status
+    # advance, inbound STOP/START/HELP with wamid idempotency, unlink —
+    # then the cold-connection gate probes (the batch-63 hardening).
+    wa = mkuser()
+    wa_phone = "+2348012345678"
+
+    def wa_digest(code: str) -> str:
+        return hashlib.sha256(f"{wa}:{code}".encode()).hexdigest()
+
+    out = scalar(
+        "SELECT whatsapp_link_phone(%s, %s,"
+        " now() + interval '10 minutes', now())",
+        (wa_phone, wa_digest("123456")), user=wa)
+    r.check("wa_link", out == "linked", out)
+    out = scalar(
+        "SELECT whatsapp_link_phone(%s, %s,"
+        " now() + interval '10 minutes', now())",
+        (wa_phone, wa_digest("123456")), user=wa)
+    r.check("wa_link_cooldown", out == "cooldown", out)
+    out = scalar("SELECT whatsapp_verify_code(%s, now())",
+                 (wa_digest("000000"),), user=wa)
+    r.check("wa_verify_mismatch", out == "mismatch", out)
+    r.check("wa_verify_attempt_counted",
+            scalar("SELECT verify_attempts FROM whatsapp_opt_ins"
+                   " WHERE user_id = %s", (wa,)) == 1)
+    out = scalar("SELECT whatsapp_verify_code(%s, now())",
+                 (wa_digest("123456"),), user=wa)
+    r.check("wa_verify_ok", out == "verified", out)
+    r.check("wa_verify_clears_digest",
+            scalar("SELECT verify_digest IS NULL AND state = 'active'"
+                   " AND verified_at IS NOT NULL FROM whatsapp_opt_ins"
+                   " WHERE user_id = %s", (wa,)) is True)
+    out = scalar("SELECT whatsapp_verify_code(%s, now())",
+                 (wa_digest("123456"),), user=wa)
+    r.check("wa_verify_not_pending", out == "not_pending", out)
+
+    # The dispatch leg: target lookup, reserve, dedupe, cap, finalize.
+    out = scalar("SELECT whatsapp_dispatch_target(%s)", (wa,),
+                 whatsapp_callback="on")
+    r.check("wa_dispatch_target", out == wa_phone, str(out))
+    dedupe = "match_notice:pair-1:2026-11-27"
+    out = scalar("SELECT whatsapp_record_delivery(%s, 'match_notice', %s, 20)",
+                 (wa, dedupe), whatsapp_callback="on")
+    r.check("wa_record", out == "recorded", out)
+    out = scalar("SELECT whatsapp_record_delivery(%s, 'match_notice', %s, 20)",
+                 (wa, dedupe), whatsapp_callback="on")
+    r.check("wa_record_duplicate", out == "duplicate", out)
+    out = scalar("SELECT whatsapp_record_delivery(%s, 'pair_opened', %s, 1)",
+                 (wa, "pair_opened:pair-1:2026-11-27"), whatsapp_callback="on")
+    r.check("wa_record_capped", out == "capped", out)
+    out = scalar("SELECT whatsapp_finalize_delivery"
+                 "(%s, %s, 'wamid.REH_0001', true, NULL)",
+                 (wa, dedupe), whatsapp_callback="on")
+    r.check("wa_finalize", out == "updated", out)
+    out = scalar("SELECT whatsapp_finalize_delivery"
+                 "(%s, %s, 'wamid.REH_0001', true, NULL)",
+                 (wa, dedupe), whatsapp_callback="on")
+    r.check("wa_finalize_twice_unknown", out == "unknown", out)
+    r.check("wa_delivery_sent",
+            scalar("SELECT status = 'sent' AND wamid = 'wamid.REH_0001'"
+                   " AND error IS NULL FROM whatsapp_deliveries"
+                   " WHERE dedupe_key = %s", (dedupe,)) is True)
+    out = scalar("SELECT whatsapp_apply_status('wamid.REH_0001', 'delivered',"
+                 " NULL)", (), whatsapp_callback="on")
+    r.check("wa_status_advance", out == "updated", out)
+    out = scalar("SELECT whatsapp_apply_status('wamid.REH_0001', 'sent',"
+                 " NULL)", (), whatsapp_callback="on")
+    r.check("wa_status_stale", out == "stale", out)
+    out = scalar("SELECT whatsapp_apply_status('wamid.REH_9999', 'sent',"
+                 " NULL)", (), whatsapp_callback="on")
+    r.check("wa_status_unknown_wamid", out == "unknown", out)
+    # The failed-send path: reserved, finalized failed with the reason.
+    out = scalar("SELECT whatsapp_record_delivery(%s, 'match_notice', %s, 20)",
+                 (wa, "match_notice:pair-2:2026-11-27"), whatsapp_callback="on")
+    r.check("wa_record_fail_leg", out == "recorded", out)
+    out = scalar("SELECT whatsapp_finalize_delivery"
+                 "(%s, %s, NULL, false, 'http 500')",
+                 (wa, "match_notice:pair-2:2026-11-27"), whatsapp_callback="on")
+    r.check("wa_finalize_failed", out == "updated", out)
+    r.check("wa_delivery_failed_row",
+            scalar("SELECT status = 'failed' AND error = 'http 500'"
+                   " AND wamid IS NULL FROM whatsapp_deliveries"
+                   " WHERE dedupe_key = 'match_notice:pair-2:2026-11-27'")
+            is True)
+
+    # Inbound: STOP revokes from any state; the wamid dedupes; START
+    # resumes a stopped, once-verified row; HELP records; an unknown
+    # sender is receipted without a user link.
+    out = scalar("SELECT whatsapp_apply_inbound('wamid.REH_IN1', %s, 'stop',"
+                 " now())", (wa_phone,), whatsapp_callback="on")
+    r.check("wa_inbound_stop", out == "stopped", out)
+    out = scalar("SELECT whatsapp_dispatch_target(%s)", (wa,),
+                 whatsapp_callback="on")
+    r.check("wa_dispatch_stopped_is_null", out is None, str(out))
+    out = scalar("SELECT whatsapp_apply_inbound('wamid.REH_IN1', %s, 'stop',"
+                 " now())", (wa_phone,), whatsapp_callback="on")
+    r.check("wa_inbound_duplicate", out == "duplicate", out)
+    out = scalar("SELECT whatsapp_apply_inbound('wamid.REH_IN2', %s, 'start',"
+                 " now())", (wa_phone,), whatsapp_callback="on")
+    r.check("wa_inbound_resume", out == "resumed", out)
+    out = scalar("SELECT whatsapp_dispatch_target(%s)", (wa,),
+                 whatsapp_callback="on")
+    r.check("wa_dispatch_resumed", out == wa_phone, str(out))
+    out = scalar("SELECT whatsapp_apply_inbound('wamid.REH_IN3', %s, 'help',"
+                 " now())", (wa_phone,), whatsapp_callback="on")
+    r.check("wa_inbound_help", out == "help", out)
+    out = scalar("SELECT whatsapp_apply_inbound('wamid.REH_IN4',"
+                 " '+15550001111', 'other', now())", (),
+                 whatsapp_callback="on")
+    r.check("wa_inbound_unknown_sender", out == "unknown_sender", out)
+    r.check("wa_unknown_receipt_kept",
+            scalar("SELECT user_id IS NULL AND keyword = 'other'"
+                   " FROM whatsapp_inbound WHERE wamid = 'wamid.REH_IN4'")
+            is True)
+
+    # Unlink: the member's own revocation; a second unlink is a 404-class
+    # outcome, and a pending-only row cannot resume via START.
+    out = scalar("SELECT whatsapp_unlink(now())", (), user=wa)
+    r.check("wa_unlink", out == "unlinked", out)
+    out = scalar("SELECT whatsapp_unlink(now())", (), user=wa)
+    r.check("wa_unlink_not_linked", out == "not_linked", out)
+    out = scalar("SELECT whatsapp_apply_inbound('wamid.REH_IN5', %s, 'start',"
+                 " now())", (wa_phone,), whatsapp_callback="on")
+    r.check("wa_resume_after_unlink", out == "resumed", out)
+    # (verified_at survives unlink, so START resumes — the phone ownership
+    # was proven; a NEVER-verified row cannot resume:)
+    wa2 = mkuser()
+    q("SELECT whatsapp_link_phone(%s, %s, now() + interval '10 minutes',"
+      " now())", ("+15550002222", wa_digest("654321")), user=wa2)
+    q("SELECT whatsapp_apply_inbound('wamid.REH_IN6', '+15550002222',"
+      " 'stop', now())", (), whatsapp_callback="on")
+    out = scalar("SELECT whatsapp_apply_inbound('wamid.REH_IN7',"
+                 " '+15550002222', 'start', now())", (),
+                 whatsapp_callback="on")
+    r.check("wa_pending_not_resumable", out == "not_resumable", out)
+
+    # The event ledger is the complete history, append-only.
+    names = [row[0] for row in q(
+        "SELECT event FROM whatsapp_opt_in_events WHERE user_id = %s"
+        " ORDER BY event_id", (wa,))]
+    r.check("wa_event_order",
+            names == ["link_requested", "verify_failed", "verified",
+                      "stopped_inbound", "resumed_inbound", "help_requested",
+                      "unlinked", "resumed_inbound"], str(names))
+    try:
+        q("DELETE FROM whatsapp_inbound")
+        r.check("wa_inbound_guard", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the guard MUST raise
+        r.check("wa_inbound_guard", "AMD-WA-02" in str(exc), str(exc)[:200])
+    try:
+        q("DELETE FROM whatsapp_opt_in_events")
+        r.check("wa_events_guard", False, "no exception")
+    except Exception as exc:  # noqa: BLE001 — the guard MUST raise
+        r.check("wa_events_guard", "AMD-WA-03" in str(exc), str(exc)[:200])
+
+    # Cold-connection probes (the phase-8g discipline): a fresh connection
+    # with NO GUC ever set must be refused by every callback gate, and the
+    # member definers refuse without app.user_id.
+    conn3 = psycopg.connect(srv.get_uri(), autocommit=True)
+
+    def q3(sql, params=()):
+        cur = conn3.execute(sql, params)
+        if cur.pgresult.status == pq.ExecStatus.TUPLES_OK:
+            return cur.fetchall()
+        return []
+
+    rows = q3("SELECT whatsapp_apply_inbound('wamid.REH_COLD', %s, 'stop',"
+              " now())", (wa_phone,))
+    r.check("wa_inbound_needs_callback_cold", rows[0][0] == "forbidden",
+            str(rows))
+    rows = q3("SELECT whatsapp_dispatch_target(%s)", (wa,))
+    r.check("wa_target_needs_callback_cold", rows[0][0] is None, str(rows))
+    rows = q3("SELECT whatsapp_record_delivery(%s, 'x', 'y', 20)", (wa,))
+    r.check("wa_record_needs_callback_cold", rows[0][0] == "forbidden",
+            str(rows))
+    rows = q3("SELECT whatsapp_finalize_delivery(%s, 'y', NULL, true, NULL)",
+            (wa,))
+    r.check("wa_finalize_needs_callback_cold", rows[0][0] == "forbidden",
+            str(rows))
+    rows = q3("SELECT whatsapp_apply_status('wamid.REH_0001', 'read', NULL)")
+    r.check("wa_status_needs_callback_cold", rows[0][0] == "forbidden",
+            str(rows))
+    rows = q3("SELECT whatsapp_link_phone('+15550003333', %s, now(), now())",
+              (wa_digest("000000"),))
+    r.check("wa_link_needs_user_cold", rows[0][0] == "forbidden", str(rows))
+    rows = q3("SELECT whatsapp_unlink(now())")
+    r.check("wa_unlink_needs_user_cold", rows[0][0] == "forbidden", str(rows))
+    conn3.close()
+
+    # The warm connection (callback placeholder stuck at '') refuses too.
+    out = scalar("SELECT whatsapp_record_delivery(%s, 'x', 'y2', 20)", (wa,))
+    r.check("wa_record_needs_callback_warm", out == "forbidden", out)
+
+    # The FR-62 export carries the channel block: state, own phone,
+    # timestamps and the event history.
+    exp = str(scalar("SELECT dsar_export(%s)", (wa,), user=wa))
+    r.check("wa_dsar_block", "whatsapp" in exp and wa_phone in exp
+            and "stopped_inbound" in exp, exp[:200])
 
     # ------------------------- phase 9: reconciliation + guards + ledger ---
     rec = scalar("SELECT wallet_reconciliation()", (),

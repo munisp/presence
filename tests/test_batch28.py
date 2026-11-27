@@ -141,7 +141,7 @@ def test_sec28_external_secret_covers_every_referenced_key():
     referenced = set()
     for f in (ROOT / "deploy" / "k8s").glob("*.yaml"):
         referenced |= set(re.findall(r"secretKeyRef: \{ name: presence-secrets, key: (\w+)", f.read_text()))
-    assert len(referenced) == 18  # the full key inventory (9 core + 6 FR-56 push + 2 SEC-03 elevation binding + 1 SEC-11 backup replication), not a sample
+    assert len(referenced) == 22  # the full key inventory (9 core + 6 FR-56 push + 2 SEC-03 elevation binding + 1 SEC-11 backup replication + 4 AMD-WA WhatsApp), not a sample
     covered = set(re.findall(r"secretKey: (\w+)", EXTERNAL_SECRETS))
     assert referenced <= covered
 

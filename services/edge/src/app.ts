@@ -34,6 +34,7 @@ import { registerProfileRoutes } from "./routes/profile.js";
 import { registerIdentityRoutes } from "./routes/identity.js";
 import { registerOnboardingRoutes } from "./routes/onboarding.js";
 import { registerKycVerificationRoutes, registerKycWebhookRoute } from "./routes/kycVerification.js";
+import { registerWhatsAppRoutes, registerWhatsAppWebhookRoutes } from "./routes/whatsapp.js";
 import { registerTransferRoutes } from "./routes/transfers.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerWalletGovernanceRoutes } from "./routes/walletGovernance.js";
@@ -143,6 +144,12 @@ export async function buildApp(ctx: EdgeContext) {
   // HMAC signature over the canonical payload, never a user token.
   registerKycWebhookRoute(app, ctx);
 
+  // AMD-WA-02: WhatsApp Cloud API webhook — outside the authed scope on
+  // purpose: the caller is Meta, authenticated by the verify token (GET
+  // handshake) or the X-Hub-Signature-256 HMAC over the raw body (POST),
+  // never a user token.
+  registerWhatsAppWebhookRoutes(app, ctx);
+
   // AMD-INN-09: attestation verification oracle — outside the authed scope on
   // purpose: the caller is a third-party verifier with no account; the
   // token itself is the credential. Answers valid | expired | invalid.
@@ -234,6 +241,10 @@ export async function buildApp(ctx: EdgeContext) {
     // plain RLS, the review worklist under withModerator; the verdict
     // itself arrives on the unauthed HMAC webhook above.
     registerKycVerificationRoutes(authed, ctx);
+    // AMD-WA-03: WhatsApp opt-in — link/verify/unlink on plain RLS; the
+    // phone is verified by a template-delivered code, never trusted on
+    // presentation.
+    registerWhatsAppRoutes(authed, ctx);
     registerInterestRoutes(authed, ctx);
     registerTableRoutes(authed, ctx);
     registerLinkRoutes(authed, ctx);

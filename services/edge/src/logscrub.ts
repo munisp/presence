@@ -15,6 +15,8 @@
  *   - bearer/apikey/JWT-shaped strings anywhere
  *   - authorization / cookie / x-api-key headers outright
  *   - content fields (body/text/content/envelope/ciphertext/reason)
+ *   - phone numbers (AMD-WA-05): phone-shaped fields outright, and
+ *     E.164-shaped substrings inside free strings
  */
 
 /** Fields whose values are coordinates. */
@@ -25,6 +27,9 @@ const CONTENT_KEY_RE = /^(body|text|content|envelope|ciphertext|reason|details)$
 
 /** Header fields that carry credentials. */
 const CREDENTIAL_KEY_RE = /^(authorization|cookie|x-api-key|proxy-authorization)$/i;
+
+/** AMD-WA-05: fields whose values are phone numbers (E.164 or not). */
+const PHONE_KEY_RE = /^(phone|phone_?e164|msisdn|wa_?id|whatsapp_?id)$/i;
 
 /** User-identifying fields — pairing one with a cell is what we redact. */
 const USER_KEY_RE = /^(user_?id|actor|publisher|responder|reporter|reported|counterpart|sender|uid)$/i;
@@ -41,21 +46,27 @@ const BEARER_RE = /Bearer\s+\S+/gi;
 const APIKEY_RE = /apikey\s+\S+/gi;
 const JWT_RE = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\b/g;
 
+/** AMD-WA-05: E.164-shaped substrings inside free strings. */
+const PHONE_RE = /\+[1-9]\d{7,14}\b/g;
+
 const REDACTED = "[redacted]";
 const CONTENT = "[content]";
 const CELL = "[cell]";
+const PHONE = "[phone]";
 
 /** Scrub credential-shaped substrings out of a free string. */
 export function scrubText(s: string): string {
   return s
     .replace(JWT_RE, REDACTED)
     .replace(BEARER_RE, "Bearer [redacted]")
-    .replace(APIKEY_RE, "apikey [redacted]");
+    .replace(APIKEY_RE, "apikey [redacted]")
+    .replace(PHONE_RE, PHONE);
 }
 
 function scrubString(value: string, key?: string): string {
   if (key && COORD_KEY_RE.test(key)) return REDACTED;
   if (key && CONTENT_KEY_RE.test(key)) return CONTENT;
+  if (key && PHONE_KEY_RE.test(key)) return PHONE;
   // Cells are redacted by the pairing rule in scrubObject, not here — a
   // cell on its own identifies nobody and is useful in ops logs.
   return scrubText(value);
@@ -73,7 +84,9 @@ function hasUserKey(obj: Record<string, unknown>): boolean {
 export function scrubObject(value: unknown, key?: string): unknown {
   if (typeof value === "string") return scrubString(value, key);
   if (typeof value === "number") {
-    return key && COORD_KEY_RE.test(key) ? REDACTED : value;
+    if (key && COORD_KEY_RE.test(key)) return REDACTED;
+    if (key && PHONE_KEY_RE.test(key)) return PHONE;
+    return value;
   }
   if (Array.isArray(value)) return value.map((v) => scrubObject(v));
   if (value instanceof Error) {

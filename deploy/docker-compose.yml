@@ -70,6 +70,7 @@ services:
       - ../db/migrations/0036_service_bookings.sql:/docker-entrypoint-initdb.d/38_service_bookings.sql:ro
       - ../db/migrations/0037_onboarding.sql:/docker-entrypoint-initdb.d/39_onboarding.sql:ro
       - ../db/migrations/0038_openkyc.sql:/docker-entrypoint-initdb.d/40_openkyc.sql:ro
+      - ../db/migrations/0039_whatsapp.sql:/docker-entrypoint-initdb.d/41_whatsapp.sql:ro
       - ../deploy/keycloak/init.sql:/docker-entrypoint-initdb.d/00_keycloak.sql:ro
       - ../deploy/postgres/initdb/zz_backup_access.sh:/docker-entrypoint-initdb.d/zz_backup_access.sh:ro
       - pgdata:/var/lib/postgresql/data
@@ -210,6 +211,17 @@ services:
       KYC_CHALLENGE_SECRET: p0-dev-kyc-challenge-key-change-me
       KYC_VERDICT_SECRET: p0-dev-kyc-verdict-key-change-me
       OPENKYC_UPLOAD_URL: http://openkyc:4200/v1/captures
+      # AMD-WA-02/04: WhatsApp Cloud API wires (SEC-28 managed-secrets in
+      # k8s; these are dev-only values). Unset app secret / verify token
+      # answers 503 on the webhook; unset access token / phone number id
+      # makes the notification leg a documented no-op. WHATSAPP_DEV_ECHO
+      # fakes the sender inside the process (and returns the verify code
+      # in the link response) — compose ONLY, never a deployed env.
+      WHATSAPP_APP_SECRET: p0-dev-whatsapp-app-secret-change-me
+      WHATSAPP_VERIFY_TOKEN: p0-dev-whatsapp-verify-token-change-me
+      WHATSAPP_ACCESS_TOKEN: ""
+      WHATSAPP_PHONE_NUMBER_ID: ""
+      WHATSAPP_DEV_ECHO: "1"
       KEYCLOAK_ISSUER: http://keycloak:8080/realms/consumer
       # FR-01: the DEVICE-REACHABLE issuer the app signs in against, served
       # at GET /v1/client/config (the URL above is the in-cluster one the

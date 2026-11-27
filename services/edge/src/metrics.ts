@@ -228,6 +228,24 @@ export const kycWebhookResults = () =>
     ["result"],
   );
 
+// AMD-WA-02/04: the WhatsApp webhook is unauthed machine traffic and the
+// notification leg is env-gated — webhook verdicts (rejected spikes =
+// attack or broken app secret) and leg outcomes (unconfigured/capped
+// drift) are both counted.
+export const whatsappWebhookResults = () =>
+  metrics.counter(
+    "presence_whatsapp_webhook_results_total",
+    "WhatsApp Cloud API webhook results",
+    ["result"],
+  );
+
+export const whatsappLegResults = () =>
+  metrics.counter(
+    "presence_whatsapp_leg_results_total",
+    "WhatsApp notification leg outcomes",
+    ["result"],
+  );
+
 // AMD-INN-09: attestation verification is an unauthed oracle — every verdict
 // is counted so a grinding spike (invalid) or a misconfigured deployment
 // (unconfigured) is visible.

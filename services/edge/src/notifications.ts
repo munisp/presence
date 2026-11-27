@@ -14,6 +14,7 @@
 
 import { EdgeContext, publishRealtime } from "./context.js";
 import { PushProvider, buildPushPayload, dispatchPush, pushProvidersFromEnv } from "./push.js";
+import { dispatchWhatsAppNotice } from "./whatsappDispatch.js";
 
 export const NOTIFICATION_CATEGORIES = [
   "matches",
@@ -191,6 +192,14 @@ export async function notifyUser(
   if (payload !== null) {
     dispatchPush(ctx, pushProviderList(), userId, payload).catch((err) =>
       console.error("push dispatch failed", err),
+    );
+    // AMD-WA-04: the WhatsApp leg rides the same event — same category
+    // gate above, same opaque ref as the push payload, fire-and-forget
+    // beside it. Unmapped types, missing opt-in and unconfigured senders
+    // are quiet no-ops inside the leg.
+    const type = typeof event.type === "string" ? event.type : "";
+    dispatchWhatsAppNotice(ctx, userId, category, type, payload.ref).catch((err) =>
+      console.error("whatsapp dispatch failed", err),
     );
   }
   return true;

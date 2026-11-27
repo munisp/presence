@@ -350,3 +350,30 @@ export async function withKycCallback<T>(
     client.release();
   }
 }
+
+/**
+ * AMD-WA-02/04: run `fn` in one transaction with app.whatsapp_callback set —
+ * the HMAC-verified WhatsApp webhook and the internal notification dispatch
+ * leg are machine contexts authenticated by a shared secret (or by the
+ * notifyUser chokepoint), not a user token, so no app.user_id exists here.
+ * Like OpenKYC there is NO kill switch: opt-in state changes (STOP/START)
+ * are a member-consent surface and never depend on an operations toggle.
+ */
+export async function withWhatsAppCallback<T>(
+  pool: Postgres.Pool,
+  fn: (client: Postgres.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.whatsapp_callback', 'on', true)");
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}

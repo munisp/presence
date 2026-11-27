@@ -154,15 +154,30 @@ def test_sec09_openapi_paths() -> None:
 # --------------------------------------------------- no plaintext anywhere -
 
 def test_sec09_no_plaintext_phone_storage_repo_wide() -> None:
-    """No migration, seed or realm export may carry a plaintext phone column."""
+    """No migration, seed or realm export may carry a plaintext phone column.
+
+    One pinned exception (AMD-WA-03, batch 69): the phone_e164 columns in
+    0039_whatsapp.sql. A WhatsApp DELIVERY address cannot be keyed-hash
+    stored — Meta's Cloud API routes on the digits, so unlike the SEC-09
+    recovery factor (verify-only, hashable) the channel phone must be
+    retrievable to be sent to. Its exposure is bounded by construction:
+    member-supplied and opt-in, RLS select-own on the opt-in row with the
+    inbound ledger definer-only, masked in every projection and log,
+    ON DELETE CASCADE with the account, and exported in full only in the
+    member's own DSAR export. Any OTHER plaintext phone column still
+    fails this test.
+    """
     offenders: list[str] = []
     for pattern in ("db/**/*.sql", "deploy/keycloak/*.json"):
         for path in ROOT.glob(pattern):
+            rel = str(path.relative_to(ROOT))
+            if rel == "db/migrations/0039_whatsapp.sql":
+                continue  # the pinned AMD-WA-03 exception above
             text = path.read_text().lower()
             if re.search(r"\bphone(?!_hash)\w*\s+(text|varchar|character varying)", text):
-                offenders.append(str(path.relative_to(ROOT)))
+                offenders.append(rel)
             if re.search(r'"phone(number)?"\s*:', text) and "attributes" in text:
-                offenders.append(str(path.relative_to(ROOT)))
+                offenders.append(rel)
     assert offenders == []
 
 

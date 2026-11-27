@@ -61,7 +61,9 @@ def test_new_modules_are_import_free_where_required() -> None:
     assert "fetch(" not in CELL_STABILISER_TS
 
 
-def test_dependency_allowlist_stays_exactly_ten() -> None:
+def test_dependency_allowlist_stays_exactly_eleven() -> None:
+    # Batch 66 (AMD-CRT-04): was ten; centrifuge joined through the TECH-16
+    # admission gate (sdk-allowlist entry + dependencyBudget ledger).
     import json
 
     allowlist = json.loads((ROOT / "docs" / "security" / "sdk-allowlist.json").read_text())
@@ -69,7 +71,7 @@ def test_dependency_allowlist_stays_exactly_ten() -> None:
     assert npm == sorted([
         "@types/node", "@types/react", "expo", "expo-dev-client",
         "expo-secure-store", "expo-status-bar", "h3-js", "react",
-        "react-native", "typescript",
+        "react-native", "typescript", "centrifuge",
     ])
 
 

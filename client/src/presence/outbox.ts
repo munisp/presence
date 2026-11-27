@@ -59,6 +59,12 @@ export interface OutboxDraft {
   method: OutboxMethod;
   path: string;
   body: string;
+  /**
+   * AMD-CRT-01: when the API client already minted an idempotency key
+   * for a send that failed on the wire, the SAME key is enqueued — the
+   * server sees one logical action, never two. Omit for a fresh mint.
+   */
+  idempotencyKey?: string;
 }
 
 export interface OutboxContext {
@@ -96,7 +102,7 @@ export function enqueueAction(
     method: draft.method,
     path: draft.path,
     body: draft.body,
-    idempotencyKey: ctx.uuid(),
+    idempotencyKey: draft.idempotencyKey ?? ctx.uuid(),
     enqueuedAtMs: ctx.nowMs(),
     attempts: 0,
     nextAttemptAtMs: ctx.nowMs(),

@@ -35,6 +35,14 @@ spec:
               value: http://centrifugo:8000
             - name: CENTRIFUGO_API_KEY
               valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_API_KEY } }
+            # AMD-CRT-04: the edge signs client connection tokens with the
+            # same HMAC secret Centrifugo verifies against (POST
+            # /v1/realtime/token); the public URL ships in the bootstrap
+            # config so deployments without a realtime tier fail closed.
+            - name: CENTRIFUGO_TOKEN_HMAC_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: presence-secrets, key: CENTRIFUGO_TOKEN_HMAC_SECRET_KEY } }
+            - name: REALTIME_PUBLIC_WS_URL
+              value: wss://rt.presence.example/connection/websocket   # per environment
             - name: RECOVERY_HASH_KEY   # SEC-09: HMAC key for recovery-phone hashes — rotation is a rolling restart
               valueFrom: { secretKeyRef: { name: presence-secrets, key: RECOVERY_HASH_KEY } }
             - name: KEYCLOAK_ISSUER

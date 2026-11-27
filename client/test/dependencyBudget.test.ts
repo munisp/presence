@@ -48,11 +48,12 @@ test("the prohibited-marker screen runs before the allowlist", () => {
 
 test("the ledger has one allocation per runtime dependency and fits the cap", () => {
   assert.equal(BUNDLE_SIZE_LEDGER.length, RUNTIME_DEPENDENCY_COUNT);
-  assert.equal(RUNTIME_DEPENDENCY_COUNT, 7);
+  // Batch 66 (AMD-CRT-04): centrifuge admitted — count 7 -> 8, total 31 -> 39 MB.
+  assert.equal(RUNTIME_DEPENDENCY_COUNT, 8);
   assert.ok(bundleSizeFits(BUNDLE_SIZE_LEDGER));
   assert.ok(dependencyBudgetHonoursTech16());
   const total = BUNDLE_SIZE_LEDGER.reduce((sum, d) => sum + d.bytes, 0);
-  assert.equal(total, 31 * 1024 * 1024, "31 MB allocated against the 45 MB cap");
+  assert.equal(total, 39 * 1024 * 1024, "39 MB allocated against the 45 MB cap");
 });
 
 test("a ledger that cannot fit fails loudly; duplicates and garbage fail closed", () => {

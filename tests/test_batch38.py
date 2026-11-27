@@ -70,7 +70,9 @@ def test_session_imports_only_local_state_and_the_lifecycle_wire() -> None:
     assert "fetch(" not in SESSION_TS
 
 
-def test_dependency_allowlist_stays_exactly_ten() -> None:
+def test_dependency_allowlist_stays_exactly_eleven() -> None:
+    # Batch 66 (AMD-CRT-04): was ten; centrifuge joined through the TECH-16
+    # admission gate (sdk-allowlist entry + dependencyBudget ledger).
     npm = sorted(e["name"] for e in ALLOWLIST["sdks"] if e["ecosystem"] == "npm")
     assert npm == sorted([
         "@types/node",
@@ -83,6 +85,7 @@ def test_dependency_allowlist_stays_exactly_ten() -> None:
         "react",
         "react-native",
         "typescript",
+        "centrifuge",
     ])
 
 
@@ -205,7 +208,8 @@ def test_client_config_carries_the_auth_block() -> None:
     assert '|| "presence-app"' in EDGE_CLIENT_CONFIG
     assert 'auth: { issuer, clientId },' in EDGE_CLIENT_CONFIG
     # The route schema requires the block.
-    assert 'required: ["configVersion", "pinning", "api", "auth"]' in EDGE_CLIENT_CONFIG
+    # Batch 66 (AMD-CRT-04): the realtime block joined the schema.
+    assert 'required: ["configVersion", "pinning", "api", "auth", "realtime"]' in EDGE_CLIENT_CONFIG
 
 
 def test_client_config_tests_pin_the_auth_block() -> None:
@@ -238,7 +242,8 @@ def test_client_readme_and_app_reflect_the_batch() -> None:
 
 
 def test_openapi_reflects_the_auth_bootstrap() -> None:
-    assert "required: [configVersion, pinning, api, auth]" in OPENAPI
+    # Batch 66 (AMD-CRT-04): realtime joined the required block.
+    assert "required: [configVersion, pinning, api, auth, realtime]" in OPENAPI
     assert "device-reachable issuer of the passkey-only consumer realm (FR-01)" in OPENAPI
     assert "passkey-only (FR-01)" in OPENAPI
     assert "x-device-id" in OPENAPI

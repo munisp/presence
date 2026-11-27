@@ -67,6 +67,14 @@
       "approvedBy": "batch-34 client foundation PR"
     },
     {
+      "name": "centrifuge",
+      "ecosystem": "npm",
+      "versionConstraint": "^5.8.0",
+      "justification": "AMD-CRT-04: the Centrifugo realtime client — pair-lifecycle and messaging events over the governed websocket tier; admitted through the TECH-16 dependency gate (batch 66).",
+      "dataAccess": "receives pair/user channel events over TLS after presenting a server-scoped connection token; transmits no data of its own",
+      "approvedBy": "batch-66 AMD-CRT-04 admission (TECH-16 gate)"
+    },
+    {
       "name": "typescript",
       "ecosystem": "npm",
       "versionConstraint": "5.6.3",

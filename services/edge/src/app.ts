@@ -9,6 +9,7 @@ import { EdgeContext } from "./context.js";
 import { registerErrorContract } from "./errors.js";
 import { registerIdempotency } from "./idempotency.js";
 import { scrubLogArgs } from "./logscrub.js";
+import { registerRealtimeTokenRoute } from "./realtimeToken.js";
 import { escrowDisputeAge, httpDuration, httpRequests, metrics, moderationQueueAge, publishFailures } from "./metrics.js";
 import { resolveRequestId } from "./requestid.js";
 import { registerVersionContract } from "./versioning.js";
@@ -245,6 +246,9 @@ export async function buildApp(ctx: EdgeContext) {
     registerTaxonomyRoutes(authed, ctx);
     registerTelemetryRoutes(authed, ctx);
     registerGeofenceRoutes(authed, ctx);
+    // AMD-CRT-04: Centrifugo connection tokens — authed, rate-limited,
+    // fail closed when the HMAC secret is unconfigured.
+    registerRealtimeTokenRoute(authed, ctx);
   });
 
   return app;

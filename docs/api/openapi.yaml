@@ -87,7 +87,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [configVersion, pinning, api, auth]
+                required: [configVersion, pinning, api, auth, realtime]
                 properties:
                   configVersion: { type: integer, minimum: 1 }
                   pinning:
@@ -120,10 +120,57 @@ paths:
                       clientId:
                         type: string
                         description: the realm's public client for the app (FR-01)
+                  realtime:
+                    type: object
+                    required: [wsUrl]
+                    properties:
+                      wsUrl:
+                        type: string
+                        description: >-
+                          AMD-CRT-04: the device-reachable Centrifugo
+                          websocket URL (through the gateway). Empty means
+                          the deployment has no realtime tier and the
+                          client adapter stays off — fail closed. The
+                          connection token comes from the authed
+                          /v1/realtime/token, never from this payload.
         "304":
           description: >-
             AMD-NET-04: config unchanged since the client's ETag — no body,
             one round trip (the AMD-NET-05 configRevalidate budget).
+  /v1/realtime/token:
+    post:
+      summary: Issue a Centrifugo connection token (AMD-CRT-04)
+      description: >-
+        Issues the HS256 connection JWT the client's realtime adapter
+        presents to Centrifugo. The token lives 600 seconds (the client
+        refreshes 60 s before expiry) and its channels claim allowlists
+        exactly the member's own user channel plus the pair channel of
+        every pair they belong to that has not closed — the subscription
+        privacy boundary is enforced server-side by Centrifugo against
+        this claim. Fail closed: without the HMAC secret configured the
+        route answers 503 rather than issuing anything.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses:
+        "200":
+          description: Connection token and its subscription allowlist.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expiresIn, channels]
+                properties:
+                  token:
+                    type: string
+                    description: HS256 JWT — sub, iat, exp, channels
+                  expiresIn:
+                    type: integer
+                    description: token lifetime in seconds (600)
+                  channels:
+                    type: array
+                    items: { type: string }
+                    description: the subscription allowlist — user:{id} plus pair:{pairId} per open pair
+        "503":
+          description: Realtime tier not configured (no HMAC secret) — fail closed.
   /v1/presence:
     post:
       summary: Enter or heartbeat presence (FR-14, FR-16, TR-12/14/15)

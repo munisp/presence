@@ -181,7 +181,8 @@ def test_sec18_gate_passes_with_the_landed_client() -> None:
     # Batch 34 landed client/: every declared dependency is allowlisted
     # and the gate passes over the real manifests.
     deps = checker.scan_manifests(ROOT / "client")
-    assert len(deps) == 10
+    # Batch 66 (AMD-CRT-04): was ten; centrifuge admitted via TECH-16.
+    assert len(deps) == 11
     assert {d.ecosystem for d in deps} == {"npm"}
     assert checker.main() == 0
 

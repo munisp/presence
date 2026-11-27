@@ -79,15 +79,18 @@ export interface DependencySize {
 
 /**
  * The size ledger: one budget allocation per RUNTIME dependency (the
- * seven entries of client/package.json "dependencies", cross-pinned by
+ * eight entries of client/package.json "dependencies", cross-pinned by
  * tests/test_batch42.py — the SEC-18 allowlist's three extra entries
  * are devDependencies, which never ship in the bundle). Allocations
- * sum to 31 MB against the 45 MB cap, leaving 14 MB of headroom that a
- * future dependency must argue for at review.
+ * sum to 39 MB against the 45 MB cap, leaving 6 MB of headroom that a
+ * future dependency must argue for at review. Batch 66 admitted
+ * centrifuge (AMD-CRT-04) with an 8 MB allocation covering its
+ * protobufjs/events subtree (~7.6 MB measured).
  */
 export const BUNDLE_SIZE_LEDGER: readonly DependencySize[] = [
   { name: "react-native", bytes: 18 * 1024 * 1024 },
   { name: "expo", bytes: 8 * 1024 * 1024 },
+  { name: "centrifuge", bytes: 8 * 1024 * 1024 },
   { name: "expo-dev-client", bytes: 2 * 1024 * 1024 },
   { name: "expo-secure-store", bytes: 1 * 1024 * 1024 },
   { name: "expo-status-bar", bytes: 512 * 1024 },
@@ -96,7 +99,7 @@ export const BUNDLE_SIZE_LEDGER: readonly DependencySize[] = [
 ] as const;
 
 /** Every runtime dependency must be on the SEC-18 allowlist. */
-export const RUNTIME_DEPENDENCY_COUNT = 7;
+export const RUNTIME_DEPENDENCY_COUNT = 8;
 
 /**
  * Size audit, fail closed: every allocation finite and positive, no

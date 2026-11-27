@@ -1348,6 +1348,31 @@ def main() -> int:
         and "AMD-NET-05" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
         and (ROOT / "docs" / "ux" / "connectivity.md").exists(),
     )
+    check(
+        "batch-66 client runtime wiring: apiClient/sessionRuntime/outboxPump/realtime + edge token route + centrifuge admission",
+        (ROOT / "client" / "src" / "presence" / "apiClient.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "sessionRuntime.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "outboxPump.ts").exists()
+        and (ROOT / "client" / "src" / "presence" / "realtime.ts").exists()
+        and (ROOT / "client" / "test" / "runtimeWiring.test.ts").exists()
+        and "registerRealtimeTokenRoute(authed, ctx);"
+        in (ROOT / "services" / "edge" / "src" / "app.ts").read_text()
+        and "CENTRIFUGO_TOKEN_HMAC_SECRET_KEY"
+        in (ROOT / "services" / "edge" / "src" / "realtimeToken.ts").read_text()
+        and "REALTIME_PUBLIC_WS_URL"
+        in (ROOT / "services" / "edge" / "src" / "clientConfig.ts").read_text()
+        and (ROOT / "services" / "edge" / "test" / "realtimeToken.test.ts").exists()
+        and '"centrifuge"'
+        in (ROOT / "client" / "package.json").read_text()
+        and '"name": "centrifuge"'
+        in (ROOT / "docs" / "security" / "sdk-allowlist.json").read_text()
+        and "RUNTIME_DEPENDENCY_COUNT = 8;"
+        in (ROOT / "client" / "src" / "presence" / "dependencyBudget.ts").read_text()
+        and "AMD-CRT-04" in (ROOT / "docs" / "spec" / "srs-addendum-001.md").read_text()
+        and (ROOT / "docs" / "ux" / "runtime-wiring.md").exists()
+        and "REALTIME_PUBLIC_WS_URL"
+        in (ROOT / "deploy" / "k8s" / "edge.yaml").read_text(),
+    )
 
     print()
     if failures:

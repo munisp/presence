@@ -195,6 +195,13 @@ services:
       MATCH_SERVICE_URL: http://match:4100
       CENTRIFUGO_URL: http://centrifugo:8000
       CENTRIFUGO_API_KEY: p0-dev-api-key
+      # AMD-CRT-04: the edge signs client connection tokens with the same
+      # dev HMAC secret the compose Centrifugo verifies against; the
+      # public URL ships in GET /v1/client/config (empty = realtime off).
+      # Clients connect through APISIX ONLY (the realtime-ws route);
+      # centrifugo is not published on the host (networkpolicy parity).
+      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: p0-dev-secret-change-me
+      REALTIME_PUBLIC_WS_URL: wss://localhost:9443/connection/websocket
       JWT_SECRET: p0-dev-secret-change-me
       RECOVERY_HASH_KEY: p0-dev-recovery-key-change-me   # SEC-09 dev-only HMAC key (SEC-28)
       # AMD-KYC-09: OpenKYC verification wires (SEC-28 managed-secrets in

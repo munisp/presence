@@ -151,8 +151,12 @@ def test_no_new_client_dependency():
     # client dependency, so the 45 MB budget and the SDK allowlist are
     # untouched. (Centrifuge or a networking runtime, when it comes,
     # arrives through the dependency-budget admission path in batch 66.)
+    # Batch 66 (AMD-CRT-04): centrifuge arrived exactly through that path —
+    # the forbidden list keeps the UNADMITTED networking SDKs, and
+    # centrifuge's presence is pinned by tests/test_batch66.py
+    # (test_centrifuge_admitted_through_the_tech16_gate).
     pkg = (CLIENT / "package.json").read_text()
-    for forbidden in ("axios", "node-fetch", "centrifuge", "pusher", "socket.io"):
+    for forbidden in ("axios", "node-fetch", "pusher", "socket.io"):
         assert forbidden not in pkg
 
 

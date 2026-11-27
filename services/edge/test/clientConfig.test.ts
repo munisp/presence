@@ -15,6 +15,8 @@ test("defaults: pinning disabled, version 1, API posture at floor 1, no auth iss
     pinning: { enabled: false, pins: [] },
     api: { version: API_VERSION, minClientVersion: 1 },
     auth: { issuer: "", clientId: "presence-app" },
+    // AMD-CRT-04: no realtime tier configured by default — fail closed.
+    realtime: { wsUrl: "" },
   });
 });
 
@@ -80,11 +82,13 @@ test("GET /v1/client/config answers without any credentials", async () => {
   const prevFloor = process.env.CLIENT_MIN_VERSION;
   const prevIssuer = process.env.KEYCLOAK_PUBLIC_ISSUER_URL;
   const prevClientId = process.env.KEYCLOAK_CLIENT_ID;
+  const prevRealtime = process.env.REALTIME_PUBLIC_WS_URL;
   try {
     process.env.CLIENT_TLS_PINS = "pinX,pinY";
     process.env.CLIENT_CONFIG_VERSION = "42";
     process.env.CLIENT_MIN_VERSION = "2";
     process.env.KEYCLOAK_PUBLIC_ISSUER_URL = "https://auth.example/realms/consumer";
+    process.env.REALTIME_PUBLIC_WS_URL = "wss://rt.example/connection/websocket";
     delete process.env.KEYCLOAK_CLIENT_ID;
     const res = await app.inject({ method: "GET", url: "/v1/client/config" });
     assert.equal(res.statusCode, 200);
@@ -93,6 +97,8 @@ test("GET /v1/client/config answers without any credentials", async () => {
       pinning: { enabled: true, pins: ["pinX", "pinY"] },
       api: { version: API_VERSION, minClientVersion: 2 },
       auth: { issuer: "https://auth.example/realms/consumer", clientId: "presence-app" },
+      // AMD-CRT-04: the public websocket URL ships in the bootstrap.
+      realtime: { wsUrl: "wss://rt.example/connection/websocket" },
     });
   } finally {
     if (prevPins === undefined) delete process.env.CLIENT_TLS_PINS;
@@ -105,6 +111,8 @@ test("GET /v1/client/config answers without any credentials", async () => {
     else process.env.KEYCLOAK_PUBLIC_ISSUER_URL = prevIssuer;
     if (prevClientId === undefined) delete process.env.KEYCLOAK_CLIENT_ID;
     else process.env.KEYCLOAK_CLIENT_ID = prevClientId;
+    if (prevRealtime === undefined) delete process.env.REALTIME_PUBLIC_WS_URL;
+    else process.env.REALTIME_PUBLIC_WS_URL = prevRealtime;
     await app.close();
   }
 });

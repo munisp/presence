@@ -185,6 +185,9 @@ def test_no_new_dependencies_were_added() -> None:
         "expo", "expo-dev-client", "expo-secure-store", "expo-status-bar",
         "h3-js", "react", "react-native",
         "@types/node", "@types/react", "typescript",
+        # Batch 66 (AMD-CRT-04): centrifuge admitted through the TECH-16
+        # gate — pinned by tests/test_batch66.py.
+        "centrifuge",
     }
     assert set(ALL_DEPS) == expected
     assert len(ALLOWLIST["sdks"]) == len(expected)

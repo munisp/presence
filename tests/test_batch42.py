@@ -241,13 +241,15 @@ def test_size_ledger_matches_package_json_runtime_dependencies() -> None:
     ledger_names = re.findall(r'\{ name: "([^"]+)", bytes: ', block)
     runtime_deps = sorted(PACKAGE_JSON["dependencies"].keys())
     assert sorted(ledger_names) == runtime_deps
-    assert "export const RUNTIME_DEPENDENCY_COUNT = 7;" in DEPENDENCY_BUDGET_TS
-    assert len(runtime_deps) == 7
+    # Batch 66 (AMD-CRT-04): centrifuge admitted through the TECH-16 gate —
+    # runtime deps 7 -> 8, ledger total 31 -> 39 MB against the 45 MB cap.
+    assert "export const RUNTIME_DEPENDENCY_COUNT = 8;" in DEPENDENCY_BUDGET_TS
+    assert len(runtime_deps) == 8
     total = 0
     for m in re.finditer(r"bytes: (\d+) \* 1024( \* 1024)?", block):
         factor = 1024 * 1024 if m.group(2) else 1024
         total += int(m.group(1)) * factor
-    assert total == 31 * 1024 * 1024
+    assert total == 39 * 1024 * 1024
 
 
 def test_admission_gate_reasons_pinned() -> None:
@@ -266,7 +268,10 @@ def test_sdk_allowlist_covers_the_runtime_dependencies() -> None:
     npm_entries = {s["name"] for s in SDK_ALLOWLIST["sdks"] if s["ecosystem"] == "npm"}
     runtime_deps = set(PACKAGE_JSON["dependencies"].keys())
     assert runtime_deps <= npm_entries
-    assert len(SDK_ALLOWLIST["sdks"]) == 10
+    # Batch 66 (AMD-CRT-04): centrifuge admitted through the TECH-16 gate —
+    # allowlist entries 10 -> 11 (7 runtime deps + typescript/@types/node/
+    # @types/react devDependencies + centrifuge).
+    assert len(SDK_ALLOWLIST["sdks"]) == 11
 
 
 # --------------------------------------------------------- client tests ---

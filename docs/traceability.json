@@ -3151,7 +3151,7 @@
         "tests/test_batch38.py",
         "tests/test_batch39.py"
       ],
-      "note": "client/src/presence/dependencyBudget.ts \u2014 45 MB bundle cap with one size allocation per runtime dependency (31 MB allocated, cross-pinned to package.json); the licence allowlist mirrors the SEC-25 CI set with a prohibited-marker screen in front (GPL/AGPL/LGPL/SSPL/Commons Clause refuse \u2014 the TECH-08 libsignal discipline); the admission gate refuses in pinned order (size, SEC-18 membership, deprecated, licence, cap); the SEC-18 sdk-allowlist CI gate enforces membership. Pinned by client tests + tests/test_batch42.py."
+      "note": "client/src/presence/dependencyBudget.ts \u2014 45 MB bundle cap with one size allocation per runtime dependency (39 MB allocated across eight deps after batch 66 admitted centrifuge for AMD-CRT-04, cross-pinned to package.json); the licence allowlist mirrors the SEC-25 CI set with a prohibited-marker screen in front (GPL/AGPL/LGPL/SSPL/Commons Clause refuse \u2014 the TECH-08 libsignal discipline); the admission gate refuses in pinned order (size, SEC-18 membership, deprecated, licence, cap); the SEC-18 sdk-allowlist CI gate enforces membership. Pinned by client tests + tests/test_batch42.py."
     },
     "TECH-17": {
       "family": "TECH",

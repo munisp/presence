@@ -29,6 +29,10 @@
  *   KEYCLOAK_CLIENT_ID    — the realm's public client for the app; defaults
  *                           to the realm-exported "presence-app". Public
  *                           values, like the pins: no secret material.
+ *   REALTIME_PUBLIC_WS_URL — AMD-CRT-04: the DEVICE-REACHABLE Centrifugo
+ *                           websocket URL (through APISIX). Empty means the
+ *                           deployment has no realtime tier and the client
+ *                           adapter stays off — fail closed, never guessed.
  */
 
 /**
@@ -56,6 +60,13 @@ export interface ClientConfig {
    * against this issuer and refuses to sign in when it is empty.
    */
   auth: { issuer: string; clientId: string };
+  /**
+   * AMD-CRT-04: the realtime tier's public websocket URL. Empty string
+   * means no realtime tier is deployed — the client adapter stays off
+   * (fail closed). The connection token itself comes from the authed
+   * POST /v1/realtime/token, never from this unauthenticated payload.
+   */
+  realtime: { wsUrl: string };
 }
 
 export interface ClientConfigEnv extends VersionEnv {
@@ -65,6 +76,8 @@ export interface ClientConfigEnv extends VersionEnv {
   KEYCLOAK_CLIENT_ID?: string | undefined;
   /** In-cluster issuer (auth.ts verifies against it); dev fallback only. */
   KEYCLOAK_ISSUER?: string | undefined;
+  /** AMD-CRT-04: public Centrifugo websocket URL; empty disables realtime. */
+  REALTIME_PUBLIC_WS_URL?: string | undefined;
 }
 
 /** Resolve the live config from the environment (read per request). */
@@ -85,6 +98,7 @@ export function resolveClientConfig(env: ClientConfigEnv = process.env): ClientC
     pinning: { enabled: pins.length > 0, pins },
     api: { version: API_VERSION, minClientVersion: resolveMinClientVersion(env) },
     auth: { issuer, clientId },
+    realtime: { wsUrl: (env.REALTIME_PUBLIC_WS_URL ?? "").trim() },
   };
 }
 
@@ -129,7 +143,7 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
         response: {
           200: {
             type: "object",
-            required: ["configVersion", "pinning", "api", "auth"],
+            required: ["configVersion", "pinning", "api", "auth", "realtime"],
             properties: {
               configVersion: { type: "integer" },
               pinning: {
@@ -154,6 +168,13 @@ export function registerClientConfigRoute(app: FastifyInstance): void {
                 properties: {
                   issuer: { type: "string" },
                   clientId: { type: "string" },
+                },
+              },
+              realtime: {
+                type: "object",
+                required: ["wsUrl"],
+                properties: {
+                  wsUrl: { type: "string" },
                 },
               },
             },
